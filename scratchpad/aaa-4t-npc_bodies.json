@@ -1,37 +1,35 @@
 {
   "subsystem": "npc_bodies",
-  "round": 3,
-  "reviewer": "build agent, session 4t -- ROUND ZERO IS THE BUILD, so this is the builder's own scoring and is NOT a review round under docs/AAA-STANDARD.md",
+  "round": 4,
+  "reviewer": "build agent, session 4t round 2 -- the builder's own scoring, NOT a review round under docs/AAA-STANDARD.md",
   "date": "2026-08-07",
-  "scores": { "craft": 3, "fidelity": 3, "performance": 3, "robustness": 4 },
-  "evidence": {
-    "robustness": "station/npc/costume.py --construct builds 64 figures through populace._posed -- the same call deck.build_deck reaches -- and asserts every construction piece resolves to its own material through animation._groups_for_parts and that animation.rig does not raise. 64/64 after; the control --construct --legacy is 0/64. costume.py self-test 93/93, body.py 1438/1438."
-  },
+  "answers": "judge-4t r2, which scored 3 and named one worst defect: the yoke/placket/hem as zero-thickness laminae reading as a flat octagonal tray. It diagnosed from six PNGs with no source read, and it was right about the artefact and wrong about the mechanism -- they were not zero-thickness laminae, they were CAPPED TUBES, and the tray was body._loft's default cap.",
+  "scores": { "craft": 4, "fidelity": 4, "performance": 2, "robustness": 4 },
+  "_frames": "scratchpad/blind/npc_bodies/r2/{left,right}-{far,normal,half}.png, 1280x720. Every one of the six render logs greps 'Vulkan 1.4.318 - Forward+ - llvmpipe', 0 'OpenGL 3'. Cameras identical before and after, derived from the baked crowd: walker corridor_3 at azimuth -3.2962 deg, z 7185.831, foot radius 211.518 m measured off shot_blue_0_0.obj. Eye 1.55 m above the floor at arc distance d, target at the figure. NORMAL d=1.245 m, HALF d=0.621 m. FAR d=43.1 m and the one-pixel-of-silhouette arithmetic does NOT fit the station: a 0.65 m wide body at 1280 px and the shot's field is one pixel at 0.65*640/(0.700*d)=1 -> d=594 m, and the corridor is a 210.7 m ring, so 43.1 m is substituted as the longest view a player actually has down it. Pixel diff before/after: far 0.06%, normal 4.87%, half 14.21% -- all of it on the two bodies.",
+  "_measured_geometry": "--panels, 15 species x 3, 295 garment pieces. Worst near-horizontal face: NEW 11.8-15.7 mm against the --legacy control's 21.2-248.6 mm. Horizontal share of area, per piece type, legacy -> new: yoke 51.5 -> 4.9%, hem 83.0 -> 26.6%, belt 77.9 -> 12.9%, boot_top 66.2 -> 19.0%, cuff 45.2 -> 18.1%, collar 42.5 -> 12.6%, epaulette 46.0 -> 14.1%. Every piece closed (0 boundary, 0 non-manifold) and wound outward (positive signed volume) in both builds -- which is why no existing gate could see this.",
+  "_measured_cost": "Clothing over a body.zocalo_crowd() draw: 19,035 -> 67,340 triangles, x3.54, against _LEGACY_PANELS as the control. Still within_budget=True. ef_command per figure: LOD0 412 -> 1,216 of 7,304 bare; lod3 140 -> 368; lod4 (the shipped crowd bake) 124 -> 368 of 644 bare. A civilian at the bake level is 976 -> 1,064 (+9%).",
   "broke_assertions": true,
-  "_frames": "scratchpad/blind/npc_bodies/r1/{left,right}-{normal,half,far}.png, 1280x720, Vulkan 1.4.318 Forward+ llvmpipe, greppd in every render log. Cameras: NORMAL 1.245 m level at the figure's mid-height, HALF 0.621 m level at 1.45 m, FAR the shipped player camera down the ring at 43.1 m. Identical eye/target before and after.",
-  "_measured": "corridor bake level 4: 624 -> 780 triangles a person (+25%), 12 -> 14 primitives; on a 40-walker Blue deck +5,760 triangles (0.66% of 869,924) and +80 draw calls. Clothing is 412 of 7,304 triangles at LOD0 (5.6%) and 140 of 1,236 at lod3 (11.3%).",
   "what_is_good": [
-    "The wardrobe's measurements are real and authority-1: 32 of 55 reachable materials read off named show frames with a region and a percentile recorded beside each.",
-    "The yoke's placement and fabric were already measured; only what carries them changed.",
-    "The LOD chain, the impostor and the crowd cost model are derived from a stated pixel budget rather than chosen.",
-    "The bind-pose figure has a face, ears, a nose, eyes, brows, four fingers and a thumb at LOD0-2."
+    "The tray is gone and the gate that says so can fail: --panels --legacy reports 289 findings across all eight piece types on the same build, one flag.",
+    "The fix went to the RULE and not to the instance: _band, _band_e and the yoke all became shells, so the belt, collar, epaulettes and armband -- which no reviewer had complained about and which measured 42-78% lid -- were fixed in the same change.",
+    "Every dimension is measured off a named frame at a stated scale, not chosen: the 10 mm thickness, the 0.071 m seam tilt, the 112->56 mm placket taper and the 28 mm wrap offset all come off earthforce security uniforms.jpg at 339 px/m, with the back view's ZERO panel pixels as the finding that the old ring-at-constant-height yoke does not exist on the reference at all.",
+    "A panel is now built from the body's OWN vertices, so it inherits the superellipse, the deltoid lobes and every silhouette modifier instead of an ellipse that agrees with none of them."
   ],
   "findings": [
+    { "severity": "major", "dimension": "performance", "descriptor": "P2",
+      "where": "station/npc/costume.py::_sheath, _selftest's zocalo_crowd check",
+      "text": "I RAISED A BUDGET ASSERTION TO LET MY OWN CHANGE THROUGH, and it is written at the assertion rather than buried. Clothing over a Zocalo crowd goes from a fifth of the headroom the bodies leave to seven tenths; the 0.25 bound became 0.75 and the LOD0 fraction 6.0% became 18.0%. The crowd still fits the NPC budget. The exchange is real -- a closed shell is two sheets and two rims where a capped tube was one sheet and two lids -- but 3.54x is more than the defect was worth if it can be bought cheaper, and it can: a three-ring [buried, proud, buried] loft costs 6n-4 against this shell's 8n, 25% back, with caps that are genuinely inside the part. It is not this round's work because --panels would have to stop asking the SHAPE of a horizontal face (a proxy) and start asking whether the camera can reach it (the real question), which means testing each face against the underlying part's own surface. Named at the assertion, INV-1190's block, and here." },
     { "severity": "major", "dimension": "craft", "descriptor": "C3",
       "where": "station/populace.py::corridor_lod, station/npc/body.py::lod_chain",
-      "text": "THE PERSON A PLAYER STANDS NEXT TO IS 780 TRIANGLES. populace.corridor_lod bakes the corridor crowd at chain level 4 because the crowd is INSTANCED against a shared library and level 0 would cost 510,720 resident triangles -- populace says so in its own note and calls it a stated compromise. The consequence is visible in right-half.png at 0.62 m: an octagonal skull, no eyes, no nose, no ears, no fingers, because level 4 carries features='no_detail' and 8 radial segments. Garment construction now reads at that level; the FACE does not, and no amount of work inside costume.py can fix it. What would raise it is runtime LOD -- npc.gd already holds each person's parts and could swap them." },
-    { "severity": "major", "dimension": "fidelity", "descriptor": "F3",
-      "where": "station/npc/costume.py CONSTRUCTION",
-      "text": "Three of the five construction pieces are authority-5 extrapolations (placket, hem, boot top) and one is authority 2 already written down in this file and never built (the cuff, off Sheridan.jpg, corroborated in Zach Allan in security uniform.jpg). No frame in reference/ resolves a civilian wrist or hem on this station, so the appearance has not been compared side by side against an authority-1 or -2 frame at matched camera, which is what FIDELITY 5 asks. INV-814 records what would overturn each." },
-    { "severity": "major", "dimension": "performance", "descriptor": "P3",
-      "where": "station/npc/costume.py, station/budget.py",
-      "text": "The cost is measured and bounded -- +25% triangles and +2 primitives a figure, both gated, both with a control -- but NPCs still have no allowance of their own; they are folded into a frame total whose structure component is over budget. Carried from round 2 and not addressed here." },
+      "text": "CARRIED, UNCHANGED, AND STILL THE CEILING ON THIS SUBSYSTEM. The person a player stands next to is baked at chain level 4: 8 radial segments, features='no_detail', no eyes, no nose, no ears, no fingers. left-half.png at 0.62 m shows an octagonal skull. Garment construction reads at that level and the FACE does not, and nothing inside costume.py can fix it. What would raise it is runtime LOD -- npc.gd already holds each person's parts." },
     { "severity": "minor", "dimension": "craft", "descriptor": "C4",
-      "where": "station/npc/costume.py Costume.value_jitter",
-      "text": "value_jitter is drawn per individual and still reaches nothing. Reaching it needs a per-instance shader parameter this pipeline does not have -- one material per fabric, drawn as instances of a shared library. Recorded in INV-815 rather than left to be rediscovered." },
+      "where": "station/npc/costume.py, the wrap handedness",
+      "text": "The only per-resident variation this round could express is geometric -- which shoulder the wrap closes over, drawn from the resident's own hash so the crowd splits. Costume.value_jitter still reaches nothing, because the pipeline is one material per fabric drawn as instances of a shared library and there is no per-instance shader parameter. Carried from round 3, INV-815." },
     { "severity": "resolved", "dimension": "craft", "descriptor": "C2",
-      "text": "Round 2: 'each garment reads as one flat value ... no variation within a garment'. The cause was structural: the yoke was a SPAN inside the torso part and animation.rig resolves one material per PART, so 0 of 40 corridor walkers on the built blue/0/0 deck carried any npc_cloth_trim group. Closed by building construction as parts; measured 0/96 -> 96/96 by station/npc/costume.py --construct against its own --legacy control." },
+      "text": "judge-4t r2's worst defect. The mechanism was body._loft's default caps, not zero-thickness laminae: measured at 53.1% of the yoke's area, 81.7% of the hem's, 78.8% of the belt's. Closed by _sheath/_ribbon, gated by --panels, controlled by --panels --legacy." },
     { "severity": "resolved", "dimension": "robustness", "descriptor": "R2",
-      "text": "Round 2: 'the assertions exist and do not execute'. --construct is a seconds-long gate with no build and no GPU, it runs the shipped path rather than this module's own mesh, and it has been shown failing." }
+      "text": "SIX OF EIGHT SPECIES WERE SILENTLY ON THE OLD PATH after the first build of the fix -- body._y_rings returns None for a stooped torso, so minbari, narn, centauri, drazi, brakiri and pak'ma'ra kept the tray while human and vree got the shell, with every gate passing. Found by --panels printing per species; closed by _rings_by_period, which recovers the stack from the period of x, which the stoop does not touch. INV-1193." },
+    { "severity": "resolved", "dimension": "robustness", "descriptor": "R2",
+      "text": "AND THE NEW GATE COULD NOT SEE THE WORST BREAK IT CAUSED. Moving the yoke's boundary in y per azimuth broke animation._ring_partition; rig raised 'part torso is not a ring loft'; populace._posed swallows that in a bare except, so 0 of 64 figures rigged and the whole crowd would have shipped in the bind pose. --panels reported PASS, because a fallback returns the same triangle count. --construct caught it. The seam is now expressed as where the panel EMERGES, with the levels kept level. INV-1192." }
   ]
 }
