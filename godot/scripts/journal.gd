@@ -813,8 +813,22 @@ func _phase_compress(host) -> void:
 		print("COMPRESS gate=FAIL no clock in this build")
 		get_tree().quit(2)
 		return
+	# THE ACCOUNTING IS ZEROED AT THE START OF THE MEASURED WINDOW, and the
+	# first version of this was not -- which made the `--jump` control fail for
+	# the wrong reason and is exactly the shape of defect this project calls a
+	# vacuous A/B. The thirty settle frames advance the clock by 0.01 h, that
+	# crossed four of the deck's 62 timed calls, and the control reported
+	# `witnessed=4` against a floor of 4: the clause meant to catch a jump had
+	# already been satisfied before the jump happened, and only the fact count
+	# saved the verdict. All three counters now describe the same interval as
+	# `advanced`.
+	_witnessed = 0
+	_lived_h = 0.0
+	_jumped_h = 0.0
+	_jumps = 0
 	var h0: float = float(_clock.hours_abs())
 	var crowd0: int = (int(_life.visible_count()) if _life != null else -1)
+	var moved0: float = (float(_clock.hour()) if _clock != null else 0.0)
 	var facts0: int = facts.size()
 	var jump := _args().has("jump")
 	if jump:
@@ -843,8 +857,10 @@ func _phase_compress(host) -> void:
 		+ "lived=%.3f jumped=%.3f witnessed=%d (floor %d) facts %d->%d "
 		% [_lived_h, _jumped_h, _witnessed, WITNESS_FLOOR, facts0,
 			facts.size()]
-		+ "crowd %d->%d rate=%.4f h/s"
-		% [crowd0, crowd1, float(_clock.rate)])
+		+ "crowd %d->%d says_differently=%d/%d rate=%.4f h/s"
+		% [crowd0, crowd1, _hour_moves(moved0, float(_clock.hour())),
+			(int(_dlg().count()) if _dlg() != null else 0),
+			float(_clock.rate)])
 	for e in entries():
 		print("COMPRESS heard | " + e)
 	get_tree().quit(0 if ok else 1)
@@ -941,6 +957,18 @@ func _actor_rows() -> Array:
 ## AND IT STOPS SHORT OF `talk()` so that `_expected_ids` can use it. The recall
 ## phase has to be able to say WHICH fact it is looking for without minting it,
 ## or the test proves only that the file it just wrote agrees with itself.
+## How many of the deck's cast say something DIFFERENT at `b` than at `a`.
+##
+## REPORTED, NOT GATED, and the distinction is the point. `dialogue.gd`'s takes
+## are selected by the hour, so this moves after a jump exactly as it moves
+## after seven hours of running -- it is evidence that the hour ARRIVED
+## somewhere different, and it is evidence about nothing else. The clause that
+## can tell a jump from a run is the witness count, and only that one.
+func _hour_moves(a: float, b: float) -> int:
+	var dlg = _dlg()
+	return (int(dlg.hour_moves(a, b)) if dlg != null else -1)
+
+
 ## `dialogue.gd`'s node, asked for each time until one answers.
 func _dlg():
 	if _dialogue != null and is_instance_valid(_dialogue):

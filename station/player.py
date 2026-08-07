@@ -61,6 +61,7 @@ Run: python3 station/player.py --selftest
 """
 import argparse
 import hashlib
+import json
 import os
 import sys
 from dataclasses import dataclass, field, fields, replace
@@ -1025,6 +1026,40 @@ def _selftest(out=print):                                        # noqa: C901
         froze = True
     check("the identicard record is FROZEN -- a player does not edit what the "
           "station holds about them", froze)
+
+    # -- 9. what the player KNOWS travels with the purse ---------------------
+    # PLY-07 through the one channel this simulation has to a runtime. The
+    # claim is not "a journal exists": it is that a fact learned on this
+    # record comes back on a record rebuilt from the saved state, because
+    # `docs/MASTER-PLAN.md` R7's whole argument for putting the journal in P2
+    # is that *"a journal with no save is a notebook that forgets"*.
+    import journal as JN                                          # noqa: PLC0415
+    q = random_player("journal-carrier")
+    q.journal = JN.Journal()
+    jfid = JN.mint_name_given(
+        q.journal, {"group": "g", "who": {"id": "res:met",
+                                          "name": "Delgado, Ruth"}},
+        "customs_north", 0, 5.67)
+    q.journal.move_standing("ea_lawful", +12.0, "you reported the fence")
+    jst = json.loads(json.dumps(q.state()))
+    r = from_state(jst)
+    check("a fact learned survives the purse round trip, with its source event",
+          r.journal is not None and r.journal.has(jfid)
+          and "gave you their name" in r.journal.get(jfid).source,
+          r.journal.get(jfid).line()[:100] if r.journal else "no journal")
+    check("...and so do CAST-05's name-given flag and the standing ledger",
+          r.journal.name_given("res:met")
+          and r.journal.standing["ea_lawful"] == 12.0,
+          "name_given=%s ea_lawful=%s" % (r.journal.name_given("res:met"),
+                                          r.journal.standing["ea_lawful"]))
+    # NEGATIVE CONTROL: a player who learned nothing must come back with NO
+    # journal rather than an empty one, or the key would be written into every
+    # purse in `economy.json` and the round trip above would pass on a record
+    # that never learned anything.
+    blank = from_state(json.loads(json.dumps(random_player("blank").state())))
+    check("...and a player who learned nothing carries no journal key at all",
+          blank.journal is None and "journal" not in random_player("b").state(),
+          "journal=%r" % blank.journal)
 
     out("")
     out(f"{n - len(failed)}/{n} passed")

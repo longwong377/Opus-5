@@ -741,20 +741,17 @@ GATE_SLOT = "journal"
 
 
 def godot_binary():
-    """The same search `coldstart.py` makes, and for the same reason."""
-    import glob                                               # noqa: PLC0415
-    cands = []
-    env = os.environ.get("GODOT")
-    if env:
-        cands.append(env)
-    cands += sorted(glob.glob(os.path.expanduser(
-        "~/godot-build/*/bin/godot*double*")))
-    cands += sorted(glob.glob(os.path.expanduser(
-        "~/godot-build/*/bin/godot*")))
-    for c in cands:
-        if os.path.exists(c) and os.access(c, os.X_OK):
-            return c
-    return None
+    """`coldstart.godot_binary`, IMPORTED rather than re-implemented.
+
+    THE FIRST VERSION WAS A SECOND COPY AND IT FOUND NOTHING. It globbed
+    `~/godot-build/...`, and `~` is `/root` for the account this container runs
+    as while the build sits under `/home/user/godot-build` -- so the whole gate
+    printed `SKIP -- no double-precision Godot binary found` and exited 0. A
+    skip that reads as a pass is this project's "silently degrades and exits 0"
+    defect, and it arrived by writing down a path that already had one owner.
+    """
+    import coldstart as CS                                    # noqa: PLC0415
+    return CS.godot_binary()
 
 
 def _run(godot, flags, timeout=600):
