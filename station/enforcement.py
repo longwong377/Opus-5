@@ -1685,9 +1685,16 @@ def gate(verbose=False, legacy=False, progression=False) -> dict:
 # a step exited 0, wrote its real output, and was reported as FAILED because
 # the predicate named a different file.
 ENSURE = (
+    # THE PREDICATE IS `boot.decks()` AND NOT A GLOB, AND THE FIRST RUN OF THIS
+    # FUNCTION IS WHY. It globbed `*_col.obj`, an interrupted `arrival.py
+    # --build` had written the .obj pair and not the .glb, and `--ensure`
+    # reported `present  the arrival cluster` on a half-built deck -- then
+    # `boot.py` failed with "no built deck", which is the same sentence a
+    # missing deck gives and sent the reader to the wrong place. `boot.decks()`
+    # is the consumer's OWN test (a mesh AND a collision shell), so the thing
+    # that decides whether to build is the thing that decides whether it worked.
     ("the arrival cluster",
-     lambda: bool(__import__("glob").glob(os.path.join(SCENE, "deck",
-                                                       "*_col.obj"))),
+     lambda: bool(__import__("boot").decks()),
      ["python3", "station/arrival.py", "--build"], "~90 s"),
     ("the player's purse",
      lambda: os.path.exists(LEDGER),
@@ -1697,8 +1704,14 @@ ENSURE = (
     ("the boot manifest",
      lambda: os.path.exists(BOOT_JSON),
      ["python3", "station/boot.py"], "~28 s"),
+    # AND THE SAME DEFECT ONE STEP OVER, found the same way. This predicate was
+    # `os.path.exists(OUT_JSON)`, and a `--bake` run against an EMPTY boot
+    # manifest writes a perfectly well-formed table with `places: {}` -- which
+    # exists, so `--ensure` reported it present and the gate then failed with a
+    # verdict about the arrest chain. A table with no places is not a table.
     ("the consequence table",
-     lambda: os.path.exists(OUT_JSON),
+     lambda: bool((json.load(open(OUT_JSON)).get("places") or {})
+                  if os.path.exists(OUT_JSON) else False),
      ["python3", "station/enforcement.py", "--bake"], "~63 s"),
 )
 
@@ -1712,8 +1725,12 @@ def ensure(force=False, out=print) -> bool:
         out("  BUILDING %s (%s) -- %s" % (name, cost, " ".join(cmd)))
         subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
         if not have():
-            out("  FAILED   %s -- its output is still missing" % name)
-            ok = False
+            # STOP. A later step's failure on a missing input reads as a defect
+            # in the later step, which is how the half-built deck above got
+            # reported as "boot: no built deck" instead of "arrival.py died".
+            out("  FAILED   %s -- its output is still missing. Run it by hand "
+                "and read what it says." % name)
+            return False
     return ok
 
 
