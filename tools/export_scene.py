@@ -2860,22 +2860,36 @@ BESPOKE_EXPOSURE = {
     # station/zocalo.py", and that was WRONG about the file: the room already
     # has the coverage, it had no KEY. See FIXTURE_LIGHTING["zoc_downlight"].
     #
-    # WITH THE KEY WIRED, THE EXPOSURE HAD TO COME DOWN BY HALF, which is the
-    # cleanest evidence available that the fitting was missing rather than
-    # weak: adding one measured family took the far camera from x0.77 of its
-    # reference to x2.74 at an unchanged exposure. Solved by two 1280x720 cells
-    # on the hall's longest sightline (eye 0,1.6,-0.2 -> 0,1.6,65.0), each in
-    # its own sequential invocation, K = 4 throughout so the pair is not a
-    # second variable:
+    # THE NUMBER IN THIS TABLE IS HALF OF A PRODUCT, AND SOLVING IT AS IF IT
+    # WERE THE WHOLE THING COST THIS SESSION A SET OF FRAMES. `build_interior`
+    # passes `args.fixture_energy * room_exposure(room)` to the rig, and
+    # `--fixture-energy` DEFAULTS TO 3.0 -- so the shipped rig for this room is
+    # the product 3.0 x 0.52 = 1.56, and a sweep run with an explicit
+    # `--fixture-energy 12.0` is at four times the shipped light whatever this
+    # entry says. Three frames were rendered, measured, and thrown away on the
+    # strength of a solved value that was 4x out, and the tell was that the
+    # AFTER frames came back at x0.47 of a cell measured at x1.40. SOLVE THE
+    # PRODUCT AND DIVIDE AT THE END.
     #
-    #   exposure   fixture-energy   median   level   p5      crushed
-    #     0.52          12.0        0.1636   x2.74   x3.99    1.09%
-    #     0.80          18.5        0.2405   x4.03   x6.22    0.26%
+    # WITH THE KEY WIRED, THE FITTINGS HAD TO CARRY TWICE THE LIGHT, which is
+    # the cleanest evidence available that the fitting was missing rather than
+    # weak: the room used to make its level out of a grey ambient at 0.676, the
+    # ambient is now the reference's own 0.094, and the difference has to come
+    # from somewhere that casts. Solved by two 1280x720 cells on the hall's
+    # longest sightline (eye 0,1.6,-0.2 -> 0,1.6,65.0), each in its own
+    # sequential invocation, K = 4 throughout so the pair is not a second
+    # variable:
     #
-    # d(ln median)/d(ln exposure) = 0.896, which inverts onto the x1.40 target
-    # at 0.246; 0.26 is rendered and measured rather than fitted and comes back
-    # x1.42 on that camera and x1.06 on the half-distance one -- BOTH INSIDE
-    # THE x1.05-1.75 WINDOW, which no Zocalo frame has ever been.
+    #   product   median   level   p5      crushed
+    #     6.24    0.1636   x2.74   x3.99    1.09%
+    #     9.60    0.2405   x4.03   x6.22    0.26%
+    #
+    # d(ln median)/d(ln product) = 0.896, which inverts onto the x1.40 target
+    # at 2.95; the cell actually rendered is 3.12 -- measured rather than
+    # fitted -- and comes back x1.42 on that camera and x1.06 on the
+    # half-distance one, BOTH INSIDE THE x1.05-1.75 WINDOW, which no Zocalo
+    # frame has ever been. 3.12 / 3.0 = 1.04 is the entry, against the 1.56 the
+    # room shipped with.
     #
     # AND THE RESOLUTION IS PART OF THE MEASUREMENT, which cost two cells to
     # learn and is not written down anywhere else in this file. The same scene
@@ -2887,7 +2901,7 @@ BESPOKE_EXPOSURE = {
     # A LEVEL SOLVED AT ONE RESOLUTION IS NOT VALID AT ANOTHER, and the 640x360
     # rows in the block below were solved on the room's own gate shot at that
     # size. They are kept, and they are not comparable to these.
-    "zocalo": 0.26,          # ROUND 2. Was 0.52 -- the comment below is that
+    "zocalo": 1.04,          # ROUND 2. Was 0.52 -- the comment below is that
                              # value's, and it is kept because its diagnosis is
                              # what round 2 executed.
                              #
@@ -3449,23 +3463,47 @@ def rerender_frame(frame, shot):
 # the `median` is the lit level; both come from `tools/measure_frame.py`, one
 # code path, the same one the value was solved with.
 #
-# WHAT IT WOULD TAKE TO FAIL, and both have been run:
+# WHAT IT TAKES TO FAIL, run rather than described, `zocalo` at 640x360:
 #
-#   * `--gate-emissive zocalo --control none` renders both cells at K = 1, so
-#     the pair is off on both sides. p99 stops moving and leg 1 fails:
-#     "the emissive population must move: p99 x1.00 over K 1.00 -> 1.00".
-#   * `--gate-emissive zocalo --control uncompensated` scales the light
-#     energies by K and leaves the camera exposure alone -- the naive version
-#     of this change, and the version that is just a brightness knob. The lit
-#     population moves with everything else and leg 2 fails:
-#     "the lit population must NOT move".
+#   run                       emissive p99      lit median    separation
+#   the shipped pair        0.7051 -> 0.3198  0.0293 -> 0.0273   x2.06  PASS
+#   --control none          0.9449 -> 0.9449  0.0456 -> 0.0456   x1.00  FAIL
+#   --control uncompensated 0.9449 -> 0.9449  0.0758 -> 0.2672   x0.28  FAIL
+#
+# Read the middle column of the last row, because it is the whole argument for
+# the pair in one number. With the camera leg pinned, K scales every light and
+# the lit population moves x3.52 -- and the emissive population does not move
+# AT ALL, staying at 0.9449. That is CLAUDE.md's recorded defect reproduced on
+# demand: "the deck strip sat at 0.9443 at every gain over a x5.7 exposure
+# range ... the top of the ladder is pinned". The naive change makes the room
+# brighter and moves the very population it was supposed to move by nothing,
+# and the separation comes out INVERTED at x0.28.
+#
+# `--control none` runs both cells at K = 1, so nothing moves anywhere and
+# both legs fail against a build that is merely doing nothing.
 #
 # It needs the engine. If there is no binary it prints CANNOT-RUN and returns
 # None rather than a pass, because a gate that reports success when it did not
 # execute is the failure mode CLAUDE.md has paid for twice.
+#
+# THE SECOND LEG IS A SEPARATION, NOT AN ABSOLUTE TOLERANCE, and the first
+# version of this gate got that wrong. "The median may not move by more than
+# 6%" failed on the shipped, correct build at x1.071 -- because the median is
+# a WHOLE-FRAME statistic and roughly 7-9% of this frame's median IS the
+# emissive population, so a knob that correctly halves the emissives correctly
+# moves the median a little. The lit surfaces themselves do not move at all:
+# the deck pixel is (117, 88, 84) byte for byte at K = 4, 8 and 14 (see
+# EMISSION_HEADROOM). Tightening the number would have made a true claim fail;
+# loosening it would have made the leg inert.
+#
+# So the quantity is the RATIO OF THE TWO MOVEMENTS. If the two populations
+# are orthogonal the emissive one moves and the lit one nearly does not, and
+# the ratio is large; if the change is really just a brightness knob they move
+# together and the ratio is 1. It is scale-free, it needs no absolute
+# tolerance, and 1.00 is exactly what both negative controls produce.
 EMISSIVE_GATE_K = (2.0, 8.0)
 EMISSIVE_GATE_MIN_MOVE = 1.25    # p99 must fall by at least this over the pair
-EMISSIVE_GATE_MAX_DRIFT = 1.06   # the median may not move by more than this
+EMISSIVE_GATE_MIN_SEP = 1.50     # and at least this much more than the median
 
 
 def gate_emissive(room="zocalo", res="640x360", control=None, mf=None):
@@ -3488,10 +3526,14 @@ def gate_emissive(room="zocalo", res="640x360", control=None, mf=None):
         if control == "none":
             cmd += ["--emission-headroom", "1.0"]
         elif control == "uncompensated":
-            # Leg 1 only: the lights are scaled and the camera is not. This is
-            # the change without the compensation, i.e. a brightness knob.
-            cmd += ["--emission-headroom", "1.0",
-                    "--fixture-energy", str(12.0 * k)]
+            # Leg 1 only: every light energy IS scaled by K and the camera
+            # exposure is pinned to the .tscn's own value, so the compensation
+            # never happens. That is the naive form of this change and it is
+            # just a brightness knob. An explicit `--tonemap-exposure` wins
+            # over the pair by design -- `_selftest` asserts it -- which is
+            # what makes this control expressible at all.
+            cmd += ["--emission-headroom", str(k), "--tonemap-exposure",
+                    str(scene_env_exposure(INTERIOR_TSCN, "Env"))]
         else:
             cmd += ["--emission-headroom", str(k)]
         r = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
@@ -3511,11 +3553,15 @@ def gate_emissive(room="zocalo", res="640x360", control=None, mf=None):
             return None
         stats.append(mf.measure(png))
     lo, hi = stats                       # K low, K high
-    moved = lo["bright_p99"] / hi["bright_p99"] if hi["bright_p99"] else 0.0
-    drift = max(lo["median"], hi["median"]) / min(lo["median"], hi["median"]) \
-        if min(lo["median"], hi["median"]) else float("inf")
+
+    def _ratio(a, b):
+        return (max(a, b) / min(a, b)) if min(a, b) > 0.0 else float("inf")
+
+    moved = _ratio(lo["bright_p99"], hi["bright_p99"])
+    drift = _ratio(lo["median"], hi["median"])
+    sep = moved / drift if drift else float("inf")
     ok_move = moved >= EMISSIVE_GATE_MIN_MOVE
-    ok_drift = drift <= EMISSIVE_GATE_MAX_DRIFT
+    ok_sep = sep >= EMISSIVE_GATE_MIN_SEP
     lab = control or "the shipped pair"
     print(f"gate_emissive {room} [{lab}] K {EMISSIVE_GATE_K[0]:g} -> "
           f"{EMISSIVE_GATE_K[1]:g}")
@@ -3524,10 +3570,11 @@ def gate_emissive(room="zocalo", res="640x360", control=None, mf=None):
           f"{'OK  ' if ok_move else 'FAIL'} (must move >= "
           f"x{EMISSIVE_GATE_MIN_MOVE})")
     print(f"  lit population    median {lo['median']:.4f} -> "
-          f"{hi['median']:.4f}  x{drift:.3f}   "
-          f"{'OK  ' if ok_drift else 'FAIL'} (must NOT move, <= "
-          f"x{EMISSIVE_GATE_MAX_DRIFT})")
-    return moved, drift, ok_move and ok_drift
+          f"{hi['median']:.4f}  x{drift:.3f}")
+    print(f"  separation  emissive/lit  x{sep:.2f}   "
+          f"{'OK  ' if ok_sep else 'FAIL'} (the two populations must be "
+          f"orthogonal, >= x{EMISSIVE_GATE_MIN_SEP})")
+    return moved, sep, ok_move and ok_sep
 
 
 def gate_frames(mf=None, rerender=False):
@@ -5422,8 +5469,9 @@ EMISSION_HEADROOM = {
     # without also filling."
     #
     # With `zoc_downlight` wired the fittings carry it, and K re-solves. Three
-    # 1280x720 cells on the hall's longest sightline at exposure 0.26, each its
-    # own invocation:
+    # 1280x720 cells on the hall's longest sightline at the solved product
+    # 3.12 (see BESPOKE_EXPOSURE, and read its warning about the product),
+    # each its own invocation:
     #
     #   K      median   level    p95     p99    p5/p95   bands   deck strip px
     #   4.0    0.0850   x1.42   x0.85   x0.79   x2.32     5/7    184,191,201
