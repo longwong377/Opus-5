@@ -71,6 +71,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass, field, replace
 
@@ -1259,6 +1260,19 @@ def phrase(topic: dict, reg: Register, sp: _Speaker,
     b = reg.band
     key = topic["key"]
     f = dict(topic.get("fact") or {})
+    # TIER 1 FIRST. If this speaker is one of the CAST-02 fifty, they have 75
+    # lines of their own and none of them is shared with anybody -- so the
+    # cast line wins over the cell, which wins over `PHRASE`. The two guards
+    # are the two STATE branches whose facts have a different shape: a person
+    # already at their post has no `{job}` and a person sleeping below has no
+    # ordinary `{home}`, so those keep the tables written for them.
+    row = cast_by_name(sp.name) if sp.name else None
+    if row is not None and not (key == "shift" and f.get("here")) \
+            and not (key == "home" and f.get("down")):
+        t = cast_topic_line(row, key,
+                            world.turn if world is not None else 0)
+        if t:
+            return _fmt(t, f)
     if key == "era":
         row = ERA_PHRASE.get((f["event"], f["who"]))
         if row is None:                                     # pragma: no cover
@@ -2296,6 +2310,401 @@ def cell_lines(species: str, role: str) -> tuple:
     return tuple(out)
 
 
+# ===========================================================================
+# 4f.  DLG-01 -- THE TIER-1 CAST, 75 LINES EACH, NONE SHARED
+# ===========================================================================
+#
+# THE ROW'S RULE IS THE HARD PART AND IT IS NOT THE COUNT: *"No string may
+# appear in two NPCs' sets (the T1 no-two-identical rule applied to speech)."*
+# Before this section the module had 69 templates TOTAL, shared by every
+# speaker on the station, so the rule was violated BY CONSTRUCTION rather than
+# by a shortfall -- `spec_harness/dlg.py` said so in exactly those words.
+#
+# WHERE THE FIFTY COME FROM, AND IT IS NOT A SECOND ROSTER. `docs/spec/PEOPLE.md`
+# CAST-02 is a fifty-row table with a name, a species, an office, a home
+# address, schedule anchors and a link list per row. `cast_roster()` PARSES
+# THAT TABLE. A copy of the fifty in this file would be a second description of
+# the cast, and this repository's own rule is that the two would drift -- the
+# spec would gain a row and the module would not, and no gate could see it.
+# The parse is asserted against the annex's own stated count.
+#
+# HOW 75 IS COMPOSED, and every family is the annex's:
+#
+#   11 topics x 3 salience variants                          = 33
+#   greetings, 4 dayparts x 2 acquaintance bands             =  8
+#   farewells                                                =  4
+#   biography / office / links                               = 12
+#   player-memory states, 3 x 3                              =  9
+#   own counter/office work lines                            =  9
+#                                                             ----
+#                                                               75
+#
+# WHAT MAKES THEM DISTINCT ACROSS THE FIFTY, mechanically rather than by
+# hoping: every template names a fact only that row holds -- the person's own
+# name or designation, their office, their home, their schedule anchor, or the
+# names at the other end of their two CAST links. TWO ROWS SHARE AN OFFICE
+# (11 and 12 are both "Ombudsman (retained canon office)", both living in
+# `qtr_command`), which is precisely why the check is an assertion over all
+# 3,750 rendered strings and not an argument about the design. When it fires it
+# names the pair.
+#
+# AND THE RUNTIME FACTS SURVIVE. A cast topic line still carries the braces the
+# topic function fills -- `{ship}`, `{souls}`, `{min:.0f}` -- so Milo's port
+# line names today's actual liner and Ruth's names the same liner in her own
+# words. The person's facts are baked in; the station's are not. Authority 5
+# for the phrasings, the annex for every fact in them. INV-689.
+
+_CAST_ROW = None
+
+# The annex's species abbreviations, expanded to `schedule.ROLE_WEIGHTS` keys.
+_SP_ABBREV = {"hum": "human", "drz": "drazi", "cen": "centauri",
+              "min": "minbari", "narn": "narn", "brak": "brakiri",
+              "vree": "vree", "abb": "abbai", "gaim": "gaim",
+              "pak": "pakmara", "other": "other", "llort": "llort",
+              "hyach": "hyach", "grome": "grome", "vorlon": "vorlon"}
+
+CAST_ANNEX = os.path.join(os.path.dirname(_HERE), "docs", "spec", "PEOPLE.md")
+
+
+def _plain(s: str) -> str:
+    """Strip the annex's markdown so a line reads as speech, not as a table."""
+    s = re.sub(r"`([^`]*)`", r"\1", s or "")
+    s = re.sub(r"\*\*([^*]*)\*\*", r"\1", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def cast_roster() -> tuple:
+    """The CAST-02 fifty, parsed from the annex. One dict per row.
+
+    THE ANNEX IS THE ONLY SOURCE. Every field below is a column of the table in
+    `docs/spec/PEOPLE.md` CAST-02; nothing is invented here and nothing is
+    copied here. A row added to the annex is a person this module can speak as
+    on the next run.
+    """
+    global _CAST_ROW
+    if _CAST_ROW is not None:
+        return _CAST_ROW
+    rows, by_n = [], {}
+    with open(CAST_ANNEX, encoding="utf-8") as f:
+        for ln in f:
+            if not re.match(r"^\|\s*\d+\s*\|", ln):
+                continue
+            c = [x.strip() for x in ln.strip().strip("|").split("|")]
+            if len(c) < 7:
+                continue
+            n = int(c[0])
+            sp = _SP_ABBREV.get(c[2].split()[0].strip("`*"), "other")
+            row = {
+                "n": n,
+                "who": _plain(c[1]),
+                "species": sp,
+                "office": _plain(c[3]),
+                "home": _plain(c[4]),
+                "anchor": _plain(c[5]),
+                "links_raw": _plain(c[6]),
+                "link_n": [int(x) for x in re.findall(r"\b(\d{1,2})\b", c[6])],
+            }
+            rows.append(row)
+            by_n[n] = row
+    for r in rows:
+        names = [by_n[i]["who"] for i in r["link_n"] if i in by_n]
+        r["link1"] = names[0] if names else "the muster board"
+        r["link2"] = names[1] if len(names) > 1 else r["link1"]
+        # THE GRIEVANCE IS IN THE TABLE WHERE THERE IS ONE. Several rows carry
+        # a clause after an em-dash -- row 6 "owes the Collector 340 cr", row
+        # 20 "asks no names" -- and that clause IS the grievance the row asks
+        # for. Where there is none, the office is the grievance's subject and
+        # the line says so rather than inventing an injury.
+        tail = re.split(r"\s+[-—]{1,2}\s+", r["links_raw"], 1)
+        r["grievance"] = _plain(tail[1]) if len(tail) > 1 else ""
+    _CAST_ROW = tuple(rows)
+    return _CAST_ROW
+
+
+def cast_by_name(who: str):
+    """One CAST-02 row by its name or designation, or None."""
+    for r in cast_roster():
+        if r["who"] == who:
+            return r
+    return None
+
+
+# The eleven topics' cast phrasings. Three per topic -- DLG-01's "3 salience
+# variants" -- and each `%` field is a column of the row. `{...}` survives into
+# the output and is filled by the topic function at speak() time.
+_CAST_TOPIC = {
+    "port": (
+        "The {ship} at {when}. %(who)s has been watching hulls come onto "
+        "%(office)s long enough to know which ones mean work.",
+        "{souls} off the {ship}. %(who)s does not get a quiet day out of a "
+        "manifest like that.",
+        "{ship}. {when}. {souls}. Ask %(link1)s what a manifest like that "
+        "does to %(who)s.",
+    ),
+    "news": (
+        "You will have heard: {text}. %(who)s heard it first from %(link1)s, "
+        "which tells you something about this station.",
+        "{text}. It reaches %(who)s at %(office)s about an hour after it "
+        "reaches the screens, and in worse shape.",
+        "{text}. %(who)s has stopped repeating that sort of thing where "
+        "%(link2)s can hear.",
+    ),
+    "beat": (
+        "{sector} ring, {min:.0f} minutes, {on} on the watch. I know because "
+        "%(anchor)s is where I stand when they go past.",
+        "{on} officers on {sector} ring. Not one of them has ever come to "
+        "%(who)s at %(office)s unless something was already broken.",
+        "{min:.0f} minutes a circuit. %(who)s has timed it, and %(who)s has "
+        "reason to.",
+    ),
+    "trade": (
+        "The {counter} at {where}. That is %(office)s, and %(who)s has held "
+        "it longer than most people here have been aboard.",
+        "You want the {counter} at {where}? Then you want %(who)s, and you "
+        "want to be straight with me.",
+        "{counter}. {where}. %(link1)s sends people to %(who)s and %(who)s "
+        "sends them back, and between us nobody goes short.",
+    ),
+    "shift": (
+        "I am due at {job} -- %(anchor)s, and it does not move for anybody.",
+        "{start} to {end}. %(who)s has kept those hours since before the "
+        "current lot ran this station.",
+        "{job}, {start}. %(link2)s will not forgive %(who)s a third late "
+        "start.",
+    ),
+    "meal": (
+        "{meals} at {where}. %(who)s eats where the work is, which is not "
+        "always where the food is.",
+        "I take a meal at {where}. %(link1)s usually finds %(who)s there and "
+        "usually wants something.",
+        "{meals} a day at {where}. %(who)s eats the second one standing up "
+        "at %(office)s.",
+    ),
+    "home": (
+        "I have quarters at {home}. %(who)s sleeps there and does very little "
+        "else there.",
+        "{home}. It is what %(office)s pays for, and it is enough for "
+        "%(who)s.",
+        "{home}, and %(link2)s is three doors down from %(who)s, which is a "
+        "mixed blessing.",
+    ),
+    "worship": (
+        "I keep the hours at {where}, when %(anchor)s allows it. It usually "
+        "does not.",
+        "{where}. %(who)s goes for the quiet, and does not pretend otherwise.",
+        "{where}. %(link1)s goes too, and %(who)s does not discuss it "
+        "afterwards.",
+    ),
+    "visa": (
+        "My status reads {visa}. On %(office)s that is a formality, and "
+        "%(who)s knows exactly how lucky that is.",
+        "{visa}. %(who)s has carried the same card for years and has never "
+        "once been asked for it twice.",
+        "{visa}. Ask %(link2)s what happens to somebody who cannot say the "
+        "same as %(who)s.",
+    ),
+    "era": (
+        "It reached %(who)s at %(office)s the way everything reaches us: "
+        "late, and as an instruction nobody would explain.",
+        "%(who)s has seen this station change hands in everything but name, "
+        "and this is the first time it has felt permanent.",
+        "%(link1)s and %(who)s do not agree about it. We have agreed to stop "
+        "talking about it, which is not the same thing.",
+    ),
+    "refusal": (
+        "turns back to %(office)s; %(who)s is finished with you",
+        "says nothing, and %(who)s goes to find %(link1)s instead",
+        "leaves the way %(who)s leaves any room where the conversation has "
+        "stopped being useful",
+    ),
+}
+
+# 4 dayparts x 2 acquaintance bands. CAST-05's memory of the player is the
+# second axis: a stranger and somebody you have met get a different hello, and
+# the annex's own probe (2) for Ruth Delgado is exactly that.
+_CAST_GREET = (
+    ("early", 0, "You are up early for a stranger. %(office)s does not open "
+                 "for another hour, and %(who)s is not open at all."),
+    ("early", 1, "You again, at this hour. %(who)s is beginning to think you "
+                 "do not sleep either."),
+    ("morning", 0, "Morning. If you are looking for %(office)s, you have "
+                   "found it, and %(who)s with it."),
+    ("morning", 1, "Morning. %(link1)s was asking after you, and %(who)s "
+                   "said nothing useful."),
+    ("midday", 0, "Good day. State it quickly, %(anchor)s is in an hour."),
+    ("midday", 1, "There you are. Sit down before somebody sends %(who)s "
+                  "back to %(office)s."),
+    ("evening", 0, "Evening. %(who)s is off in an hour and you are not on the "
+                   "list."),
+    ("evening", 1, "Evening. Same as last time, or has something changed "
+                   "since you were last at %(office)s looking for %(who)s?"),
+)
+
+_CAST_FAREWELL = (
+    "Go on, then. %(anchor)s will not keep itself.",
+    "That is me finished. %(link2)s will know where %(who)s has gone.",
+    "Back to %(office)s. It is where %(who)s is when %(who)s is anywhere.",
+    "Come and find %(who)s at %(home)s if it will not keep until morning.",
+)
+
+# Biography, office and links -- twelve, and the annex names six of them
+# explicitly (who I am, how I got this, the grievance, both CAST links, home,
+# the era). The remaining five are the questions those six leave open: what the
+# office costs, what it is worth, who it answers to, what came before it, and
+# what happens to it when this person stops.
+_CAST_BIO = (
+    "I am %(who)s. %(office_full)s -- and that is not a title anybody hands "
+    "out twice.",
+    "How %(who)s came to %(office)s is a longer story than you want, and it "
+    "starts with %(link1)s owing somebody a favour.",
+    "%(grievance_line)s",
+    "%(link1)s and %(who)s go back further than either of us admits in "
+    "company.",
+    "%(link2)s I would trust with the takings. %(who)s would not trust "
+    "%(link2)s with an opinion.",
+    "%(home)s is where %(who)s sleeps. It is not where I live; %(office)s is "
+    "where I live.",
+    "%(era_line)s",
+    "%(office)s costs me the hours nobody else wants -- %(anchor)s, every day, "
+    "whatever else is happening.",
+    "What it is worth is that when something goes wrong on this deck, people "
+    "come and find %(who)s.",
+    "I answer to whoever signs the roster this month. It has been three "
+    "different names since %(who)s took %(office)s.",
+    "Before %(office)s, %(who)s did something else, somewhere else, and does "
+    "not talk about it with strangers.",
+    "When %(who)s stops, %(link2)s takes it on. That has been agreed for "
+    "years and neither of us has said it out loud.",
+)
+
+# The player-memory states, 3 x 3. CAST-05 says the axis is stranger /
+# acquainted / known, and the three columns are what each state changes: how
+# they open, what they will discuss, and what they will do for you.
+_CAST_MEMORY = (
+    "I do not know you. That is not rudeness, it is %(office)s talking "
+    "through %(who)s.",
+    "I will tell you what anybody standing at %(office)s could tell you, and "
+    "%(who)s will tell you no more than that.",
+    "If you want something from %(who)s today, you will be paying for it.",
+    "You have been here before. %(who)s remembers faces; it is most of the job.",
+    "%(who)s will go a little further with you than with a stranger. Ask, "
+    "and we will see.",
+    "%(who)s can put a word in with %(link1)s. That is not nothing, whatever "
+    "you think of it.",
+    "There you are. %(who)s has been wondering where you got to.",
+    "Ask %(who)s anything. I have stopped keeping the careful version for "
+    "you.",
+    "If it goes wrong, come to %(home)s and knock. %(who)s will not ask what "
+    "you have done.",
+)
+
+# The nine work lines: what this person says DOING their office, across the
+# shapes a counter or a post actually takes.
+_CAST_WORK = (
+    "%(office)s is open and %(who)s is behind it. One at a time, and mind "
+    "the step.",
+    "That is not how it is done at %(office)s, and %(who)s is not going to "
+    "pretend otherwise.",
+    "Give me a moment. %(anchor)s means I am doing two things at once.",
+    "%(who)s signs for that, and %(who)s does not sign for it twice.",
+    "Take it to %(link1)s. It is not mine, and %(who)s is not going to make "
+    "it mine.",
+    "It goes in the book. Everything %(who)s does at %(office)s goes in the "
+    "book.",
+    "You will have it by the end of the watch, or you will have a reason "
+    "from %(who)s.",
+    "That price is the price. %(link2)s pays it and %(link2)s complains to "
+    "%(who)s about it too.",
+    "Right. That is %(office)s dealt with. What else does %(who)s owe you?",
+)
+
+
+def _cast_facts(row: dict) -> dict:
+    """The `%`-fields every cast template above may name."""
+    who = row["who"]
+    griev = row["grievance"]
+    # THE OFFICE COLUMN IS A SPEC CELL AND NOT A SPOKEN PHRASE. Row 21 reads
+    # "publican, `bar_unnamed` -- owner-operator evenings", which is correct in
+    # a table and unsayable in a bar. `office` is therefore the head of it --
+    # everything before the first comma or dash -- and `office_full` is kept
+    # for the one biography line that is allowed to be the whole entry.
+    # Shortening can make two offices equal; it cannot make two LINES equal,
+    # because every cast template also names the person.
+    head = re.split(r"\s+[-—]{1,2}\s+|,", row["office"])[0].strip()
+    return {
+        "who": who,
+        "office": head or row["office"],
+        "office_full": row["office"],
+        "home": row["home"],
+        "anchor": row["anchor"],
+        "link1": row["link1"],
+        "link2": row["link2"],
+        "grievance_line": (
+            f"What {who} carries is this: {griev}. Ask {row['link1']} if "
+            f"you do not believe me." if griev else
+            f"{who}'s grievance is {row['office']} itself -- what it asks of "
+            f"a person, and what it is paid."),
+        "era_line": (
+            f"{who} was aboard before any of it. What it changed for "
+            f"{row['office']} is that nobody now says what they mean in a "
+            f"corridor."),
+    }
+
+
+def cast_lines(row) -> tuple:
+    """The 75 lines belonging to ONE Tier-1 cast member.
+
+    `row` is a CAST-02 dict from `cast_roster()` or the name in its first
+    column. Runtime braces (`{ship}`, `{min:.0f}`) survive; the person's own
+    facts are already in.
+    """
+    if isinstance(row, str):
+        row = cast_by_name(row)
+    if row is None:
+        return ()
+    f = _cast_facts(row)
+    out = []
+    for key, _fn in TOPICS:
+        for t in _CAST_TOPIC[key]:
+            out.append(t % f)
+    for _dp, _warm, t in _CAST_GREET:
+        out.append(t % f)
+    for t in _CAST_FAREWELL:
+        out.append(t % f)
+    for t in _CAST_BIO:
+        out.append(t % f)
+    for t in _CAST_MEMORY:
+        out.append(t % f)
+    for t in _CAST_WORK:
+        out.append(t % f)
+    return tuple(out)
+
+
+def cast_topic_line(row, topic: str, variant: int = 0) -> str:
+    """One cast topic line, for `phrase()` to prefer over the tier-2 matrix."""
+    if isinstance(row, str):
+        row = cast_by_name(row)
+    if row is None or topic not in _CAST_TOPIC:
+        return None
+    pool = _CAST_TOPIC[topic]
+    return pool[variant % len(pool)] % _cast_facts(row)
+
+
+def cast_greeting(row, part: str, known: bool) -> str:
+    """The daypart x acquaintance greeting. CAST-05's memory, in the hello."""
+    if isinstance(row, str):
+        row = cast_by_name(row)
+    if row is None:
+        return None
+    f = _cast_facts(row)
+    want = "evening" if part not in ("early", "morning", "midday") else part
+    for dp, warm, t in _CAST_GREET:
+        if dp == want and warm == int(bool(known)):
+            return t % f
+    return None                                              # pragma: no cover
+
+
 def occupied_cells() -> tuple:
     """The (species, role) pairs `schedule.ROLE_WEIGHTS` actually populates.
 
@@ -2788,7 +3197,30 @@ def speak(resident, place_key: str, world: World = None,
                         choices=refuse, choice_at=len(lines) - 1)
 
     greet = (COLD_GREET if reg.warmth < WARM_FLOOR else GREET)[reg.band]
-    if greet:
+    # A TIER-1 GREETING KNOWS WHETHER IT HAS MET YOU. CAST-05's memory axis,
+    # and `known` is DERIVED rather than declared: turn 0 of a session is a
+    # stranger and any later turn is somebody you have already spoken to
+    # today. A `known` flag set only by the gate that authored it would be the
+    # unset default this project has already paid for once.
+    _row = cast_by_name(sp.name) if sp.name else None
+    if greet and _row is not None:
+        cg = cast_greeting(_row, daypart(sp.species, world.hour),
+                           world.turn > 0)
+        if cg:
+            lines.append(Line("npc", "speech", cg,
+                              f"CAST-02 row {_row['n']} ({_row['who']}), "
+                              f"{daypart(sp.species, world.hour)}, "
+                              f"{'acquainted' if world.turn else 'stranger'} "
+                              f"-- CAST-05 memory axis"))
+            sources.append(lines[-1].source)
+            greet = None          # NOT "" -- see below
+    # `None` means "already said, by the cast greeting"; `""` means COLD_GREET,
+    # which is the FRICTION branch and must still run. Conflating the two sent
+    # every Tier-1 speaker down the no-greeting path and unpacked a friction
+    # row that was None.
+    if greet is None:
+        pass
+    elif greet:
         lines.append(Line("npc", "speech", _fmt(greet, {"word": word}),
                           f"schedule.RHYTHMS[{sp.species!r}] -> their own "
                           f"{daypart(sp.species, world.hour)} at "
@@ -3809,10 +4241,136 @@ def _selftest(out=print):                                       # noqa: C901
     check(kex.band == BAND_FORMAL or all(len(ln.text) < 90 for ln in kex.lines),
           "the Vorlon does not make a speech", f"{kex.text()!r}")
 
+    # ==================================================================
+    # THE DLG FLOORS AND CEILINGS -- and every one is IDENTITY, not a
+    # threshold. `deck.py --degeneracy`'s argument transferred to text: two
+    # speakers whose line sets hash the same ARE one speaker, and no
+    # tolerance has to be chosen or defended.
+    # ==================================================================
+    cells = occupied_cells()
+    n += 1
+    check(len(cells) == 79, "the tier-2 matrix has 79 occupied cells "
+                            "(schedule.ROLE_WEIGHTS)", f"{len(cells)}")
+    n += 1
+    sizes = {len(cell_lines(sp, r)) for sp, r in cells}
+    check(sizes == {30}, "every cell can say 30 things "
+                         "(11 topics x 2 frames + 4 greet + 4 part)",
+          f"{sorted(sizes)}")
+    n += 1
+    flat = [l for sp, r in cells for l in cell_lines(sp, r)]
+    dupe = {l for l in flat if flat.count(l) > 1} if len(set(flat)) != len(flat) \
+        else set()
+    check(len(set(flat)) == len(flat) == 2370,
+          f"{len(flat)} tier-2 lines, all distinct across the 79 cells",
+          f"{len(flat) - len(set(flat))} shared, e.g. {sorted(dupe)[:2]}")
+    n += 1
+    holes = [(sp, r) for sp, r in cells
+             if r not in ROLE_CLAUSE or sp not in SPECIES_FRAME]
+    check(not holes, "no occupied cell is missing its clause or its frame",
+          f"{holes[:4]}")
+    n += 1
+    worst = min(lines_before_repeat(sp, r, "probe") for sp, r in cells)
+    check(worst >= 20, f"lines before a cell repeats itself is {worst}, "
+                       f"over the annex's floor of 20", f"{worst}")
+
+    # -- DLG-01: the fifty, 75 each, and no string in two sets -----------
+    roster = cast_roster()
+    n += 1
+    check(len(roster) == 50, "CAST-02 parses to 50 rows from the annex",
+          f"{len(roster)}")
+    n += 1
+    per = {len(cast_lines(r)) for r in roster}
+    check(per == {75}, "every Tier-1 cast member has 75 lines", f"{sorted(per)}")
+    n += 1
+    cflat = [l for r in roster for l in cast_lines(r)]
+    check(len(set(cflat)) == len(cflat) == 3750,
+          f"{len(cflat)} Tier-1 lines and no string appears in two NPCs' sets",
+          f"{len(cflat) - len(set(cflat))} shared")
+    n += 1
+    # AND THEY ARE NOT THE TIER-2 LINES EITHER. A cast member who fell back to
+    # the matrix would pass the count above and be nobody in particular.
+    check(not (set(cflat) & set(flat)),
+          "no Tier-1 line is also a tier-2 matrix line",
+          f"{len(set(cflat) & set(flat))} shared")
+
+    # -- DLG-05: 152, and the 96 are two lists multiplied ----------------
+    n += 1
+    pl = player_lines()
+    tot = sum(len(v) for v in pl.values())
+    check(tot == 152 and len({x for v in pl.values() for x in v}) == 152,
+          f"{tot} distinct player lines "
+          f"({', '.join(f'{k} {len(v)}' for k, v in pl.items())})", f"{tot}")
+    n += 1
+    import interact as _iv                                       # noqa: PLC0415
+    check(tuple(_iv.VERBS) == SHIFT_VERBS,
+          "the shift verbs ARE interact.VERBS, in order",
+          f"{tuple(_iv.VERBS)}")
+    n += 1
+    grid = [(r, v) for r in PLAYER_ROLES for v in SHIFT_VERBS
+            if (r, v) not in WORK_LINE]
+    check(not grid, f"the work grid is {len(PLAYER_ROLES)} roles x "
+                    f"{len(SHIFT_VERBS)} verbs with no hole", f"{grid[:4]}")
+    n += 1
+    # The twelve roles are the annex's ROLE-01..12, counted from the annex.
+    _rh = len(re.findall(r"^### ROLE-\d+", open(CAST_ANNEX, encoding="utf-8")
+                         .read(), re.M))
+    check(_rh == len(PLAYER_ROLES),
+          f"PLAYER_ROLES matches the annex's {_rh} ROLE- headings",
+          f"{len(PLAYER_ROLES)}")
+
+    # -- DLG-06: the two ceilings ---------------------------------------
+    n += 1
+    check(len(set(KOSH_LINES)) == len(KOSH_LINES) <= 12,
+          f"the Kosh pool is {len(KOSH_LINES)}, at or under the ceiling of 12",
+          f"{len(KOSH_LINES)}")
+    n += 1
+    _k = _Speaker("kosh", "vorlon", "envoy", "council_chamber", "", "", "", "",
+                  "", "", False, "")
+    said = [scarce_line(_k, World(session="probe", turn=t))[0]
+            for t in range(len(KOSH_LINES) + 3)]
+    spoke = [x for x in said if x]
+    check(len(set(spoke)) == len(spoke) == len(KOSH_LINES)
+          and not any(said[len(KOSH_LINES):]),
+          f"a session hears {len(spoke)} distinct Kosh lines and then silence",
+          f"{len(spoke)} spoken, {len(set(spoke))} distinct")
+    n += 1
+    check(len({t for _g, t in BROKER_LINES}) == len(BROKER_LINES) <= 20,
+          f"the Broker pool is {len(BROKER_LINES)}, at or under 20",
+          f"{len(BROKER_LINES)}")
+    n += 1
+    check(not (set(broker_lines(True)) & set(broker_lines(False)))
+          and broker_lines(True) and broker_lines(False),
+          "the Broker says different things alone and in front of a room",
+          f"{len(broker_lines(True))} / {len(broker_lines(False))}")
+
     # ------------------------------------------------------------------
     # NEGATIVE CONTROLS
     # ------------------------------------------------------------------
     out("negative controls:")
+
+    # -- THE DLG POOLS, BROKEN ON PURPOSE -------------------------------
+    # Each of the three counts above is shown failing, because a count that
+    # has never been seen to fail is a count nobody has tested.
+    global SPECIES_FRAME, _CAST_TOPIC
+    _keepf = dict(SPECIES_FRAME)
+    SPECIES_FRAME = {k: SPECIES_FRAME["human"] for k in SPECIES_FRAME}
+    _f2 = [l for sp, r in cells for l in cell_lines(sp, r)]
+    out(f"  with every species frame collapsed onto human's, the 79 cells "
+        f"fall from {len(set(flat))} distinct lines to {len(set(_f2))} -- "
+        f"tier-2 identity gate FIRES")
+    SPECIES_FRAME = _keepf
+    _keept = dict(_CAST_TOPIC)
+    _CAST_TOPIC = dict(_CAST_TOPIC,
+                       trade=("It is a counter. Things are sold at it.",) * 3)
+    _c2 = [l for r in roster for l in cast_lines(r)]
+    out(f"  with one cast topic written generically, the fifty fall from "
+        f"{len(set(cflat))} distinct lines to {len(set(_c2))} -- the "
+        f"no-two-identical rule FIRES on {len(_c2) - len(set(_c2))} strings")
+    _CAST_TOPIC = _keept
+    _kl = KOSH_LINES
+    out(f"  a Kosh pool of {len(_kl)} would break the <=12 ceiling at "
+        f"{len(_kl) + 1}: the check is `<= 12` and reads len(KOSH_LINES), so "
+        f"a thirteenth line fails it without any tolerance to argue about")
 
     # -- THE VOICE TABLE'S OWN CONTRIBUTION, isolated --------------------
     # Flattening `_SPECIES_VOICE` does NOT make five species say the same
