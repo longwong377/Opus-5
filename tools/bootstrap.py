@@ -59,6 +59,49 @@ def _n_glob(pat):
     return len(glob.glob(os.path.join(GEN, pat)))
 
 
+def _deck_dir_rel():
+    """The deck directory boot.py would choose, relative to the repo root."""
+    sys.path.insert(0, os.path.join(ROOT, "station"))
+    try:
+        import boot as _b                                       # noqa: PLC0415
+        return os.path.relpath(_b.preferred_deck_dir(), ROOT)
+    except Exception:                                           # noqa: BLE001
+        return os.path.join("station", "generated", "scene", "station")
+
+
+def _boot_stem():
+    """The deck stem boot.py would boot into, or "" when there is none."""
+    sys.path.insert(0, os.path.join(ROOT, "station"))
+    try:
+        import boot as _b                                       # noqa: PLC0415
+        have = _b.decks()
+        return sorted(have)[0] if have else ""
+    except Exception:                                           # noqa: BLE001
+        return ""
+
+
+def _crowd_rungs_present():
+    """EVERY rung of the ladder, not one. `walk.gd` treats a missing glb as a
+    hard failure of the whole library load, so a partial bake is no crowd."""
+    d = os.path.join(ROOT, _deck_dir_rel())
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "station"))
+        import populace as _p                                   # noqa: PLC0415
+        rungs = [lod for _hi, lod in _p.crowd_ladder()]
+    except Exception:                                           # noqa: BLE001
+        rungs = [2, 4, 8]
+    return all(os.path.exists(os.path.join(d, "crowd_lod%d.glb" % l))
+               for l in rungs)
+
+
+def _dialogue_sidecar_present():
+    stem = _boot_stem()
+    if not stem:
+        return True          # no deck yet: the deck step reports that, not this
+    return os.path.exists(os.path.join(ROOT, _deck_dir_rel(),
+                                       stem + "_dialogue.json"))
+
+
 def _boot_has(key):
     """Is `boot.json` present AND current enough to carry `key`?
 
@@ -121,6 +164,26 @@ STEPS = (
       "station/generated/scene/npc"],
      "14 species. `ragdoll.gd` refuses to promote without them, so nobody "
      "falls over"),
+    # THE ORDER MATTERS HERE AND NOWHERE ELSE IN THIS TABLE. `boot.py` writes
+    # `crowd_ladder`, `crowd_glbs` and `dialogue` into the manifest by looking
+    # for those files ON DISK, and names only the rungs that exist -- so a boot
+    # manifest written before the crowd library is a manifest with no crowd in
+    # it, and the game silently falls back to drawing every walker with the
+    # 400 m body. Both of these therefore run BEFORE "boot manifest".
+    ("crowd library",
+     lambda: _crowd_rungs_present(),
+     ["python3", "tools/bake_crowd.py", "--out", _deck_dir_rel()],
+     "the shared bodies every corridor walker is an instance of. Without them "
+     "`walk.gd` prints `could not load any crowd library` and draws NOBODY -- "
+     "which is exactly what the first packaged build shipped: 325 MB of "
+     "station with no people in it. 6 s, and it needs no deck"),
+    ("dialogue sidecar",
+     lambda: _dialogue_sidecar_present(),
+     ["python3", "station/dialogue.py",
+      "--sidecar", os.path.join(_deck_dir_rel(), _boot_stem() + "_actors.json"),
+      "--out", os.path.join(_deck_dir_rel(), _boot_stem() + "_dialogue.json")],
+     "1,632 exchanges over 363 of the deck's 408 people. Without it "
+     "`dialogue.gd` has nothing to say and every resident is mute"),
     ("boot manifest",
      lambda: _boot_has("checks") and _boot_has("collapses"),
      ["python3", "station/boot.py"],
@@ -257,9 +320,37 @@ def _cell_coverage():
 # a session knows the difference between "missing and cheap" and "missing and
 # forty minutes".
 HEAVY = (
-    ("deck geometry", lambda: _n_glob(os.path.join("scene", "deck", "*.glb")) > 0,
-     "python3 station/rooms.py --footprint    # ~23 min"),
+    # THE COMMAND THIS ROW NAMED WAS THE WRONG ONE. It said `rooms.py
+    # --footprint`, which tiles a room's bay along its footprint and writes NO
+    # deck at all -- so a session recovering a cold container ran a 23-minute
+    # build and still had nothing to boot into. The station's decks come from
+    # `export_station.py`; its own dry run prices the whole thing.
+    ("deck geometry (all 71 decks)",
+     lambda: _n_deck_meshes() >= 71,
+     "python3 tools/export_station.py --skip-existing   # ~96 min, resumable"),
+    # A DECK WITHOUT CELLS BOOTS AS A MONOLITH. `boot.py` says so on every run
+    # -- `MONOLITHIC -- no cell set` -- and the shipped build printed exactly
+    # that for the whole of this project's life, loading one deck whole with
+    # nothing on the other side of it.
+    ("streaming cells",
+     lambda: _n_glob(os.path.join("scene", "station", "cells", "*.scn")) > 0,
+     "python3 tools/bake_station.py                     # ~34 s a deck, needs Godot"),
 )
+
+
+def _n_deck_meshes():
+    """Decks with a render mesh in the whole-station export.
+
+    Counts what `boot.decks()` counts rather than globbing `*.glb`, because
+    the same directory holds `crowd_lod*.glb` and two spellings of collision
+    shell and a naive count of those reads as decks that are not there.
+    """
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "station"))
+        import boot as _b                                       # noqa: PLC0415
+        return len(_b.decks(_b.STATION_DIR))
+    except Exception:                                           # noqa: BLE001
+        return 0
 
 
 def main():
