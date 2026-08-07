@@ -113,9 +113,47 @@ source tree right?*** Here it was not, for nine sessions.
 
 ### 5. WHAT IS STILL OPEN — read before claiming this is finished
 
-- **One deck of the station is packaged, not the station.** `blue_0_0` is 6 clusters and 23
-  rooms; the register has **129 places** across ~90 z-clusters. `bake_station.py::decks()`
-  returns **1**. Everything below is about that one deck.
+- ~~**One deck of the station is packaged, not the station.**~~ — **CLOSED. The whole station is
+  built.**
+
+  | | this morning | now |
+  |---|---|---|
+  | decks | 1 | **70** (of 71 — the 71st is `green_1_0`, the habitat drum, not a ring deck) |
+  | rooms | 23 | **129 — the entire register** |
+  | people | 852 | **6,021** (4,563 residents + 1,458 corridor walkers) |
+  | triangles | 4.4 M | **33.4 M** |
+  | interactables | 62 | **388** |
+  | streaming cells | 206 | **1,596** across 70 decks, 2,031 MB |
+  | transit columns | 0 | **5** |
+
+  `export_station.py` took **20 minutes**, not the 96 its own dry run estimates; `bake_station.py`
+  took **5**. Both numbers matter, because the reason this was never done was believed to be cost
+  and it is not.
+
+- **AND THE REASON IT WAS NOT ALREADY BUILT IS NOT WHAT IT LOOKS LIKE.** The first read was
+  "nobody ran the command", and that is **wrong** — `bake_station.py`'s own docstring says
+  *"`export_station.py` writes 70 deck meshes"*, and this file records completed bakes at
+  **70 decks / 955 cells** and at **210 decks / 2,330 cells**. The station has been built before,
+  more than once.
+
+  **It does not persist.** `station/generated/` is 4.5 GB of derived geometry and is gitignored —
+  correctly: GitHub caps a file at 100 MB and one deck mesh is 352 MB. Every container recycle
+  deletes the built station and returns the source intact. What was on disk this morning was one
+  deck because that is what the last recycle left, and `boot.json` pointed at it because nothing
+  asked whether one deck was the station. **`bake_station.decks()` returning 1 against a register
+  of 71 never tripped anything.**
+
+  *The constraint on this project is persistence, not build time.* `tools/bootstrap.py` exists
+  because of it and is now accurate end to end; it had been naming `rooms.py --footprint` for deck
+  geometry, which builds no deck at all, so a cold-container recovery could burn 23 minutes and
+  still have nothing to boot into.
+
+- **THE BUILT ARTEFACT CANNOT LEAVE THE CONTAINER, and all three routes were tried.** The GitHub
+  MCP server here exposes only *read* tools for releases (`list_releases`, `get_latest_release`,
+  `get_release_by_tag`) — there is no create-release or asset-upload tool. Committing is barred by
+  the 100 MB per-file cap. Direct send is capped at **30 MiB** against a 240 MiB tarball. So the
+  reproducible path IS the deliverable, which is why `bootstrap.py` was fixed rather than a build
+  uploaded.
 - **`cells_fresh` is False** — `cells_describe` wants a render `.obj` beside the deck to prove
   the cell set still sums to it, and only the `.glb` survived the export. The cells are correct
   (206 baked, `ok: true`, and they load and free at runtime); the *freshness proof* cannot run.
