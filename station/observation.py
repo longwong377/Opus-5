@@ -372,9 +372,17 @@ PLATE_DRAFT_M = kit.PLATE_DRAFT_M                       # 0.006
 BOLT_PITCH_M = PLATE_L_M / 4.0                          # 0.2875
 BOLT_R_M = PLATE_SEAM_M * 0.42                          # 0.0160
 # The gasket bead's section. `wall_reveal_m` is the kit's own shadow gap and a
-# bead fills it: 60 mm wide, standing PLATE_DRAFT_M proud so it catches a
-# raking light along its length instead of disappearing into the reveal.
+# bead fills it: 60 mm along the aperture edge, standing PLATE_DRAFT_M proud so
+# it catches a raking light along its length instead of disappearing into it.
 GASKET_W_M = kit.PROVISIONAL["wall_reveal_m"]           # 0.060
+# HOW DEEP IT GOES, AND IT IS NOT THE SAME NUMBER. The first build made the
+# bead's radial section 60 mm as well, and at the grazing angle every pier is
+# seen from that side face became a 66 mm dark BAND running the full height of
+# every jamb -- read `scratchpad/frames2/after-dome1-half.png` against
+# `before-`: the piers went from pale plate to black. A bead is a line, so its
+# section is the seam it seals, `PLATE_SEAM_M` rounded to the 2 mm the rest of
+# this module works in.
+GASKET_D_M = 0.022
 
 # ---------------------------------------------------------------------------
 # THE PLATE FAMILIES -- INV-1222, and this is the honest form of the fix asked
@@ -406,27 +414,42 @@ GASKET_W_M = kit.PROVISIONAL["wall_reveal_m"]           # 0.060
 # *"a name built by string interpolation is invisible to a regex over source"*
 # -- arriving by a new route, and the gate is what caught it. `cc_panel`
 # resolves to the identical `shell_wall_panel` and is used nowhere else.
+#
+# AND EVERY MEMBER'S TEXTURE HAS TO BE A TEXTURE A WALL WOULD HAVE. The first
+# cool family took `industrial_wall` (the `hull_plate` map) and
+# `deck_plate_wall` (the `deck_stud` map), and `after-dome1-half.png` on that
+# build shows what a studded deck plate looks like standing up: the piers went
+# from pale plate to a dark riveted band and the wall read as perforated.
+# Triplanar world mapping means the map is the surface, so a family member
+# carrying the wrong map is the wrong material however good its albedo is.
+# Every name below carries `wall_plate`, `paint_chip` or `composite_matte`.
 PLATE_COOL = (
-    "cc_panel",         # shell_wall_panel         0.455   0.56  0.00  wall_plate
-    "bulkhead_wall",    # kit_wall_plate           0.460   0.56  0.10  wall_plate
-    "industrial_wall",  # shell_wall_industrial    0.420   0.70  0.00  hull_plate
-    "skirt_wall",       # kit_skirt                0.340   0.68  0.10  wall_plate
-    "deck_plate_wall",  # kit_deck_plate           0.360   0.62  0.20  deck_plate
-    "pilaster_wall",    # kit_pilaster             0.469   0.42  0.12  paint_chip
+    "cc_panel",              # shell_wall_panel     0.455        0.56 0.00 wall_plate
+    "bulkhead_wall",         # kit_wall_plate       0.460        0.56 0.10 wall_plate
+    "medical_wall",          # shell_wall_clinical  0.470/78/88  0.48 0.00 wall_plate
+    "skirt_wall",            # kit_skirt            0.340        0.68 0.10 wall_plate
+    "pilaster_wall",         # kit_pilaster         0.469        0.42 0.12 paint_chip
+    "zoc_stall_post_wall",   # zoc_stall_post       0.420        0.75 0.00 paint_chip
+    "zoc_table_five_panel",  # zoc_five_panel       0.374/83/402 0.55 0.00 composite_matte
 )
 PLATE_WARM = (
-    "zoc_rail_wall",         # zoc_rail            0.290/0.145/0.084 0.42 0.15 metal_grain
-    "industrial_rib_wall",   # shell_rib_oxide     0.379/0.315/0.265 0.45 0.00 truss_steel
-    "dress_post_wall",       # steel_gantry_oxide  0.300/0.255/0.242 0.52 0.30 truss_steel
-    "dress_furnace_wall",    # steel_furnace_scorched 0.215/0.198/0.190 0.78 0.00 truss_steel
-    "fix_dais_wall",         # furn_worship_stone  0.468/0.462/0.432 0.66 0.00 stone_agg
-    "zoc_deck_chevron_wall",  # zoc_deck_chevron   0.265/0.262/0.209 0.34 0.00 deck_plate
+    "zoc_rail_wall",         # zoc_rail             0.290/145/084 0.42 0.15 metal_grain
+    "industrial_rib_wall",   # shell_rib_oxide      0.379/315/265 0.45 0.00 truss_steel
+    "dress_post_wall",       # steel_gantry_oxide   0.300/255/242 0.52 0.30 truss_steel
+    "dress_furnace_wall",    # steel_furnace_scorched 0.215/198/190 0.78 0.00 truss_steel
+    "bay_disc_wall",         # bay_deck_marking     0.405/299/308 0.58 0.00 paint_chip
+    "bay_emblem_wall",       # bay_deck_emblem      0.560/545/530 0.60 0.00 paint_chip
 )
 # The gasket. Dark, matte, non-metallic -- the one measured surface in the
 # library that reads as a compressed elastomer rather than as paint, and the
 # same one on both programs because a pressure seal is not a decorating choice.
 M_GASKET = "dress_furnace_rib"              # steel_furnace_scorched r0.78
-M_BOLT = "dress_metal_rib"                  # plant_valve_metal 0.545 r0.42 met0.95
+M_BOLT = "fix_gantry_rail_rib"              # steel_gantry_oxide 0.300 r0.52 met0.30
+#   NOT `plant_valve_metal` at metallic 0.95, which was the first pick and
+#   which put a specular pinprick on every one of ~250 heads: at the half
+#   distance they read as glitter rather than as fixings, which is CRAFT 1's
+#   *"detail that reads as noise rather than machinery"* -- the confetti
+#   greeble finding, at fitting scale. A fixing is a rough oxidised steel head.
 
 # THE SOIL LINE -- INV-1223, and it is the clause of the finding that is a RULE
 # rather than a fitting. *"the wear decals are position-independent -- the same
@@ -884,20 +907,23 @@ def _glazing_gasket(v, t, g, r_face, a0, a1, y0, y1, bead=None, bolt=None):
     ga = GASKET_W_M / max(0.2, r_face)
     # the two jambs
     for aa in (a0, a1):
-        lo, hi = min(aa, aa + ga), max(aa, aa + ga)
-        if aa == a1:
-            lo, hi = a1 - ga, a1
-        _seg(v, t, g, bead, r_face - PLATE_DRAFT_M, r_face + GASKET_W_M,
+        lo, hi = (aa, aa + ga) if aa == a0 else (a1 - ga, a1)
+        _seg(v, t, g, bead, r_face - PLATE_DRAFT_M, r_face + GASKET_D_M,
              lo, hi, y0 - GASKET_W_M, y1 + GASKET_W_M)
     # the head and the sill
     for yy in (y0, y1):
         lo = yy - GASKET_W_M if yy == y1 else yy
-        _seg(v, t, g, bead, r_face - PLATE_DRAFT_M, r_face + GASKET_W_M,
+        _seg(v, t, g, bead, r_face - PLATE_DRAFT_M, r_face + GASKET_D_M,
              a0, a1, lo, lo + GASKET_W_M)
-    for aa in (a0 - ga * 1.6, a1 + ga * 1.6):
-        _bolt_row(v, t, g, bolt, r_face, aa, y0 + 0.06, y1 - 0.06)
-    _bolt_row(v, t, g, bolt, r_face, (a0, a1), y0 - GASKET_W_M * 1.7, None,
-              axis="a")
+    # THE BOLTS GO INSIDE THE APERTURE EDGE, ON THE FRAME FACE. Put outside it
+    # they land on the PIER, where two neighbouring bays' rows sit side by side
+    # and read as a double row of rivets up a decorative column -- which fails
+    # CRAFT 4's own test, *"a fitting is where a fitting would be needed"*. The
+    # fixing that holds a bead compressed is on the frame the bead is in.
+    for aa in (a0 + ga * 1.5, a1 - ga * 1.5):
+        _bolt_row(v, t, g, bolt, r_face, aa, y0 + 0.08, y1 - 0.08)
+    _bolt_row(v, t, g, bolt, r_face, (a0 + ga * 2.0, a1 - ga * 2.0),
+              y0 - GASKET_W_M * 0.5, None, axis="a")
     return v, t, g
 
 
@@ -1920,7 +1946,6 @@ def _dome_chamber(v, t, g, prog):
         _seg(v, t, g, D_TRIM, r - 0.120, r - 0.060, a1 - GAP_A * 1.5,
              a1 + GAP_A * 1.5, DOME_WALL_M - 0.34 - pcap,
              DOME_WALL_M - 0.34)
-        _bolt_row(v, t, g, M_BOLT, r - 0.108, a1, 0.36, DOME_WALL_M - 0.52)
 
     # THE CORNICE the dome springs from.
     _revolve(v, t, g, D_PALE,
