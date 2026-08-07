@@ -184,6 +184,7 @@ DATA=(
   "station/generated/economy.json|no|player.gd::has_purse is false, so tier stays at its sentinel"
   "station/generated/scene/enforcement.json|no|enforcement.gd -- a refusal is reported and NOTHING follows it: no arrest, no fine, no brig"
   "station/generated/scene/npc|no|ragdoll.gd's 14 species bodies -- nobody falls over"
+  "station/generated/scene/exterior|no|main.gd::_build_starfury's hull_glb -- the station has no outside to launch from or look at. Marked optional by the rule above (the build still RUNS without it) and it is 32 MB, but it was READ BY main.gd:616 AND STAGED BY NOTHING, which is the exact shape of the defect that shipped an empty station: present on the build box, absent on a stranger's"
   "station/generated/scene/vista|no|vista.gd -- the three windowed rooms show background instead of the station"
   "station/generated/journal.json|no|journal.gd -- nothing is learned or remembered"
 )
