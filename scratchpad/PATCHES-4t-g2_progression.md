@@ -139,3 +139,33 @@ rule was right and the new instance took the old shape.
 `arrival.gd`, whose `_boxes` is its own unrelated group→centre map. The action, if anyone wants
 one, is to make `_check_boxes` reachable (it is private to `main.gd`) so a third reader cannot
 make the same mistake a third time.
+
+---
+
+## ROUND 3 — nothing is owed by another owner, and two findings are reported here
+
+**No patch is needed from the wf-aaa-4t workflow.** The round-3 defect (a demotion that did not
+survive a quit) lived entirely in `godot/scripts/player.gd` and `godot/scripts/interact.gd`, which
+that workflow does not own, and the fix is consistent with `station/player.py`'s existing rule
+rather than a change to it: `state()` still writes `tier`/`tier_name` as a REPORT, `restore()`
+still refuses to load them back, and the engine now re-derives the rung the same way
+`Player.tier` does. If anything, `player.py`'s comment at `state()` — *"Restoring them would be a
+second copy of a derivation, which is how a saved tier survives a conviction"* — is now true of the
+engine too, and was not before.
+
+**Finding 1, pre-existing and NOT mine.** `python3 station/enforcement.py --selftest` fails one of
+its 21 checks on `origin/claude/aaa-game-development-j6y2ml` untouched:
+
+    FAIL response time VARIES across the deck -- 0 s at the nearest, 1 s at the furthest
+    enforcement selftest FAIL -- 21 checked, 1 failed
+
+Verified by running the same command against the unmodified file in a second checkout. The three
+boot-deck places are close enough together that the turn-out spread rounds to one second, so the
+check is asking a whole-station question of a three-place table. It is a real gate on a real
+claim; it just cannot be answered on this deck. Whoever owns it should either widen the subject to
+`--all` or state the deck's own span as the bar.
+
+**Finding 2, already recorded in code and still open.** `restricted_sources()` reports *4 places
+sell a restricted good, 0 of them in this build's rooms* — so `--arrest-contraband` remains the
+only route into a search, and a player cannot reach the grade-3 branch by playing. `economy.py` is
+not mine; the stock entry that would close it is the one this file already carried above.
