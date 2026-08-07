@@ -11377,3 +11377,111 @@ moving 29→30 and 27→28 (which recomputes DLG-03's total 174→180 and the gr
 6,544→6,550), or remove the counter that was added.
 
 **What would overturn it.** A gazetteer entry naming a counter's actual stock. Authority 5.
+
+## INV-721 — The hotel/business rent rung, the top of PLY-03's climbable ladder
+
+**What.** `economy.LADDER` gains `("room_hotel", 30.0, 45.0, "week", 5)`.
+
+**Why.** `docs/THE-STATION.md:172` states the player's own rent ladder as *"transient 4–8
+cr/wk → civilian 10–15 → hotel/business class, filed at PLC-032"* and calls it climbable,
+and says *"the top tier plus furnishing it is one of SYS-04's three late-game sinks"*. The
+first two rungs were rows of `LADDER`; the third was not, so the thing the row says you
+climb TO had no price and `spec_check.py --red` said so in PLY-003's own words.
+
+**What constrained it.** Two published rows, one step each, so no free number is
+introduced. The FLOOR is `quarters_command` = 30 cr/wk, the only authority-1 price in the
+whole table — a commercial let cannot sensibly undercut what the station values its own
+senior tenancy at. The SPREAD is the civilian row's own width, 15/10 = ×1.5, applied to
+that floor; the table gives exactly one width for a residential rung and re-using it is one
+decision rather than two. The result, 30–45 cr/week, is 3–5.6 days of the `labour_casual`
+8–15 cr/day band, which is what "late-game sink" has to mean arithmetically: unreachable
+for a lurker, ordinary for a trader. `PLACES.md:1957`'s four Red hotels are *"a cut above
+qtr_transient"*, which the ordering satisfies.
+
+**What would overturn it.** Any stated hotel tariff or business-let rate anywhere in the
+reference; a per-week figure attached to `PLACES.md:1957`'s hotels; any depiction of a
+station commercial lease. Also overturned in part by anything establishing that Babylon 5
+does not let commercial rooms at all, which would delete the rung rather than reprice it.
+
+## INV-722 — The GDS-01 vocabulary widened from 34 named goods to 65, and two new bands
+
+**What.** Thirty-one lines added to `economy.GOODS` in four labelled blocks — household
+goods, what a lurker sells, the route widened, and what 250,000 people of nine species buy
+— plus two `CLASS_BAND` rows, `household` and `licence`.
+
+**Why.** `PLACES.md` §0.3 sets the floor at *"≥60 named goods at completion"* and the table
+held 34. But the floor is a number and it is not the reason: the reason is `sell()`. A
+vocabulary of 34 lines, 27 of them things only a licensed counter carries, gives a player
+nothing to dispose of, so a sell verb would have been machinery with no content — this
+project's signature defect wearing different clothes. Every block is something somebody
+aboard would put on a counter and somebody else would carry away. `pitch-fee scrip` is
+named in GDS-01's own seed sentence and had no row at all.
+
+**What constrained it.** The two bands are each one step from a published figure.
+`household` IS the `quarters_personnel` row (10–15 cr) on the argument that a durable
+furnishing costs about a week of the rent of the unit it furnishes — eight items furnish a
+room for 80–120 cr, which against the 8–15 cr/day casual band is the eight days of work
+PLY-03's "late-game sink" needs to be. `licence` is not derived at all: `PEOPLE.md:758`
+states the Zocalo pitch fee as **4 cr/wk against TRAFFIC:630–643**, so the band is that
+figure at both ends and it is the second sourced price in the file after `quarters_command`.
+Individual lines are constrained by things already in this repository rather than by memory
+— `schedule.STATION_MIX`'s species shares, `rooms.FIXTURES`, `traffic.MANIFEST`'s cargo
+classes, `LAW-CRIME` 6.2's 22% on salvage, PEOPLE.md CAST-41's *"Llort suppliers
+overnight"*, `incident.PAKMA_MEALS`' 04:00 meal, PLC-026's racks, PLC-036's bonded cage.
+
+**What would overturn it.** Any on-screen stall, menu board or manifest naming a ware this
+table does not carry, or contradicting one it does. Any of the four route lines being shown
+as licensed trade. A stated price for a furnishing, which would replace the `household`
+derivation with a source. Era drift: every line is S2–3 and a later-season ware is FIDELITY
+0, not a near miss.
+
+## INV-723 — The bid: what a counter pays, and why the fence pays less
+
+**What.** `economy.BUY_BACK = 0.5` and `economy.FENCE_TAKE = SUPPLY_MULT["route"] = 0.75`.
+`bid(good, place) = price(good, place) × BUY_BACK × (FENCE_TAKE if the counter has no
+reader)`. So a shopfront pays 50% of its own shelf price and a fence pays 37.5%.
+
+**Why.** VRB-05 is BUY/SELL and only the buy half existed; a sell needs a price, and a
+second margin invented here would be a second answer to a question this file had already
+answered.
+
+**What constrained it.** Neither factor is new. `CLASS_BAND` derives the `staple` band as
+half the `meal` band on a stated argument — *"a cart selling a 1–2 cr plate cannot have
+paid more than about half of that for its ingredients or there is no cart"* — and that
+sentence **is** a buy-back rate: it says what a counter pays for a unit of what it sells. A
+counter taking a line back over its own counter is buying the same thing from a different
+supplier. `FENCE_TAKE` is `SUPPLY_MULT["route"]`, which LAW-CRIME:858–879 already fixes at
+0.75 because the route undercuts the Zocalo (SYS-06); a fence does not keep what it buys,
+it moves it on the route, so its shelf is worth 0.75 of a licit shelf and its bid is 0.75 of
+a licit bid. The spread is the mechanic: the fence pays worse **and** is the only buyer for
+what a licensed reader will not touch, which is what FACTIONS 11.4 says the black market is
+for. Bounded below by `bid > 0` and above by the assertion in `economy.py --trade` that no
+counter anywhere pays more than it charges — 0 pairs over 18 counters, and
+`--break-margin` sets `BUY_BACK = 1.2` and shows that assertion going red.
+
+**What would overturn it.** Any depicted resale, pawn or fencing transaction with both
+numbers visible. Any statement of a retail margin aboard. A stated commission for N'Grath
+or for Solly Vane's stall. Also overturned by anything establishing that the route sells at
+parity rather than at a discount, which would collapse `FENCE_TAKE` to 1.0 and remove the
+reason to prefer a shop.
+
+## INV-724 — Ada Roskoe, the household-goods keeper at PLC-052
+
+**What.** `economy.HOUSEHOLD_KEEPER = ("Ada Roskoe", "shops_kiosks")`.
+
+**Why.** `THE-STATION.md:172` requires that *"a **household-goods vendor** exists (a named
+keeper among PLC-052's shops)"* and one existed nowhere in `station/`, `godot/` or `tools/`.
+
+**What constrained it.** PLC-052 is `shops_kiosks` and its register functions are
+`("commerce", "retail")`, so the STALL is derived from the register exactly the way
+`Good.sold_by` is — `household_vendor()` returns whatever `goods_list` puts on that pitch,
+never a hand-written list. PLACES.md:848 gives PLC-052 *"~48 named keepers, two shifts"*, so
+one named keeper is inside a stated population rather than an addition to it. The NAME is
+the only authored thing: a human forename and surname of the kind `npc/names.py`'s fitted
+human grammar draws, fixed as a constant so a save and a nameplate can refer to the same
+person across processes.
+
+**What would overturn it.** Any on-screen name for a Zocalo-arcade household trader; any
+production list of PLC-052's keepers; a decision to draw the 48 keepers procedurally from
+`names.py`, in which case this constant becomes seed 0 of that draw rather than an
+invention.

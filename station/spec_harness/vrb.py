@@ -293,15 +293,67 @@ def _v_buy():
     plate = round(2 * EC.price("drum greens", "zocalo"), 3)
     claims.append(("a Zocalo plate prices into the band", lo <= plate <= hi,
                    "2 x drum greens at the zocalo = %.3f cr" % plate))
-    # BOTH WAYS. `consequence.purchase` is the buy side and it is real; there
-    # is no sell side anywhere -- no function in `consequence` or `economy`
-    # moves a good from a purse to a till in the other direction.
+    # BOTH WAYS, AND THE CHECK RUNS THE TRANSACTION RATHER THAN GREPPING FOR
+    # ITS NAME.
+    #
+    # THIS CLAIM USED TO BE A NAME SCAN -- `re.fullmatch(r"sell|sell_to|fence|
+    # dispose_of", a)` over `dir(CQ) + dir(EC)` -- and it was right about the
+    # content at the time (there was no sell side at all) and wrong about the
+    # question. A name scan is the same instrument that reported
+    # `budget.occlusion_chain applied=True` while the shipped build loaded
+    # nothing: *a static scan can tell you a caller exists; only running the
+    # thing tells you the caller runs.* An `economy.sell` that raised on every
+    # input would have passed the old form of this claim.
+    #
+    # So the four numbers are read on both sides of both transactions, on a
+    # fresh ledger, in this process. The place is the register's own; the good
+    # is whatever that counter actually stocks; nothing is stubbed.
     sells = [a for a in dir(CQ) + dir(EC)
              if re.fullmatch(r"sell|sell_to|fence|dispose_of", a)]
-    claims.append(("credits and stock move BOTH ways", bool(sells),
-                   "the buy side is consequence.purchase; the sell side is %s"
-                   % (", ".join(sells) if sells else "not implemented -- no "
-                      "sell/fence entry point exists")))
+    if not sells:
+        claims.append(("credits and stock move BOTH ways", False,
+                       "the buy side is consequence.purchase; the sell side "
+                       "is not implemented -- no sell/fence entry point "
+                       "exists"))
+    else:
+        PL = _imp("player")
+        led = EC.Ledger.fresh()
+        shop = "shops_kiosks"
+        line = EC.goods_list(shop)[0]
+        who = PL.random_player("vrb05/harness")
+        who.credits = 400
+        who.move_to(shop)
+        b = (who.credits, led.units(shop, line), led.till.get(shop, 0.0))
+        note = ""
+        try:
+            _u, paid = CQ.purchase(led, who, shop, line, 1, bag=True)
+            m = (who.credits, led.units(shop, line), led.till.get(shop, 0.0))
+            _u2, got = CQ.fence(led, who, shop, line, 1)
+            a = (who.credits, led.units(shop, line), led.till.get(shop, 0.0))
+            both = (m[0] < b[0] and m[1] == b[1] - 1 and m[2] > b[2]     # buy
+                    and a[0] > m[0] and a[1] == m[1] + 1 and a[2] < m[2]  # sell
+                    and 0.0 < got < paid and not who.has(line))
+            note = ("`%s` at `%s`: purse %.2f -> %.2f -> %.2f, shelf %d -> "
+                    "%d -> %d, till %.2f -> %.2f -> %.2f (paid %.2f, got "
+                    "%.2f back)" % (line, shop, b[0], m[0], a[0], b[1], m[1],
+                                    a[1], b[2], m[2], a[2], paid, got))
+        except Exception as e:                                # noqa: BLE001
+            both, note = False, "%s: %s" % (type(e).__name__, str(e)[:120])
+        claims.append(("credits and stock move BOTH ways", both, note))
+        # AND THE FENCE IS A DIFFERENT ANSWER FROM THE SHOP, which is the half
+        # of the row that makes the black market a mechanic rather than a
+        # second shopfront: a rung the reader rejects must still be able to
+        # sell somewhere.
+        fences = [k for k in EC.fence_places() if k in led.stock]
+        shop_no = not CQ.buys_from(shop, CQ.NO_STATUS)[0]
+        fence_yes = bool(fences) and CQ.buys_from(fences[0], CQ.NO_STATUS)[0]
+        claims.append(("a card the reader rejects can still sell to a fence",
+                       shop_no and fence_yes,
+                       "`%s` -> %s; `%s` -> %s"
+                       % (shop, CQ.buys_from(shop, CQ.NO_STATUS)[1],
+                          fences[0] if fences else "-",
+                          CQ.buys_from(fences[0], CQ.NO_STATUS)[1]
+                          if fences else "no unchecked counter exists")))
     cast = _src("docs/spec/PEOPLE.md")
     row41 = [ln for ln in cast.splitlines() if ln.startswith("| 41 |")]
     named = bool(row41) and "Vane" in row41[0]
@@ -663,6 +715,26 @@ def _selftest(out=print):
     ok, note = check(rows[10])
     out("VRB-11 with 11 stops     -> %s: %s" % ("PASS" if ok else "FAIL", note[:150]))
     TR.CORE_SHUTTLE_STOPS = real
+
+    # 2b. THE NEW BUY/SELL CLAIM, PROVED TO DISCRIMINATE. A name scan would
+    #     have passed a `sell` that did nothing; this replaces the real one
+    #     with a function that returns the right shape and moves NO ledger,
+    #     which is the exact failure mode the old form could not see.
+    EC = _imp("economy")
+    real_sell = EC.sell
+
+    def hollow(led, seller, place_key, good, n=1):
+        """Right signature, right return, nothing moves."""
+        return EC.bid(good, place_key, led.seed), EC.bid(good, place_key,
+                                                         led.seed)
+    EC.sell = hollow
+    ok, note = check(rows[4])
+    out("VRB-05 with a hollow sell-> %s: %s" % ("PASS" if ok else "FAIL",
+                                                note[:190]))
+    EC.sell = real_sell
+    ok, note = check(rows[4])
+    out("VRB-05 restored          -> %s: %s" % ("PASS" if ok else "FAIL",
+                                                note[:190]))
 
     # 3. A CLAIM THAT FAILS TODAY, SATISFIED. VRB-13's nourishment key is
     #    absent from the player's persisted state; add one and the claim
