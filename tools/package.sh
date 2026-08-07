@@ -313,13 +313,25 @@ DOC
 # read back.
 # ---------------------------------------------------------------------------
 say ""
-say "package: launching the artefact ..."
+#
+# AND IT IS LAUNCHED FROM A DIFFERENT DIRECTORY THAN THE ONE IT WAS BUILT IN.
+# `station/boot.py` writes ABSOLUTE paths into boot.json, which is the right
+# answer on the machine that generates the world and the wrong answer on a
+# stranger's. The first packaged build here launched, reached customs and issued
+# a card -- because the generator's own directory still existed on the build
+# box. The evidence was real and true for the wrong reason. Moving the tree
+# before launching it is what tells the two apart, and it costs one `mv`.
+say "package: launching the artefact (from a moved directory, so a build that"
+say "         only works where it was made fails) ..."
 RUNLOG="$DIST/firstrun.log"
+MOVED="$DIST/_relocated_$$"
+mv "$STAGE" "$MOVED"
 set +e
-( cd "$STAGE" && timeout 900 ./"$NAME" --headless -- --menu-gate ) \
+( cd "$MOVED" && timeout 900 ./"$NAME" --headless -- --menu-gate ) \
     >"$RUNLOG" 2>&1
 run_rc=$?
 set -e
+mv "$MOVED" "$STAGE"
 grep -E "^(menu:|MENUGATE|main:|arrival:)" "$RUNLOG" | head -30 | sed 's/^/  | /'
 
 if [ "$WITH_DATA" -eq 0 ]; then
@@ -337,6 +349,21 @@ if [ "$WITH_DATA" -eq 0 ]; then
   say ""
   say "package: --no-data control did NOT fire. A build with no world reported"
   say "         success, which means this script cannot tell the two apart."
+  exit 1
+fi
+
+# AND IT MUST HAVE REBASED. `station/boot.py` and `station/arrival.py` write
+# ABSOLUTE paths from the machine that generated the world; on any other machine
+# those files do not exist. The staged build therefore has to move them onto its
+# own directory at load, and `main.gd` prints when it does. If that line is
+# absent, this run resolved the BUILD MACHINE's own paths -- it would pass here
+# and fail for everybody else, which is the worst kind of green.
+if ! grep -q "rebased onto" "$RUNLOG"; then
+  say ""
+  say "package: the artefact started WITHOUT rebasing any path. That means it"
+  say "         read the build machine's own directories, and it will not run"
+  say "         anywhere else. Destroying the staged build. See $RUNLOG"
+  rm -rf "$STAGE"
   exit 1
 fi
 

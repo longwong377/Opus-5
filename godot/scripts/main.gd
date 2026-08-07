@@ -494,9 +494,65 @@ func _build_arrival() -> Node3D:
 		return null
 	_configure_walk(a)
 	var src := String(_boot.get("_source", ""))
-	a.set("arrival_path", src if src.ends_with("_arrival.json") else "")
+	var sidecar := (src if src.ends_with("_arrival.json")
+		else String(_boot.get("glb", "")).get_basename() + "_arrival.json")
+	a.set("arrival_path", _rebased_sidecar(sidecar))
 	add_child(a)
 	return a
+
+
+## The arrival sidecar, with its paths moved onto THIS install.
+##
+## WHY THIS IS NOT JUST `_rebase` ON THE MANIFEST. `arrival.gd::_adopt_build`
+## deliberately REPLACES `glb_path`, `collision_path`, `interact_path` and
+## `actors_path` with the sidecar's own -- and it is right to, because the
+## sequence and the build it was measured against must be the same deck. But
+## those are absolute paths written by `station/arrival.py` on the machine that
+## generated the world, so on a stranger's box they are four files that do not
+## exist. Measured: an untarred build with the generator's tree hidden came up,
+## drew the card and read all nine identicard fields, and had **no player body
+## at all** -- `MENUGATE ... player=false ... verdict=FAIL`. The sequence loaded
+## (its own path is derived from the rebased glb) and the deck under it did not.
+##
+## SO THE REBASE IS DONE ON A COPY, IN `user://`, AND ONLY WHEN IT CHANGES
+## SOMETHING. A run from the source tree rebases nothing, writes nothing and
+## hands `arrival.gd` the original file -- so this function is inert on every
+## path that worked before it existed, which is its own negative control. The
+## alternative was rewriting the paths at package time, and that cannot work:
+## the install directory is not known when the tarball is made.
+func _rebased_sidecar(path: String) -> String:
+	if path == "" or not FileAccess.file_exists(path):
+		return ""
+	var f := FileAccess.open(path, FileAccess.READ)
+	var doc = JSON.parse_string(f.get_as_text())
+	if typeof(doc) != TYPE_DICTIONARY:
+		return ""
+	var b = doc.get("build", {})
+	if typeof(b) != TYPE_DICTIONARY:
+		return path
+	var moved := 0
+	for k in ["glb", "collision", "interact", "actors"]:
+		if b.has(k):
+			var was := String(b[k])
+			var now := _rebase(was)
+			if now != was:
+				b[k] = now
+				moved += 1
+	if moved == 0:
+		return path
+	doc["build"] = b
+	var out := "user://arrival_rebased.json"
+	var g := FileAccess.open(out, FileAccess.WRITE)
+	if g == null:
+		push_error("main: cannot write %s -- the arrival build stays on the "
+			% out + "generator's own paths and will not load here")
+		return path
+	g.store_string(JSON.stringify(doc))
+	g.close()
+	print("main: the arrival sidecar names %d path(s) from the machine that "
+		% moved + "generated it -- rebased onto %s, written to %s"
+		% [_root(), ProjectSettings.globalize_path(out)])
+	return out
 
 
 ## The properties every walkable mode shares. `cells_path` is NOT among them and
@@ -1822,6 +1878,11 @@ func _boot_manifest(args: Dictionary) -> Dictionary:
 		return {}
 	var out := b.duplicate()
 	out["_source"] = path
+	# EVERY PATH IN THE MANIFEST IS REBASED ONTO THIS INSTALL. See `_rebase`.
+	for k in ["glb", "collision", "interact", "actors", "crowd", "dialogue",
+			"occluder", "cells_path"]:
+		if out.has(k):
+			out[k] = _rebase(String(out[k]))
 	# The sidecars the build block does not name are named by the mesh, which is
 	# how `station/walkable.py` and `arrival.gd` both find them.
 	var stem := String(out["glb"]).get_basename()
@@ -1853,6 +1914,41 @@ func _boot_manifest(args: Dictionary) -> Dictionary:
 ## where it had been looking. Carried into `main_menu.gd` so the sentence a
 ## player reads on the title screen is this one.
 var _boot_why := ""
+
+
+## A PATH FROM THE MANIFEST, MOVED ONTO THIS INSTALL.
+##
+## `station/boot.py` writes ABSOLUTE paths -- `/home/user/Opus-5/station/
+## generated/scene/deck/blue_0_0_z7440.glb` -- because on the machine that
+## generates the world that is the correct, unambiguous answer. It is the wrong
+## answer everywhere else, and "everywhere else" is the entire point of
+## `tools/package.sh`: a stranger who unpacks the tarball into `~/games/` has no
+## `/home/user/Opus-5`, and every one of those paths is a file that does not
+## exist.
+##
+## THIS WAS ALMOST MISSED, AND THE WAY IT WAS ALMOST MISSED IS THE LESSON. The
+## first packaged build launched, reached customs and issued a card -- on the
+## build machine, where the generator's own directory still existed. The
+## evidence was real and it was true for the wrong reason. What settles it is
+## the control `package.sh` now runs: the staged tree is MOVED before it is
+## launched, so a build that only works in the place it was made fails.
+##
+## The rewrite is anchored on `station/generated/`, which is the one path
+## fragment every generated artefact in this project shares, and it FALLS BACK
+## to the original if the rebased file is not there -- so a developer running
+## from source with a hand-passed `--boot=` outside the tree is unaffected.
+func _rebase(p: String) -> String:
+	if p == "":
+		return p
+	var i := p.find("station/generated/")
+	if i < 0:
+		return p
+	var here := _root().path_join(p.substr(i)).simplify_path()
+	if here == p:
+		return p
+	if FileAccess.file_exists(here) or DirAccess.dir_exists_absolute(here):
+		return here
+	return p
 
 
 func _no_world(why: String) -> Dictionary:
