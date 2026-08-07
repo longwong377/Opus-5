@@ -372,6 +372,50 @@ def place_row(place_key: str, pl, day: int = 1, seed: str = "b5") -> dict:
     moved = cq.arrest(clone(), place_key, MOVED_ON_OFFENCE, hour=13.0, day=day,
                       seed=seed)
 
+    # -- THE SECOND ROW OF THE RULE: what the search finds --------------------
+    # The table above is the whole engine path and it carries ONE offence, and
+    # that offence is grade 1, so `--selftest` check 4's "a refusal at a door
+    # never withdraws a permission, at ANY rung" was simultaneously true and the
+    # reason the shipped build could not demote anybody. This is the other row:
+    # a stop that SEARCHES you and finds `contraband` is grade 3, and
+    # `REVOKE_ON_SERIOUS = 1` means one of them takes a conditional permission.
+    # Same `_dispose`, same rungs, one grade heavier -- the positive control in
+    # check 4, promoted to a thing a player can walk into.
+    by_tier_c, ladder_c = {}, []
+    p4 = clone()
+    for _i in range(CONVICTIONS_BAKED):
+        cc = cq.arrest(p4, place_key, DEMOTING_OFFENCE, hour=13.0, day=day,
+                       seed=seed)
+        ladder_c.append(_custody_row(cc))
+    for t in cq.RUNGS:
+        rec, seq, t_now = cq.Record(), [], t
+        for i in range(CONVICTIONS_BAKED):
+            rec.convictions += (DEMOTING_OFFENCE,)
+            if t == cq.ACCREDITED:
+                seq.append({"tier_before": t, "tier_after": t,
+                            "tier_before_name": cq.tier_name(t),
+                            "tier_after_name": cq.tier_name(t),
+                            "revoked": False, "fine": 0.0,
+                            "disposal": "immunity -- the file dies "
+                                        "(LAW-CRIME 4.3 step 4)",
+                            "reason": "diplomatic immunity, LAW-CRIME 4.1"})
+                continue
+            after, revoked, why = cq._dispose(
+                t_now, rec, cq.OFFENCE[DEMOTING_OFFENCE][1])
+            seq.append({"tier_before": t_now, "tier_after": after,
+                        "tier_before_name": cq.tier_name(t_now),
+                        "tier_after_name": cq.tier_name(after),
+                        "revoked": bool(revoked),
+                        "disposal": ("fine paid"
+                                     + (" + status revoked" if revoked else "")),
+                        "reason": why, "fine": ladder_c[i]["fine"]})
+            t_now = after
+        by_tier_c[str(t)] = seq
+    legs_c = {"escort_s": round(cq._leg(cq.BRIG, place_key), 1),
+              "booking_s": round(cq.BOOKING_H * 3600.0, 1),
+              "court_s": round(cq._leg(cq.COURT, cq.BRIG), 1),
+              "release_s": round(cq._leg(cq.BRIG, cq.COURT), 1)}
+
     return {
         "place": place_key,
         "name": dr.by_key(place_key).get("name", place_key),
@@ -391,6 +435,14 @@ def place_row(place_key: str, pl, day: int = 1, seed: str = "b5") -> dict:
         "detention": {"rung": 4, "offence": REFUSAL_OFFENCE,
                       "legs": legs, "hold_s_h": hold_h, "total_s_h": total_h,
                       "ladder": ladder, "ladder_by_tier": by_tier},
+        # THE HOLD IS THE SAME HOLD. Only the disposal differs by offence, so
+        # `hold_s_h`/`total_s_h` are NOT copied -- the engine indexes the rows
+        # above and reads the ladder below. A second hold table would be a
+        # second answer to "how long until the next Ombuds sitting".
+        "search": {"rung": 4, "offence": DEMOTING_OFFENCE,
+                   "grade": cq.OFFENCE[DEMOTING_OFFENCE][1],
+                   "legs": legs_c, "ladder": ladder_c,
+                   "ladder_by_tier": by_tier_c},
     }
 
 
@@ -417,10 +469,19 @@ def table(keys=None, day: int = 1, seed: str = "b5", ledger: str = None,
         "revoke_on_ordinary": cq.REVOKE_ON_ORDINARY,
         "revoke_on_serious": cq.REVOKE_ON_SERIOUS,
         "brig": cq.BRIG, "court": cq.COURT,
+        # WHERE THE BRIG IS, so the hold is a place a body can be put and not a
+        # line of text. The engine gets a point and a box and no geometry rule.
+        "brig_address": brig_address(),
+        "brig_cell": brig_cell(pl.npc_id, day, seed),
+        # What a search finds, and it is `economy.GOODS`' own contraband class.
+        "restricted": list(restricted_goods()),
+        "demoting_offence": DEMOTING_OFFENCE,
+        "tiers": {str(t): cq.tier_name(t) for t in (cq.DETAINED,) + cq.RUNGS},
         "offence": {k: {"grade": v[1], "rung": v[2], "authority": v[3],
                         "source": v[4]}
                     for k, v in cq.OFFENCE.items()
-                    if k in (REFUSAL_OFFENCE, MOVED_ON_OFFENCE)},
+                    if k in (REFUSAL_OFFENCE, MOVED_ON_OFFENCE,
+                             DEMOTING_OFFENCE)},
         "places": rows,
     }
 
@@ -638,6 +699,566 @@ def selftest(out=print) -> bool:                                  # noqa: C901
 
 
 # ===========================================================================
+# 7b. PROGRESSION -- the rung you can LOSE, and the file that remembers
+# ===========================================================================
+# `docs/THE-GAME.md` section 5 is the whole of this section's brief, and its
+# operative sentence is that there is NO DEATH AND NO GAME OVER: "Failure is
+# *demotion plus a record*, and the record is what makes a second day different
+# from the first." Section 7 binds that to a gate -- *"arrest -> brig -> fine ->
+# release closes, and tier is one lower after"* -- and marks it RED.
+#
+# WHAT WAS ALREADY TRUE, MEASURED BEFORE ANYTHING WAS WRITTEN, because this
+# project's own history says a session that does not measure first builds the
+# half that already existed. `consequence.arrest` ALREADY closes the whole chain
+# and ALREADY demotes: on a minted transit-visa player it returns
+#
+#   contraband at customs_north 13.00: respond 0.0 min, escort 13.7 min,
+#   hold 17.8 h, court 1.2 min -> fine paid + status revoked, 206.63 cr,
+#   transit -> no_status
+#
+# and `player.state()` carries the `record` that makes it survive a reload.
+# So the missing halves were never the arithmetic. They were:
+#
+#   1. NOBODY EVER RAN IT ON A PLAYER WHO HAD SOMETHING TO LOSE. Section 4's
+#      whole engine path is baked against `REFUSAL_OFFENCE = id_check_fail`,
+#      which is GRADE 1, and `Record.ordinary()` counts grade 2 -- so the
+#      shipped table's `ladder_by_tier` correctly says "revoking rungs: none"
+#      at all six rungs, and `--selftest` check 4 asserts exactly that. The
+#      engine could not demote anybody because the only offence it carried
+#      cannot demote anybody. That is not a bug in the ladder; it is a table
+#      with one row of a two-row rule.
+#   2. THE BRIG WAS A DURATION AND NOT A PLACE. `enforcement.gd::_settle`'s
+#      own comment: "Released into the corridor, because the brig is a real
+#      place in the register and it is 6 km and four decks from this one".
+#      A hold you are told about is a caption.
+#   3. THERE WAS NO BOOKING RECORD. `spec_check --red` VRB-09: PLC-017 `brig`
+#      declares ('cell_door','bunk','intercom') and 0 of them answer LOOK.
+#
+# AND THE RULE THIS SECTION REFUSES TO BREAK, because breaking it is how this
+# repository got two crowds disagreeing about which way round a person is:
+# **the booking record is DERIVED FROM THE PURSE, never stored beside it.**
+# Every field a reader sees -- who, what, how much, which cell, what it cost
+# you -- is recomputed from `record.convictions`, `record.notes`,
+# `consequence.fine_amount` (deterministic in (offence, npc_id, seed)) and the
+# card. Nothing is written twice, so nothing can drift, and "it survives a
+# reload" is not a feature that had to be built: it is a consequence of the
+# purse surviving, which `player.py` already guarantees.
+#
+# THE OFFENCE THAT COSTS YOU THE RUNG IS NOT A NEW OFFENCE. `contraband` is
+# already row 7 of `consequence.OFFENCES` at grade 3, sourced to LAW-CRIME 6.5
+# ("names Dust and concealed weapons"), and `REVOKE_ON_SERIOUS = 1` means ONE
+# of them withdraws a conditional permission. That is precisely THE-GAME's
+# section 4 load-bearing point -- *"Nightwatch and the Broker are both
+# shortcuts, and taking either is how you lose tier 2"* -- arriving as the
+# module's own arithmetic rather than as a new rule written here.
+DEMOTING_OFFENCE = "contraband"
+
+
+def restricted_goods() -> tuple:
+    """What carrying it makes you a `contraband` docket rather than a citation.
+
+    DERIVED FROM THE GOODS TABLE, NOT LISTED HERE. `economy.GOODS` classes four
+    goods `contraband` -- Dust, identicard blanks, forged transit visas, weapons
+    parts -- and `economy.py`'s own line 731 already says the offence against a
+    customs-sealed one of them is `consequence.OFFENCE["contraband"]`. A list
+    written in this file would be a second description of which goods are
+    illegal, and the first thing that happens to a second description in this
+    repository is that somebody edits the other one.
+    """
+    import economy as ec                                        # noqa: PLC0415
+    return tuple(sorted({g.name for g in ec.GOODS
+                         if getattr(g, "klass", "") == "contraband"}))
+
+
+def offence_for(carrying) -> str:
+    """Which offence a stop becomes, given what the player has in their bag.
+
+    ONE FUNCTION, TWO CALLERS, AND THAT IS THE POINT. The Python gate and the
+    engine must not each decide what a search finds; the engine is handed the
+    ANSWER (`restricted` in the baked table) and applies this same rule to it.
+    """
+    bad = set(restricted_goods())
+    return (DEMOTING_OFFENCE if any(str(c) in bad for c in (carrying or ()))
+            else REFUSAL_OFFENCE)
+
+
+# ---------------------------------------------------------------------------
+#  THE BRIG, AS A PLACE AND NOT AS A DURATION
+# ---------------------------------------------------------------------------
+def brig_cell(npc_id: str, day: int, seed: str = "b5") -> int:
+    """Which cell of `consequence.BRIG_CELLS` this booking goes into. INV-770.
+
+    WHY IT IS DRAWN AND NOT ALLOCATED. A real custody desk assigns the next
+    free cell, which needs an occupancy model of the brig across a station-day
+    -- and `consequence.brig_check` already owns that question and already
+    fails when the day's arrests overflow the sourced 24-40. What a PLAYER
+    needs is weaker and must be stable: the same booking has to name the same
+    cell every time it is read, including after a reload in a new process, or
+    the record is not a record. So it is a draw through `consequence._u`, the
+    hash every other per-person decision in that module goes through, keyed on
+    (npc_id, day) -- the two things a booking is identified by.
+
+    Overturned by: an occupancy model that can say which cells are free at an
+    hour. Then this becomes `next_free(hour)` and the booking stores the
+    result, and this function is deleted rather than kept beside it.
+    """
+    return 1 + int(cq._u("brig_cell", npc_id, day, seed) * cq.BRIG_CELLS)
+
+
+def brig_address() -> dict:
+    """Where the brig IS, in world metres, from the register and the schema.
+
+    THE ENGINE HOLDS NO GEOMETRY RULE, same as the rest of this file. It is
+    handed a point and a box; it does not know that a deck's floor is a radius,
+    that `place_floor_radius` resolves a ring stack, or that a room's angular
+    half-width is `deck.room_half_w_m`. `collision.stand_at`'s own formula is
+    used for the point so a body put here stands where `collision.py` would
+    have stood it.
+
+    The box is the world AABB of the room's eight corners. It is deliberately
+    the register's extents rather than a mesh bound: the claim the gate makes
+    is "the player is at the address the register gives the brig", which is
+    checkable with no deck built, and a mesh bound would make that claim
+    unavailable in exactly the container where the deck is missing.
+    """
+    import math                                                 # noqa: PLC0415
+    import interior as it                                       # noqa: PLC0415
+    import deck as D                                            # noqa: PLC0415
+    schema, profile = it.load()
+    q = dr.by_key(cq.BRIG)
+    r_m, ring_i, deck_i, meta = it.place_floor_radius(schema, profile, q)
+    half_w = D.room_half_w_m(schema, profile, q)          # metres along the arc
+    half_z = D.room_interior_half_m(schema, profile, q)   # metres along z
+    a0 = math.radians(q["angle_deg"])
+    da = half_w / max(r_m, 1e-6)
+    r_in = float(meta.get("ceiling_r_m", r_m - 3.0))
+    lo = [1e18, 1e18, q["z_m"] - half_z]
+    hi = [-1e18, -1e18, q["z_m"] + half_z]
+    for aa in (a0 - da, a0, a0 + da):
+        for rr in (r_in, r_m):
+            x, y = rr * math.cos(aa), rr * math.sin(aa)
+            lo[0], lo[1] = min(lo[0], x), min(lo[1], y)
+            hi[0], hi[1] = max(hi[0], x), max(hi[1], y)
+    stand = [(r_m - 0.05) * math.cos(a0), (r_m - 0.05) * math.sin(a0),
+             float(q["z_m"])]
+    return {"place": cq.BRIG, "name": q["name"],
+            "sector": q["sector"], "ring": int(ring_i), "deck": int(deck_i),
+            "angle_deg": float(q["angle_deg"]), "z_m": float(q["z_m"]),
+            "floor_r_m": float(r_m), "ceiling_r_m": r_in,
+            "half_w_m": float(half_w), "half_z_m": float(half_z),
+            "cells": int(cq.BRIG_CELLS),
+            "stand": [round(v, 4) for v in stand],
+            "box": [[round(v, 4) for v in lo], [round(v, 4) for v in hi]],
+            "why": q.get("note", "")}
+
+
+# ---------------------------------------------------------------------------
+#  READING A CARD -- and this is the direction that did not exist
+# ---------------------------------------------------------------------------
+def read_card(subject, at: str = None, by=None) -> dict:
+    """What somebody's identicard says TO A READER. VRB-08's second direction.
+
+    `spec_check --red` VRB-08: *"no read-a-card-as-officer entry point in
+    enforcement.py, player.py or enforcement.gd"*. The station could refuse
+    the player and the player could not read anybody, including themselves,
+    which made SHOW-PAPERS a one-way verb in a game whose top-of-ladder role
+    (THE-GAME section 3, tier 3) is *"carry a badge and make arrests"*.
+
+    IT COMPUTES NOTHING. The rows are `Player.identicard()`'s -- this project's
+    one card renderer -- and the verdict is `consequence.admits`, the one
+    reader. What this adds is the OFFICER'S half: the rung, the record, the
+    outstanding money and what the offence WOULD be, which is the difference
+    between looking at a card and being able to act on it.
+
+    `by` is the reader. When it is a player it is checked for the rung
+    `consequence.GATE_BY_FUNCTION` puts on `law_enforcement`, so a tier-0
+    lurker holding somebody else's card gets `may_act=False` and the honest
+    reason -- an officer's verb that anyone may use is not an officer's verb.
+    """
+    rec = cq.record_of(subject)
+    tier = int(cq.tier_of(subject.card, rec))
+    rows = [(str(f[0]), f[1]) for f in (subject.identicard() or ())
+            if len(f) >= 2]
+    out = {"name": subject.card.card_name, "npc_id": subject.npc_id,
+           "species": subject.card.species, "role": subject.card.role,
+           "fields": [[k, ("" if v is None else str(v))] for k, v in rows],
+           "tier": tier, "tier_name": cq.tier_name(tier),
+           "convictions": list(rec.convictions),
+           "outstanding": round(float(rec.fines_outstanding), 2),
+           "revoked_from": rec.revoked_from,
+           "in_custody": bool(rec.in_custody),
+           "carrying": list(getattr(subject, "carrying", ()) or ()),
+           "would_be": offence_for(getattr(subject, "carrying", ()) or ())}
+    if at:
+        ok, why = cq.admits(at, tier)
+        out["at"] = at
+        out["admits"] = bool(ok)
+        out["why"] = why
+    need = cq.GATE_BY_FUNCTION.get("law_enforcement", cq.CITIZEN)
+    if by is None:
+        out["may_act"] = None
+        out["may_act_why"] = "nobody is reading it"
+    else:
+        bt = int(cq.tier_of(by.card, cq.record_of(by)))
+        out["reader"] = by.card.card_name
+        out["reader_tier"] = bt
+        out["may_act"] = bool(bt >= need)
+        out["may_act_why"] = (
+            "rung %d %s reads a card; `law_enforcement` needs %d %s"
+            % (bt, cq.tier_name(bt), need, cq.tier_name(need)))
+    return out
+
+
+def card_lines(r: dict) -> list:
+    """`read_card` as the six lines a reader actually sees."""
+    out = ["IDENTICARD -- %s (%s %s)" % (r["name"], r["species"], r["role"])]
+    for k, v in r["fields"]:
+        out.append("  %-10s %s" % (k, v if v else "--"))
+    out.append("  STANDING   rung %d %s%s"
+               % (r["tier"], r["tier_name"],
+                  (", %s WITHDRAWN" % r["revoked_from"].upper())
+                  if r["revoked_from"] else ""))
+    out.append("  RECORD     %s%s"
+               % (", ".join(r["convictions"]) or "clean",
+                  ("; %.2f cr outstanding" % r["outstanding"])
+                  if r["outstanding"] else ""))
+    if "admits" in r:
+        out.append("  AT %-8s %s -- %s"
+                   % (r["at"], "ADMIT" if r["admits"] else "REFUSE", r["why"]))
+    return out
+
+
+# ---------------------------------------------------------------------------
+#  THE BOOKING RECORD -- derived from the purse, never stored beside it
+# ---------------------------------------------------------------------------
+_NOTE_RE = re.compile(r"^day\s+(\d+):\s*(.*)$")
+
+
+def bookings(purse: dict, seed: str = "b5") -> list:
+    """Every custody event on this card, RECONSTRUCTED from the purse.
+
+    THE WHOLE ARGUMENT FOR THIS SHAPE IS ONE SENTENCE: a record that is written
+    twice can disagree with itself, and this repository has paid for that four
+    times. So nothing here is stored. `record.convictions` gives the offences
+    in order; `record.notes` gives the day and the revocation in
+    `consequence.arrest`'s own wording; `consequence.fine_amount` is
+    DETERMINISTIC in (offence, npc_id, seed) and gives back the exact figure
+    that was debited; `brig_cell` is deterministic in (npc_id, day); and the
+    name, species and rung are the card. A booking is therefore a READING of
+    the purse in the same way `tier_of` is a reading of the card -- and it
+    survives a reload for the same reason, which is that it was never a second
+    copy that had to be kept in step.
+
+    THE ONE THING IT CANNOT RECOVER is the day of a conviction that left no
+    note, because only a revocation writes one. Those rows report `day=None`
+    rather than guessing, and `--progression-gate`'s reload check asserts on
+    the rows that DO carry one, so a guess could not make it pass.
+    """
+    rec = (purse or {}).get("record") or {}
+    convs = list(rec.get("convictions") or ())
+    notes = [str(n) for n in (rec.get("notes") or ())]
+    nid = str(purse.get("npc_id", ""))
+    # NOTES ARE MATCHED BY OFFENCE, NOT BY INDEX, and the difference is not
+    # cosmetic. `consequence.arrest` writes a note ONLY on a revocation and on
+    # a transfer, so `notes[i]` is the i-th NOTE and not the i-th CONVICTION.
+    # With one of each they line up, which is exactly the kind of coincidence
+    # that passes a first test and is wrong on the second arrest. The note's
+    # own wording ends "... on <offence_key>", so it names which one it is.
+    used, by_off = set(), {}
+    for j, n in enumerate(notes):
+        m = _NOTE_RE.match(n)
+        if not m:
+            continue
+        for off in set(convs):
+            if m.group(2).rstrip().endswith(off) and j not in used:
+                by_off.setdefault(off, []).append((int(m.group(1)), n))
+                used.add(j)
+                break
+    taken = {}
+    out = []
+    for i, off in enumerate(convs):
+        seq = by_off.get(off, [])
+        k = taken.get(off, 0)
+        day, note = (seq[k] if k < len(seq) else (None, ""))
+        taken[off] = k + 1
+        row = cq.OFFENCE.get(off)
+        fine = (cq.fine_amount(off, nid, seed)
+                if row and row[1] and row[1] < 4 else 0.0)
+        cell = brig_cell(nid, day, seed) if day is not None else None
+        out.append({
+            "n": i + 1,
+            "who": str(purse.get("name", "")),
+            "npc_id": nid,
+            "species": str(purse.get("species", "")),
+            "offence": off,
+            "grade": int(row[1]) if row else 0,
+            "rung": int(row[2]) if row else 0,
+            "source": str(row[4]) if row else "",
+            "day": day,
+            "cell": cell,
+            "fine": round(float(fine), 2),
+            "brig": cq.BRIG,
+            "note": note,
+            "revoked_from": str(rec.get("revoked_from", "")),
+        })
+    return out
+
+
+def booking_lines(purse: dict, seed: str = "b5") -> list:
+    """The booking record AS A PLAYER READS IT, standing in the cell.
+
+    This is what PLC-017's `cell_door`, `bunk` and `intercom` have to be able
+    to answer with. It names the person, the offence, the fine and the cell,
+    which is the acceptance sentence for this item, and it names the standing
+    that was taken, which is the acceptance sentence for the ladder.
+    """
+    rows = bookings(purse, seed)
+    rec = (purse or {}).get("record") or {}
+    if not rows:
+        return ["BABYLON 5 SECURITY -- CUSTODY DESK",
+                "  no booking on this card"]
+    out = ["BABYLON 5 SECURITY -- CUSTODY DESK, %s" % cq.BRIG.upper(),
+           "  BOOKED   %s (%s)" % (rows[-1]["who"], rows[-1]["npc_id"])]
+    for r in rows:
+        out.append("  %d. %s%s -- grade %d, escalation rung %d"
+                   % (r["n"], r["offence"].upper().replace("_", " "),
+                      ("" if r["day"] is None else ", day %d" % r["day"]),
+                      r["grade"], r["rung"]))
+        out.append("     CELL %s of %d   FINE %.2f cr"
+                   % ("--" if r["cell"] is None else "%02d" % r["cell"],
+                      cq.BRIG_CELLS, r["fine"]))
+        if r["source"]:
+            out.append("     %s" % r["source"][:72])
+    out.append("  STANDING %s"
+               % (("%s WITHDRAWN -- rung %d %s"
+                   % (str(rec.get("revoked_from", "")).upper(),
+                      int(purse.get("tier", -99)),
+                      str(purse.get("tier_name", "?"))))
+                  if rec.get("visa_revoked") else
+                  "rung %d %s -- stands" % (int(purse.get("tier", -99)),
+                                            str(purse.get("tier_name", "?")))))
+    out.append("  PAID     %.2f cr; OUTSTANDING %.2f cr; %.1f h in custody"
+               % (float(rec.get("fines_paid", 0.0)),
+                  float(rec.get("fines_outstanding", 0.0)),
+                  float(rec.get("custody_seconds", 0.0)) / 3600.0))
+    return out
+
+
+# ---------------------------------------------------------------------------
+#  THE LOOP, END TO END
+# ---------------------------------------------------------------------------
+def _mint(species="human", role="", seed="g2c", credits=None):
+    """A player with something to lose -- and NOT a new kind of person.
+
+    `player.player_from` is the one minter and the rung is `tier_of`'s reading
+    of what it produced; nothing here forces a tier. (human, "", "g2c") reads
+    TRANSIT because `arrival.entry_class` puts VISAS=TRANSIT nD on a human
+    visitor with no job aboard, which is FACTIONS 2.3's seven-day stay. If that
+    ever stops being true this raises rather than quietly testing a rung-0
+    lurker, which is the exact failure `--selftest` check 4 records.
+    """
+    pl = PL.player_from({"species": species, "role": role}, seed=seed)
+    if credits is not None:
+        pl.credits = float(credits)
+    return pl
+
+
+def _ledger_for(pl, day=3, seed="b5", path=None):
+    """A ledger document holding this player's purse, and nothing invented."""
+    import economy as ec                                        # noqa: PLC0415
+    led = ec.Ledger.fresh(seed)
+    led.day = day
+    led.purses[pl.npc_id] = pl.state()
+    if path:
+        _write_ledger(led, path)
+    return led
+
+
+def _write_ledger(led, path: str) -> str:
+    """`Ledger.save` and NOT a serialiser written here.
+
+    A second writer would produce a document `economy.Ledger.load` might
+    refuse -- it version-checks -- and the whole claim of this section is that
+    the file the game reads is the file the record survives in.
+    """
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return led.save(path)
+
+
+def _purse_of(path: str, nid: str) -> dict:
+    with open(path) as f:
+        return (json.load(f).get("purses") or {}).get(nid) or {}
+
+
+def arrest_to_release(pl, place_key: str, hour: float = 13.0, day: int = 3,
+                      led=None, seed: str = "b5", out=None) -> dict:
+    """ONE PASS: stopped, searched, taken to a cell, fined, released.
+
+    The offence is `offence_for(pl.carrying)` -- what the search FINDS -- so
+    the thing that costs you the rung is a decision you made in the world and
+    not a parameter of this function. Everything after that is
+    `consequence.arrest`, unchanged and uncopied.
+    """
+    tier_before = int(pl.tier)
+    off = offence_for(getattr(pl, "carrying", ()) or ())
+    cell = brig_cell(pl.npc_id, day, seed)
+    c = cq.arrest(pl, place_key, off, hour=hour, day=day, led=led, seed=seed)
+    tier_after = int(pl.tier)
+    row = {"place": place_key, "offence": off, "cell": cell,
+           "brig": cq.BRIG, "hour": hour, "day": day,
+           "tier_before": tier_before, "tier_after": tier_after,
+           "demoted": tier_after < tier_before,
+           "revoked": bool(c.revoked), "fine": round(float(c.fine), 2),
+           "paid": bool(c.paid), "outstanding": round(float(c.outstanding), 2),
+           "custody_h": round(c.total_s / 3600.0, 2),
+           "disposal": c.disposal, "reason": c.reason, "line": c.line()}
+    if out:
+        out("  %s" % c.line())
+        out("  brig %s cell %02d of %d, %.1f h in custody"
+            % (cq.BRIG, cell, cq.BRIG_CELLS, c.total_s / 3600.0))
+    return row
+
+
+# ===========================================================================
+# 7c. THE PROGRESSION GATE -- and it has to be able to fail
+# ===========================================================================
+def progression_gate(seed: str = "b5", day: int = 3, place: str = None,
+                     no_restore: bool = False, no_contraband: bool = False,
+                     out=print) -> dict:
+    """THE LOOP CLOSES AND THE DEMOTION PERSISTS -- in one run, with controls.
+
+    Each control removes exactly one input and the verdict must move:
+
+      --no-restore      reload the purse but throw the `record` away. This is
+                        CAST-05's premise ("no memory of the player") applied
+                        as a control: the tier comes back at 2 and the booking
+                        is empty. If the subject still passed with the record
+                        withheld, the subject was never reading it.
+      --no-contraband   the same stop with an empty bag. The offence becomes
+                        `id_check_fail` (grade 1), `Record.ordinary()` does not
+                        count it, and NOTHING IS TAKEN -- which is the shape
+                        control: it proves the demotion is the OFFENCE's doing
+                        and not a side effect of being arrested at all.
+
+    AND IT ASSERTS THE FILE, NOT THE PROCESS. The reload is a re-read of the
+    JSON document from disk into a freshly minted player, so "it survives" is a
+    claim about bytes rather than about an object that was never let go of.
+    """
+    import tempfile                                             # noqa: PLC0415
+    fails, ran = [], [0]
+
+    def ck(ok, name, detail=""):
+        ran[0] += 1
+        if not ok:
+            fails.append(name)
+        out("  %s %s%s" % ("ok  " if ok else "FAIL", name,
+                           (" -- " + detail) if detail else ""))
+        return ok
+
+    place = place or (checked_places(boot_rooms()) or ["customs_north"])[0]
+    tmp = tempfile.mkdtemp(prefix="progression-")
+    path = os.path.join(tmp, "economy.json")
+
+    out("PROGRESSION -- arrest, brig, fine, release, and the rung you lose")
+    pl = _mint()
+    bad = restricted_goods()
+    if not no_contraband:
+        pl.take(bad[0])
+    ck(int(pl.tier) >= 2, "the player has something to lose",
+       "%s: rung %d %s, %.2f cr, carrying %s"
+       % (pl.card.card_name, pl.tier, pl.tier_name, pl.credits,
+          ", ".join(pl.carrying) or "nothing"))
+    tier_before = int(pl.tier)
+    led = _ledger_for(pl, day=day, seed=seed, path=path)
+    cr_before = float(pl.credits)
+
+    # -- the officer reads the card, which is the verb that did not exist -----
+    r = read_card(pl, at=place, by=pl)
+    ck(bool(r["fields"]) and "at" in r,
+       "a card can be READ, not only refused (VRB-08's second direction)",
+       "%d field(s); at %s -> %s"
+       % (len(r["fields"]), place, "ADMIT" if r["admits"] else "REFUSE"))
+
+    # -- the arrest ----------------------------------------------------------
+    row = arrest_to_release(pl, place, hour=13.0, day=day, led=led, seed=seed,
+                            out=out)
+    ck(row["offence"] == (REFUSAL_OFFENCE if no_contraband
+                          else DEMOTING_OFFENCE),
+       "the search decides the offence",
+       "carrying %s -> %s (grade %d)"
+       % (", ".join(pl.carrying) or "nothing", row["offence"],
+          cq.OFFENCE[row["offence"]][1]))
+    ck(row["cell"] >= 1 and row["cell"] <= cq.BRIG_CELLS,
+       "the hold is a CELL in the brig, not a duration",
+       "cell %02d of %d at `%s`" % (row["cell"], cq.BRIG_CELLS, cq.BRIG))
+    ck(row["fine"] > 0.0 and row["paid"],
+       "the fine is real money and it was paid",
+       "%.2f cr of %.2f" % (row["fine"], cr_before))
+    ck(abs((cr_before - float(pl.credits)) - row["fine"]) < 0.01,
+       "and it left the purse", "%.2f -> %.2f cr" % (cr_before, pl.credits))
+    ck(row["demoted"] if not no_contraband else not row["demoted"],
+       "THE TIER AFTER IS LOWER THAN THE TIER BEFORE",
+       "rung %d %s -> rung %d %s (%s)"
+       % (row["tier_before"], cq.tier_name(row["tier_before"]),
+          row["tier_after"], cq.tier_name(row["tier_after"]), row["reason"]))
+
+    # -- QUIT: the document on disk ------------------------------------------
+    led.purses[pl.npc_id] = pl.state()
+    _write_ledger(led, path)
+    on_disk = _purse_of(path, pl.npc_id)
+    ck(bool(on_disk) and abs(float(on_disk.get("credits", -1))
+                             - float(pl.credits)) < 0.01,
+       "the purse on DISK carries the debit",
+       "%.2f cr in %s" % (float(on_disk.get("credits", -1)),
+                          os.path.basename(path)))
+
+    # -- RELOAD: a new person built from the file, in this process's terms ---
+    back = _mint(species=on_disk.get("species", "human"),
+                 role=on_disk.get("role", ""))
+    st = {k: v for k, v in on_disk.items() if k != "npc_id"}
+    if no_restore:
+        st.pop("record", None)
+        st.pop("tier", None)
+        st.pop("tier_name", None)
+    back.restore(st)
+    ck(int(back.tier) == row["tier_after"] and int(back.tier) < tier_before,
+       "RELOADED, still demoted",
+       "rung %d %s after reload (was %d %s before the arrest)"
+       % (back.tier, back.tier_name, tier_before, cq.tier_name(tier_before)))
+
+    # -- and the record is readable, naming them, the offence and the fine ---
+    bk = bookings(on_disk, seed)
+    lines = booking_lines(on_disk, seed)
+    named = bool(bk) and bk[-1]["who"] and bk[-1]["offence"] \
+        and bk[-1]["fine"] > 0.0
+    ck(named, "a READABLE booking record names them, the offence and the fine",
+       ("%s / %s / %.2f cr / cell %s" % (bk[-1]["who"], bk[-1]["offence"],
+                                         bk[-1]["fine"], bk[-1]["cell"]))
+       if bk else "no booking on the card")
+    ck(bool(bk) and bk[-1]["fine"] == row["fine"],
+       "and the fine it reports is the fine that was debited",
+       "%.2f cr recomputed == %.2f cr taken"
+       % (bk[-1]["fine"] if bk else -1.0, row["fine"]))
+    for ln in lines:
+        out("    | " + ln)
+
+    # -- the SECOND DAY is different, which is the point of a record ---------
+    r2 = read_card(back, at=place)
+    ck(r2["convictions"] != r["convictions"],
+       "the card reads differently to the next officer who stops them",
+       "before %s, after %s" % (r["convictions"] or "clean", r2["convictions"]))
+
+    ok = not fails
+    out("PROGRESSION %s -- %d checked, %d failed  (tier %d -> %d, reload %d)"
+        % ("PASS" if ok else "FAIL", ran[0], len(fails), tier_before,
+           row["tier_after"], int(back.tier)))
+    return {"ok": ok, "tier_before": tier_before,
+            "tier_after": row["tier_after"], "tier_reloaded": int(back.tier),
+            "fine": row["fine"], "cell": row["cell"], "ledger": path,
+            "booking": lines, "failed": fails}
+
+
+# ===========================================================================
 # 8.  THE ENGINE GATE -- somebody comes, in the shipped scene
 # ===========================================================================
 # WHY IT LIVES HERE AND NOT IN `coldstart.py`. That file owns G1 and G3 to G7
@@ -831,11 +1452,40 @@ def main(argv=None):
     ap.add_argument("--gate", action="store_true")
     ap.add_argument("--legacy", action="store_true",
                     help="with --gate: run the pre-4r build and show it FAIL")
+    ap.add_argument("--progression-gate", action="store_true",
+                    help="arrest -> brig -> fine -> release -> DEMOTED, and "
+                         "the record survives a reload")
+    ap.add_argument("--no-restore", action="store_true",
+                    help="control: reload the purse without its record")
+    ap.add_argument("--no-contraband", action="store_true",
+                    help="control: the same stop with an empty bag")
+    ap.add_argument("--card", metavar="SEED", nargs="?", const="g2c",
+                    help="read a card as an officer would (VRB-08)")
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args(argv)
-    if not any((a.report, a.bake, a.selftest, a.gate)):
+    if not any((a.report, a.bake, a.selftest, a.gate, a.progression_gate,
+                a.card)):
         a.report = True
     rc = 0
+    if a.card:
+        pl = _mint(seed=a.card)
+        for ln in card_lines(read_card(pl, at="brig", by=pl)):
+            print(ln)
+    if a.progression_gate:
+        g = progression_gate(no_restore=a.no_restore,
+                             no_contraband=a.no_contraband)
+        # A CONTROL PASSES BY FAILING. Run bare it must pass; run with either
+        # flag it must NOT, or the flag removed an input the subject was not
+        # reading and the subject's claim was about something else.
+        want_pass = not (a.no_restore or a.no_contraband)
+        if bool(g["ok"]) != want_pass:
+            rc = 1
+        if not want_pass:
+            print("CONTROL %s -- with %s the loop's claim %s"
+                  % ("FIRED" if not g["ok"] else "INERT",
+                     "--no-restore" if a.no_restore else "--no-contraband",
+                     "stops holding" if not g["ok"] else "STILL HOLDS, which "
+                     "means the subject was not reading that input"))
     if a.report:
         report(all_places=a.all)
     if a.bake:
