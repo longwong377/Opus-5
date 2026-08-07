@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "_note": "Written by the drum_interior_engine BUILD agent, session 4t. NOT a review round -- AAA-STANDARD says round zero is the build. Scores here are the builder's own reading of the artefact after the work, offered as the input a reviewer should argue with, and they are deliberately not entered into docs/aaa-scorecard.json.",
+  "subsystems": {
+    "drum_interior_engine": {
+      "status": "active",
+      "_builder_record": {
+        "round": "0 (build)",
+        "builder": "build-4t-drum_interior_engine",
+        "date": "2026-08-07",
+        "owns": ["station/drum_ground.py", "station/drum_dressing.py"],
+        "scores": {"craft": 3, "fidelity": 3, "performance": 3, "robustness": 3},
+        "evidence": {
+          "_engine": "Godot 4.4 double + Mesa lavapipe, Vulkan 1.4.318 - Forward+ - llvmpipe, 1280x720, fov 46, ~2 min a frame. Every render log grepped for Forward+; no run fell back to OpenGL 3 Compatibility.",
+          "_distances": [
+            "2.26 m -- arm's length, standing eye at 20 deg / z 3900 aimed at the ground 1.5 m ahead",
+            "28.2 m -- HALF. The subject is a field parcel, 87.43 m across (2 pi FLOOR_R / PARCELS_A); it fills the frame width at 57.9 m for a 46 deg vertical lens at 16:9 (hfov 74.08), so half is 29.0 m",
+            "57.3 m -- NORMAL, the parcel filling the frame width",
+            "2520 m -- the ONE-PIXEL SILHOUETTE TEST IS UNREACHABLE INSIDE THE DRUM and this is the substitute. A 323.55 m parcel subtends one pixel of 720 at 323.55*720/(2 tan 23) = 274,405 m; the drum's longest interior sightline is its own length, 2588.4 m, so the test is 106x out of reach. Taking the drum's 556.6 m diameter instead gives 472,062 m, 182x out. Substituted: the longest view a player actually has, standing 62 m from the fore cap looking at the aft cap."
+          ],
+          "_frames_before": [
+            "scratchpad/drum4t/before-near.png",
+            "scratchpad/drum4t/before-phalf.png",
+            "scratchpad/drum4t/before-pnormal.png",
+            "scratchpad/drum4t/before-vista.png"
+          ],
+          "_frames_after": [
+            "scratchpad/drum4t/after-near.png",
+            "scratchpad/drum4t/after-phalf.png",
+            "scratchpad/drum4t/after-pnormal.png",
+            "scratchpad/drum4t/after-vista.png"
+          ],
+          "performance": "drum_dressing.worst_case_cost() swept over 36 standing positions: 113,790 of its own 120,000 (was 114,910). drum_ground.near_ground_cost() adds 874 triangles at the standing eye and is counted inside visible_cost(), asserted equal to the triangles actually built.",
+          "robustness": "drum_dressing 603/603 assertions, drum_ground 96/96. Three controls fired deliberately and are quoted in the notes."
+        },
+        "broke_assertions": true,
+        "what_is_good": [
+          "The payoff view still works: ground curves up and away, the far side arches overhead, the guideway light runs recede correctly.",
+          "The crop now reads as a drilled field with rows converging on the axial vanishing point, which is 2-22_34b's 'one large field carries visible parallel cultivation rows'.",
+          "The 3.90 m periodic bare stripe between every pair of lattice cells is gone -- drills tile continuously because the pitch is derived from CELLS_A.",
+          "Four crops instead of one, so parcels differ in shape as well as in colour.",
+          "The ground under the player's feet is no longer two 3.90 m flat-shaded facets.",
+          "drum_walk's collision surface is untouched, asserted byte for byte."
+        ],
+        "findings": [
+          {
+            "severity": "major", "dimension": "craft", "descriptor": "C3",
+            "where": "station/drum_ground.py, the land-use band boundaries",
+            "text": "At 57 m and beyond, a land-use boundary is a LATTICE STAIRCASE: _band_weights() is a function of u alone, so every band edge is a dead-straight line for 2,588 m, quantised to 3.90 m cells and read per-triangle. It is the most indexable thing in the 57 m frame. NOT FIXED: the cure is a wander term inside sample(), which changes GROUND_DIGEST, the 1,400-entry PATCH_LOD_ERR_MM table and what drum_walk builds collision from, and was judged too large a blast radius for one session against a defect the brief did not name."
+          },
+          {
+            "severity": "major", "dimension": "craft", "descriptor": "C3",
+            "where": "station/drum_ground.py, parcel tone beyond the near rung",
+            "text": "Past the near rung's 90 m reach a parcel is a flat wash of one colour with a tiling texture. Rows are a MATERIAL problem at that distance, not a geometry one -- the field's finest representable octave is 13.5 m and 34b's rows are finer -- and materials are not this agent's files. Frames shot at 184 m and 369 m came back BYTE-IDENTICAL before and after (md5 38f19b47f521ca9999e8707976527e9b and c1a6303dfd190ee08f4359dfd8a456d7), which is the honest measure of this gap."
+          },
+          {
+            "severity": "minor", "dimension": "craft", "descriptor": "C4",
+            "where": "station/drum_ground.py, ground shading",
+            "text": "The refinement quarters the facet size near the eye but the ground still reaches the engine with no vertex normals, so it is still flat shaded. Smooth normals would do more for the near field than any further subdivision, and they are an export_scene change."
+          },
+          {
+            "severity": "minor", "dimension": "performance", "descriptor": "P3",
+            "where": "station/drum_dressing.py",
+            "text": "113,790 of 120,000 is 94.8% of the module's own allowance. P4 wants worst case at 70% or under. The allowance itself is a slice of budget.DRUM and is defended in INV-458; nothing here is over, but there is no headroom to spend on the far field."
+          }
+        ]
+      }
+    }
+  }
+}
