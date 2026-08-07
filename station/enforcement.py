@@ -256,9 +256,34 @@ def _officers(place_key: str, index: int = 0) -> list:
 
 
 def _custody_row(c) -> dict:
+    """One rung of the ladder, and NOT one credit of anybody's money.
+
+    THE KEY IS `fine_subject` AND THE RENAME IS THE FIX. Session 4t round 1
+    baked `"fine": round(c.fine, 2)` here, and `c.fine` is
+    `consequence.fine_amount(offence, npc_id, seed)` -- a draw keyed on the
+    PERSON. The engine then read that scalar and debited it from whoever
+    `interact.gd::_my_purse` had loaded, which is a different person the moment
+    the ledger on disk is not the ledger the bake read. It measured 187.66 cr
+    debited against a 206.63 cr booking record in the same run, and nothing
+    asserted the two were the same number.
+
+    The general rule this is an instance of, because the same defect was in
+    `brig_cell` one key up and would have been in the next per-person draw
+    somebody baked: **a draw keyed on the person may not be baked as a scalar
+    in a table the engine indexes for whoever it loaded.** What is baked is the
+    BAND (`offence[k].fine_lo/fine_hi`, which are policy and person-independent)
+    and the draw is taken in the engine off the live `npc_id`, through the same
+    blake2b `consequence._u` uses. `enforcement.gd::u()` is that hash, and
+    `draw_check` below is the test vector that proves the two agree.
+
+    The value is kept rather than deleted because `--report` prints a worked
+    example for a named person and that is worth having. It is renamed so that
+    an engine that still reads `fine` gets nothing and says so loudly, instead
+    of quietly charging a stranger's number.
+    """
     return {"disposal": c.disposal, "reason": c.reason,
             "offence": c.offence,
-            "fine": round(float(c.fine), 2),
+            "fine_subject": round(float(c.fine), 2),
             "paid": bool(c.paid),
             "outstanding": round(float(c.outstanding), 2),
             "tier_before": int(c.tier_before), "tier_after": int(c.tier_after),
@@ -349,7 +374,7 @@ def place_row(place_key: str, pl, day: int = 1, seed: str = "b5") -> dict:
                                 "disposal": "immunity -- the file dies "
                                             "(LAW-CRIME 4.3 step 4)",
                                 "reason": "diplomatic immunity, LAW-CRIME 4.1",
-                                "fine": 0.0}
+                                "fine_subject": 0.0}
                                for _i in range(CONVICTIONS_BAKED)]
             continue
         rec, seq, t_now = cq.Record(), [], t
@@ -364,7 +389,7 @@ def place_row(place_key: str, pl, day: int = 1, seed: str = "b5") -> dict:
                         "disposal": ("fine paid"
                                      + (" + status revoked" if revoked else "")),
                         "reason": why,
-                        "fine": ladder[i]["fine"]})
+                        "fine_subject": ladder[i]["fine_subject"]})
             t_now = after
         by_tier[str(t)] = seq
 
@@ -395,7 +420,7 @@ def place_row(place_key: str, pl, day: int = 1, seed: str = "b5") -> dict:
                 seq.append({"tier_before": t, "tier_after": t,
                             "tier_before_name": cq.tier_name(t),
                             "tier_after_name": cq.tier_name(t),
-                            "revoked": False, "fine": 0.0,
+                            "revoked": False, "fine_subject": 0.0,
                             "disposal": "immunity -- the file dies "
                                         "(LAW-CRIME 4.3 step 4)",
                             "reason": "diplomatic immunity, LAW-CRIME 4.1"})
@@ -408,7 +433,8 @@ def place_row(place_key: str, pl, day: int = 1, seed: str = "b5") -> dict:
                         "revoked": bool(revoked),
                         "disposal": ("fine paid"
                                      + (" + status revoked" if revoked else "")),
-                        "reason": why, "fine": ladder_c[i]["fine"]})
+                        "reason": why,
+                        "fine_subject": ladder_c[i]["fine_subject"]})
             t_now = after
         by_tier_c[str(t)] = seq
     legs_c = {"escort_s": round(cq._leg(cq.BRIG, place_key), 1),
@@ -472,18 +498,96 @@ def table(keys=None, day: int = 1, seed: str = "b5", ledger: str = None,
         # WHERE THE BRIG IS, so the hold is a place a body can be put and not a
         # line of text. The engine gets a point and a box and no geometry rule.
         "brig_address": brig_address(),
-        "brig_cell": brig_cell(pl.npc_id, day, seed),
+        # THE CELL IS A DRAW ON THE PERSON, SO IT IS NOT BAKED AS A NUMBER.
+        # Same defect and same fix as `_custody_row`'s fine, one key up: the
+        # engine derives it from the live `npc_id` through `enforcement.gd::u`.
+        # This is kept only so `--report` can print a worked example, and it is
+        # NAMED for its subject so nothing can read it as "the cell".
+        "brig_cell_subject": brig_cell(pl.npc_id, day, seed),
+        "brig_cells": int(cq.BRIG_CELLS),
+        # THE TEST VECTOR THAT MAKES THE ENGINE-SIDE HASH CHECKABLE. It is not a
+        # second copy of a rule: these are four known answers from
+        # `consequence._u`, so `enforcement.gd`'s blake2b can be shown to BE
+        # `consequence._u` at load rather than producing a plausible wrong fine
+        # nobody notices. A subtly wrong hash is the worst failure available
+        # here, because every number it produces is inside the band.
+        "draw_check": draw_vectors(seed),
         # What a search finds, and it is `economy.GOODS`' own contraband class.
         "restricted": list(restricted_goods()),
+        # AND WHERE, IF ANYWHERE, A PLAYER COULD GET ONE. Baked because the
+        # answer today is "nowhere in the shipped rooms", and an empty list
+        # printed on every run is a gap somebody can close; a gap nothing
+        # prints is a gap nobody knows about. See `restricted_sources`.
+        "restricted_from": restricted_sources(),
         "demoting_offence": DEMOTING_OFFENCE,
         "tiers": {str(t): cq.tier_name(t) for t in (cq.DETAINED,) + cq.RUNGS},
-        "offence": {k: {"grade": v[1], "rung": v[2], "authority": v[3],
-                        "source": v[4]}
-                    for k, v in cq.OFFENCE.items()
-                    if k in (REFUSAL_OFFENCE, MOVED_ON_OFFENCE,
-                             DEMOTING_OFFENCE)},
+        "offence": {k: dict(_offence_row(k)) for k in
+                    (REFUSAL_OFFENCE, MOVED_ON_OFFENCE, DEMOTING_OFFENCE)},
         "places": rows,
     }
+
+
+def _offence_row(k: str) -> dict:
+    """One offence as the engine needs it -- grade, rung, AND THE FINE BAND.
+
+    `fine_for` is `days * WAGE_LO .. days * WAGE_HI`, both of which are
+    `economy.casual_constraint()`'s sourced wage band and neither of which
+    depends on who is standing there. The band is policy and is baked; the
+    point inside it is the person and is drawn in the engine.
+    """
+    v = cq.OFFENCE[k]
+    lo, hi, days = cq.fine_for(k)
+    return {"grade": v[1], "rung": v[2], "authority": v[3], "source": v[4],
+            "fine_lo": round(float(lo), 2), "fine_hi": round(float(hi), 2),
+            "fine_days": (None if days is None else float(days))}
+
+
+def draw_vectors(seed: str = "b5") -> list:
+    """Known answers from `consequence._u`, for the engine to check itself on.
+
+    Deliberately NOT the draws the engine will make -- those depend on a person
+    who does not exist at bake time. These are fixed strings whose only job is
+    to fail if `enforcement.gd::u` is not blake2b-64 over `"|".join(parts)`.
+    """
+    vs = [("fine", DEMOTING_OFFENCE, "player:draw_check", seed),
+          ("fine", REFUSAL_OFFENCE, "player:draw_check", seed),
+          ("brig_cell", "player:draw_check", 3, seed),
+          ("detain_on_refusal", "player:draw_check", "docking_bays", 3, 0,
+           seed)]
+    return [{"parts": [str(p) for p in v], "u": cq._u(*v)} for v in vs]
+
+
+def restricted_sources() -> list:
+    """Every counter in the shipped rooms that would sell you a restricted good.
+
+    IT IS EMPTY TODAY AND THAT IS THE FINDING, not a bug in this function.
+    `economy.json::stock` puts no `contraband`-class good behind any counter in
+    `boot.json::rooms`, so the only route into the search branch is the harness
+    flag `--arrest-contraband`, which is a test fixture and not a place. The
+    list is baked and printed on every engine load so the gap is visible from
+    inside the game rather than only from a spec ledger.
+
+    `economy.py` is not this module's to change; `scratchpad/PATCHES-4t-g2.md`
+    carries the two-line stock entry that would close it.
+    """
+    bad = set(restricted_goods())
+    rooms = set(boot_rooms())
+    out = []
+    try:
+        with open(LEDGER) as f:
+            stock = (json.load(f).get("stock") or {})
+    except Exception:                                             # noqa: BLE001
+        return out
+    for k in sorted(stock if isinstance(stock, dict) else ()):
+        v = stock[k]
+        place = k.split("/", 1)[0] if "/" in k else k
+        names = (list(v) if isinstance(v, dict) else
+                 [g.get("name", "") for g in v] if isinstance(v, list) else [])
+        for n in sorted(names):
+            if str(n) in bad:
+                out.append({"where": k, "good": str(n),
+                            "in_boot": bool(place in rooms)})
+    return out
 
 
 def emit(path: str = None, **kw) -> str:
@@ -529,14 +633,14 @@ def report(all_places=False, out=print) -> dict:
         out(f"{k:<16}{r['respond_s']:>7.0f}s{det['legs']['escort_s'] / 60:>7.1f}m"
             f"{det['hold_s_h'][13] / 3600:>8.1f}h"
             f"{det['legs']['court_s'] / 60:>6.1f}m"
-            f"{det['total_s_h'][13] / 3600:>8.1f}h{c1['fine']:>8.2f}  "
+            f"{det['total_s_h'][13] / 3600:>8.1f}h{c1['fine_subject']:>8.2f}  "
             f"{c1['disposal']}")
     out("")
     out("AND WHAT IT COSTS THE THIRD TIME -- the same person, stopped again:")
     k0 = sorted(d["places"])[0]
     for i, c in enumerate(d["places"][k0]["detention"]["ladder"]):
         out(f"  stop {i + 1} at {k0}: {c['tier_before_name']} -> "
-            f"{c['tier_after_name']}, {c['fine']:.2f} cr, {c['reason']}")
+            f"{c['tier_after_name']}, {c['fine_subject']:.2f} cr, {c['reason']}")
     return d
 
 
@@ -639,7 +743,7 @@ def selftest(out=print) -> bool:                                  # noqa: C901
           f"transit: 1st -> {seen[0][2][:34]}; 2nd -> {seen[-1][2][:44]}")
 
     # 5. THE FINE IS REAL MONEY AGAINST A REAL PURSE.
-    fine = rows[k0]["detention"]["ladder"][0]["fine"]
+    fine = rows[k0]["detention"]["ladder"][0]["fine_subject"]
     lo, hi, days = cq.fine_for(REFUSAL_OFFENCE)
     check(lo <= fine <= hi, "the fine sits inside the offence's own band",
           f"{fine:.2f} cr in {lo:.2f}-{hi:.2f} ({days:g} day of wages)")
@@ -734,6 +838,47 @@ def selftest(out=print) -> bool:                                  # noqa: C901
           "a booking names the same cell every time, and not everyone's cell",
           "%d distinct cells over 64 bookings, range %d..%d"
           % (len(set(cells)), min(cells), max(cells)))
+
+    # NOTHING PER-PERSON MAY BE BAKED AS A SCALAR THE ENGINE INDEXES.
+    # This is the rule behind session 4t round 2's fix, asserted on the ARTEFACT
+    # rather than on the intention -- a re-bake that re-introduced `fine` or
+    # `brig_cell` at the top level would put a stranger's money back into the
+    # shipped build, and the engine has no way to tell.
+    d_now = d
+    banned = [k for k in ("brig_cell",) if k in d_now]
+    lad = d_now["places"][k0]["search"]["ladder"][0]
+    check(not banned and "fine" not in lad and "fine_subject" in lad,
+          "no per-person DRAW is baked where the engine could index it",
+          "top-level %s; ladder row carries %s"
+          % (banned or "clean",
+             ", ".join(sorted(x for x in lad if "fine" in x))))
+    orow = d_now["offence"][DEMOTING_OFFENCE]
+    flo, fhi, _fd = cq.fine_for(DEMOTING_OFFENCE)
+    check(abs(orow["fine_lo"] - flo) < 0.005
+          and abs(orow["fine_hi"] - fhi) < 0.005 and fhi > flo,
+          "what IS baked is the band, which is policy and not a person",
+          "%s %.2f..%.2f cr = fine_for(%s)"
+          % (DEMOTING_OFFENCE, orow["fine_lo"], orow["fine_hi"],
+             DEMOTING_OFFENCE))
+    # AND THE ENGINE'S OWN DRAW IS CHECKABLE. These four vectors are what
+    # `enforcement.gd::_check_draw` compares its blake2b against before a credit
+    # can move; here they are only asserted to be real answers from
+    # `consequence._u` and not, say, zeros.
+    dv = d_now["draw_check"]
+    check(len(dv) >= 4
+          and all(abs(v["u"] - cq._u(*v["parts"])) < 1e-15 for v in dv)
+          and len({round(v["u"], 9) for v in dv}) == len(dv),
+          "the engine can prove its hash IS consequence._u",
+          "%d vector(s), u in %.4f..%.4f"
+          % (len(dv), min(v["u"] for v in dv), max(v["u"] for v in dv)))
+    # THE REACH, REPORTED RATHER THAN ASSUMED. See `restricted_sources`.
+    rs = d_now["restricted_from"]
+    here = [r for r in rs if r["in_boot"]]
+    print("  ..   a restricted good is sold in %d place(s), %d in this build's "
+          "rooms -- %s"
+          % (len(rs), len(here),
+             ", ".join("%s@%s" % (r["good"], r["where"]) for r in rs[:4])
+             or "nowhere"))
 
     # THE LOOP AND THE RECORD, RUN RATHER THAN DESCRIBED.
     _q = lambda *_a, **_k: None                                  # noqa: E731
@@ -1446,11 +1591,21 @@ def _ledger_delta(before: str, after: str) -> str:
         return "ARREST ledger=UNREADABLE"
     ra = (a.get("record") or {}).get("convictions", [])
     rb = (b.get("record") or {}).get("convictions", [])
+    # THE STORED `tier` FIELD USED TO BE PRINTED HERE AND IT DOES NOT MOVE.
+    # `interact.gd::convict` writes the demotion into the RECORD, because
+    # `player.py` deliberately keeps no stored rung -- so this line reported
+    # `tier 2 -> 2.0` beside the word `ok`, which reads as a demotion that did
+    # not happen. It is replaced by the thing that actually changes in the
+    # document: `record.visa_revoked` and what it was taken from. The rung
+    # itself is `_reload_line`'s, re-derived by `consequence.tier_of`.
+    rec = b.get("record") or {}
     return ("ARREST ledger cr %.2f -> %.2f (-%.2f), convictions %d -> %d, "
-            "tier %s -> %s\n%s"
+            "revoked=%s from=%s (stored tier field %s -> %s, which is a "
+            "report and not the rung)\n%s"
             % (float(a.get("credits", 0)), float(b.get("credits", 0)),
                float(a.get("credits", 0)) - float(b.get("credits", 0)),
-               len(ra), len(rb), a.get("tier"), b.get("tier"),
+               len(ra), len(rb), bool(rec.get("visa_revoked")),
+               rec.get("revoked_from") or "-", a.get("tier"), b.get("tier"),
                _reload_line(a, b)))
 
 
@@ -1479,14 +1634,25 @@ def _reload_line(before: dict, after: dict) -> str:
         t0 = int(pl.tier)
         pl.restore({k: v for k, v in after.items() if k != "npc_id"})
         bk = bookings(after)
+        # WHICH ROW IS QUOTED, AND WHY IT IS NOT `bk[-1]`. `bookings` recovers
+        # the DAY of a conviction from the note `consequence.arrest` writes, and
+        # only a revocation writes one -- so on three convictions the dated row
+        # is the FIRST and `bk[-1]["cell"]` was `None`. The gate below asserts
+        # on the cell, and a `None` it could not have been compared against is
+        # exactly the shape of an assertion that cannot fail. The cell is the
+        # same for every booking of one (person, day) by construction, so the
+        # dated row is the whole answer rather than a sample of it.
+        dated = next((r for r in bk if r["day"] is not None), None)
+        q = dated or (bk[-1] if bk else None)
         return ("ARREST reload rung=%d(%s) from a clean card at rung %d(%s); "
                 "revoked=%s from=%s; booking=%s"
                 % (int(pl.tier), pl.tier_name, t0, cq.tier_name(t0),
                    bool(rb.get("visa_revoked")),
                    rb.get("revoked_from") or "-",
-                   ("%s/%s/%.2f cr/cell %s" % (bk[-1]["who"], bk[-1]["offence"],
-                                               bk[-1]["fine"], bk[-1]["cell"]))
-                   if bk else "none"))
+                   ("%d row(s) %s/%s/%.2f cr/cell %s"
+                    % (len(bk), q["who"], q["offence"], q["fine"],
+                       ("--" if q["cell"] is None else "%02d" % q["cell"])))
+                   if q else "none"))
     except Exception as e:                                        # noqa: BLE001
         return "ARREST reload UNREADABLE -- %s" % e
 
@@ -1531,6 +1697,71 @@ def prog_ledger(day: int = 3, seed: str = "b5") -> tuple:
     path = os.path.join(tempfile.mkdtemp(prefix="prog-purse-"), "economy.json")
     _ledger_for(pl, day=day, seed=seed, path=path)
     return pl, path
+
+
+_BOOKING_RE = re.compile(
+    r"^ARREST booking -- (.+?), (\w+), cell (\d+) of (\d+), ([\d.]+) cr, ",
+    re.M)
+_RELOAD_BK_RE = re.compile(
+    r"booking=(\d+) row\(s\) (.+?)/(\w+)/([\d.]+) cr/cell (\S+)")
+_DEBIT_RE = re.compile(r"^ARREST ledger cr .*\(-([\d.]+)\)", re.M)
+
+
+def _prog_money(out: str, d: dict) -> bool:
+    """DOES THE MONEY BELONG TO THE PERSON THE RECORD NAMES? Four checks.
+
+    THE DEFECT THIS EXISTS FOR, stated once so the next reader does not have to
+    reconstruct it. Every per-person draw in this module goes through
+    `consequence._u` keyed on `npc_id`. Session 4t round 1 baked two of them --
+    the fine and the brig cell -- as SCALARS into a table the engine indexes for
+    whoever `interact.gd::_my_purse` happened to load. The two are the same
+    person only when the ledger on disk is the ledger the bake read, which is
+    exactly the assumption a save file breaks. The gate printed both numbers,
+    one line apart, and asserted neither.
+
+    So this compares the three places the fine appears -- the debit the engine
+    performed, the booking line the engine printed, and `bookings()`'s
+    reconstruction from the saved record -- and the two places the cell appears.
+    Any pair disagreeing is a person mismatch, and it fails.
+    """
+    good = True
+
+    def ck(name, okv, detail=""):
+        nonlocal good
+        good = good and bool(okv)
+        print("    %s %-46s %s" % ("ok  " if okv else "FAIL", name, detail))
+
+    bks = _BOOKING_RE.findall(out)
+    mr = _RELOAD_BK_RE.search(out)
+    mdb = _DEBIT_RE.search(out)
+    if not bks or not mr or not mdb:
+        ck("the run printed a booking, a reload and a debit", False,
+           "booking lines=%d reload=%s debit=%s"
+           % (len(bks), bool(mr), bool(mdb)))
+        return False
+    who_e, off_e, cell_e, cells_e, fine_e = bks[-1]
+    cell_e, cells_e, fine_e = int(cell_e), int(cells_e), float(fine_e)
+    n_r, who_r, off_r, fine_r, cell_r = mr.groups()
+    n_r, fine_r = int(n_r), float(fine_r)
+    debited = float(mdb.group(1))
+    detained = int(d.get("detained", 0) or 0)
+
+    ck("the booking names the person the engine loaded", who_e == who_r,
+       "engine `%s`, record `%s`" % (who_e, who_r))
+    ck("the fine on the record is the fine that was drawn",
+       abs(fine_e - fine_r) <= 0.011 and fine_e > 0.0,
+       "engine %.2f cr, `bookings()` %.2f cr, offence %s/%s"
+       % (fine_e, fine_r, off_e, off_r))
+    ck("the credits the FILE lost are n x that fine", detained > 0
+       and abs(debited - detained * fine_e) <= 0.02 * detained,
+       "%d detention(s) x %.2f = %.2f against %.2f cr off the document"
+       % (detained, fine_e, detained * fine_e, debited))
+    ck("the cell on the record is the cell they were held in",
+       cell_r != "--" and cell_r.isdigit() and int(cell_r) == cell_e
+       and 1 <= cell_e <= cells_e,
+       "engine cell %02d of %d, `bookings()` cell %s, %d row(s)"
+       % (cell_e, cells_e, cell_r, n_r))
+    return good
 
 
 def _prog_gate(verbose=False) -> dict:
@@ -1583,13 +1814,28 @@ def _prog_gate(verbose=False) -> dict:
     # the next session does not inherit, which is the whole of THE-GAME's
     # "the record is what makes a second day different from the first".
     md = re.search(r"^ARREST ledger cr .*\(-([\d.]+)\), convictions (\d+) -> "
-                   r"(\d+), tier (\S+) -> (\S+)", out, re.M)
+                   r"(\d+), revoked=(\w+) from=(\S+)", out, re.M)
     on_disk = (bool(md) and float(md.group(1)) > 0.0
-               and int(md.group(3)) > int(md.group(2)))
+               and int(md.group(3)) > int(md.group(2))
+               and md.group(4) == "True")
     print("  %s the LEDGER ON DISK carries it: %s"
           % ("ok  " if on_disk else "FAIL",
              md.group(0)[7:] if md else "no ledger line"))
     ok = ok and on_disk
+    # THE MONEY AND THE RECORD MUST BE ABOUT THE SAME PERSON, and until this
+    # session nothing asked. The engine printed `fine 187.66 cr paid` and the
+    # reconstruction printed `206.63 cr` on the next line of the same screen,
+    # because the sidecar carried a fine drawn for `player:downbelow` and the
+    # run loaded `player:g2c`. Three equalities close it, and each names a
+    # different pair that could drift:
+    #
+    #   1. the engine's debit == the engine's own booking line     (runtime)
+    #   2. the engine's booking == `bookings()`'s reconstruction   (the record)
+    #   3. n * that fine == the credits the FILE actually lost     (the money)
+    #
+    # and the cell is checked the same way, because it is the same class of
+    # per-person draw and was baked as a stranger's scalar beside the fine.
+    ok = _prog_money(out, d) and ok
     # THE RELOAD, AND IT IS THE HALF THE ACCEPTANCE IS ACTUALLY ABOUT. The
     # engine wrote a JSON document and quit; this line is Python opening that
     # document as a second session would and asking `consequence.tier_of` for
@@ -1709,11 +1955,40 @@ ENSURE = (
     # manifest writes a perfectly well-formed table with `places: {}` -- which
     # exists, so `--ensure` reported it present and the gate then failed with a
     # verdict about the arrest chain. A table with no places is not a table.
+    # AND THE SAME DEFECT A THIRD TIME, which is why it is now a function. A
+    # sidecar baked before session 4t round 2 has `places`, so it passed -- and
+    # it has no `draw_check` and no `fine_lo`, so `enforcement.gd` refuses to
+    # price anything and the gate fails talking about an unpriced fine. The
+    # predicate asks what the CONSUMER needs, key by key.
     ("the consequence table",
-     lambda: bool((json.load(open(OUT_JSON)).get("places") or {})
-                  if os.path.exists(OUT_JSON) else False),
+     lambda: _table_is_current(),
      ["python3", "station/enforcement.py", "--bake"], "~63 s"),
 )
+
+
+def _table_is_current(path: str = None) -> bool:
+    """Does the sidecar on disk carry everything `enforcement.gd` reads?
+
+    A table with no places is not a table (see above), and a table with no
+    `draw_check` is a table the engine cannot price a fine from -- it will
+    refuse, loudly and correctly, and the failure will read as a defect in the
+    arrest chain rather than as a stale artefact.
+    """
+    path = path or OUT_JSON
+    try:
+        with open(path) as f:
+            d = json.load(f)
+    except Exception:                                             # noqa: BLE001
+        return False
+    if not (d.get("places") or {}):
+        return False
+    if not (d.get("draw_check") or []):
+        return False
+    if int(d.get("brig_cells", 0)) <= 0:
+        return False
+    off = d.get("offence") or {}
+    row = off.get(DEMOTING_OFFENCE) or {}
+    return float(row.get("fine_hi", 0.0)) > 0.0
 
 
 def ensure(force=False, out=print) -> bool:

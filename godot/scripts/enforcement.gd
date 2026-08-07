@@ -107,6 +107,174 @@ var _looked := false
 var _brig: Dictionary = {}
 var _cell := 0
 
+## Does this build's `u()` agree with `consequence._u`? Set at `_load` from the
+## baked `draw_check` vectors. FALSE MEANS NOTHING IS CHARGED: a hash that is
+## subtly wrong produces a fine inside the band and a cell inside the block, so
+## it cannot be caught by looking at the number. See `_fine_of`.
+var _draw_ok := false
+
+
+# ===========================================================================
+#  THE DRAW -- `consequence._u`, IN THE ENGINE, BECAUSE THE PERSON IS HERE
+# ===========================================================================
+# WHY THIS EXISTS AT ALL, since this file's whole premise is that it computes
+# nothing. Session 4t round 1 baked the fine and the cell as SCALARS, and both
+# are `consequence._u` draws keyed on `npc_id`. `interact.gd::_my_purse` loads
+# whichever `player:` purse the ledger on disk holds, which is not necessarily
+# the purse the bake read -- so the shipped build charged one person's fine to
+# another and booked them into a stranger's cell. Measured: 187.66 cr debited
+# against a 206.63 cr booking record, in one run, printed on one screen.
+#
+# The fix cannot be "bake harder", because the person does not exist at bake
+# time. So the split is: POLICY IS BAKED (the offence's fine band, the number of
+# cells, which goods are restricted, the disposal ladder -- none of which depend
+# on who is standing there) and THE DRAW IS TAKEN HERE, off the live `npc_id`,
+# with the same hash. This file still holds no rule; it holds the project's
+# PRNG, which is a different thing.
+#
+# `HashingContext` has MD5/SHA1/SHA256 and no blake2b, so it is written out. It
+# is a single 128-byte block because every key this draws on is short, and
+# `draw_check` proves the result against `consequence._u` at load, on four fixed
+# strings, before a credit moves.
+const _M32 := 0xFFFFFFFF
+const _IV := [0x6a09e667, 0xf3bcc908, 0xbb67ae85, 0x84caa73b,
+	0x3c6ef372, 0xfe94f82b, 0xa54ff53a, 0x5f1d36f1,
+	0x510e527f, 0xade682d1, 0x9b05688c, 0x2b3e6c1f,
+	0x1f83d9ab, 0xfb41bd6b, 0x5be0cd19, 0x137e2179]
+const _SIGMA := [
+	[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+	[14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3],
+	[11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4],
+	[7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8],
+	[9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13],
+	[2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9],
+	[12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11],
+	[13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10],
+	[6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5],
+	[10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0]]
+
+
+## Rotate the 64-bit word held as (hi, lo) right by `n`, back into `v` at `i`.
+static func _ror(v: Array, i: int, n: int) -> void:
+	var hi: int = v[i]
+	var lo: int = v[i + 1]
+	if n >= 32:
+		var t := hi
+		hi = lo
+		lo = t
+		n -= 32
+	if n > 0:
+		var nh := ((hi >> n) | (lo << (32 - n))) & _M32
+		var nl := ((lo >> n) | (hi << (32 - n))) & _M32
+		hi = nh
+		lo = nl
+	v[i] = hi
+	v[i + 1] = lo
+
+
+## v[a] += v[b] (+ optional message word), in 32-bit halves so no addition ever
+## touches the sign bit of a Godot int. That is the whole reason for the split
+## representation: signed 64-bit overflow is not something to rely on.
+static func _add(v: Array, a: int, b: int) -> void:
+	var lo: int = v[a + 1] + v[b + 1]
+	var hi: int = v[a] + v[b] + (lo >> 32)
+	v[a] = hi & _M32
+	v[a + 1] = lo & _M32
+
+
+static func _addw(v: Array, a: int, whi: int, wlo: int) -> void:
+	var lo: int = v[a + 1] + wlo
+	var hi: int = v[a] + whi + (lo >> 32)
+	v[a] = hi & _M32
+	v[a + 1] = lo & _M32
+
+
+static func _xor(v: Array, a: int, b: int) -> void:
+	v[a] = v[a] ^ v[b]
+	v[a + 1] = v[a + 1] ^ v[b + 1]
+
+
+static func _g(v: Array, a: int, b: int, c: int, d: int,
+		m: Array, x: int, y: int) -> void:
+	_add(v, a, b)
+	_addw(v, a, m[x * 2], m[x * 2 + 1])
+	_xor(v, d, a)
+	_ror(v, d, 32)
+	_add(v, c, d)
+	_xor(v, b, c)
+	_ror(v, b, 24)
+	_add(v, a, b)
+	_addw(v, a, m[y * 2], m[y * 2 + 1])
+	_xor(v, d, a)
+	_ror(v, d, 16)
+	_add(v, c, d)
+	_xor(v, b, c)
+	_ror(v, b, 63)
+
+
+## blake2b, digest_size 8, no key, one block -- `consequence._u`'s hash exactly.
+## Returns the uniform in [0,1) that `_u` returns: Python reads the 8-byte
+## digest BIG-endian, and blake2b serialises h[0] little-endian, so the value is
+## the byte-swap of the final h[0].
+static func u(parts: Array) -> float:
+	var strs := PackedStringArray()
+	for p in parts:
+		strs.append(str(p))
+	var msg := "|".join(strs).to_utf8_buffer()
+	if msg.size() > 128:
+		push_error("enforcement.u: %d-byte key -- this is the one-block form"
+			% msg.size())
+		return -1.0
+	var h := []
+	h.resize(16)
+	for i in range(16):
+		h[i] = _IV[i]
+	h[1] = h[1] ^ 0x01010008          # 0x01010000 | (keylen<<8) | digest_len
+	var m := []
+	m.resize(32)
+	for i in range(16):
+		var lo := 0
+		var hi := 0
+		for b in range(4):
+			var j := i * 8 + b
+			lo |= (int(msg[j]) if j < msg.size() else 0) << (b * 8)
+		for b in range(4):
+			var j := i * 8 + 4 + b
+			hi |= (int(msg[j]) if j < msg.size() else 0) << (b * 8)
+		m[i * 2] = hi & _M32
+		m[i * 2 + 1] = lo & _M32
+	var v := []
+	v.resize(32)
+	for i in range(16):
+		v[i] = h[i]
+		v[16 + i] = _IV[i]
+	v[25] = v[25] ^ (msg.size() & _M32)          # t low word, low half
+	v[28] = v[28] ^ _M32                         # final block: v[14] = ~v[14]
+	v[29] = v[29] ^ _M32
+	for r in range(12):
+		var s: Array = _SIGMA[r % 10]
+		# Word i lives at array index 2i (hi) and 2i+1 (lo), so the eight
+		# standard column/diagonal mixes (0,4,8,12) .. (3,4,9,14) are doubled.
+		_g(v, 0, 8, 16, 24, m, s[0], s[1])
+		_g(v, 2, 10, 18, 26, m, s[2], s[3])
+		_g(v, 4, 12, 20, 28, m, s[4], s[5])
+		_g(v, 6, 14, 22, 30, m, s[6], s[7])
+		_g(v, 0, 10, 20, 30, m, s[8], s[9])
+		_g(v, 2, 12, 22, 24, m, s[10], s[11])
+		_g(v, 4, 14, 16, 26, m, s[12], s[13])
+		_g(v, 6, 8, 18, 28, m, s[14], s[15])
+	var f_hi: int = h[0] ^ v[0] ^ v[16]
+	var f_lo: int = h[1] ^ v[1] ^ v[17]
+	# Byte-swap: Python reads the little-endian serialisation big-endian.
+	var s_hi := _bswap(f_lo)
+	var s_lo := _bswap(f_hi)
+	return (float(s_hi) * 4294967296.0 + float(s_lo)) / 18446744073709551616.0
+
+
+static func _bswap(x: int) -> int:
+	return (((x >> 24) & 0xFF) | (((x >> 16) & 0xFF) << 8)
+		| (((x >> 8) & 0xFF) << 16) | ((x & 0xFF) << 24)) & _M32
+
 ## What a search FINDS. `economy.GOODS`' own `contraband` class, baked. The
 ## engine holds no opinion about which goods are illegal.
 var _restricted: Array = []
@@ -204,9 +372,9 @@ func _load() -> void:
 	_data = d
 	_places = d.get("places", {})
 	_brig = d.get("brig_address", {})
-	_cell = int(d.get("brig_cell", 0))
 	_restricted = d.get("restricted", [])
 	_demoting = String(d.get("demoting_offence", "contraband"))
+	_check_draw()
 	print("enforcement: brig at %s %s ring %d deck %d, %d cells, %d restricted "
 		% [String(_brig.get("place", "?")), String(_brig.get("sector", "?")),
 			int(_brig.get("ring", -1)), int(_brig.get("deck", -1)),
@@ -218,6 +386,96 @@ func _load() -> void:
 			"tier", -99)), String((d.get("player", {}) as Dictionary).get(
 			"tier_name", "?"))]
 		+ "response %s" % _spread())
+	var src: Array = d.get("restricted_from", [])
+	var here := 0
+	for r in src:
+		if bool((r as Dictionary).get("in_boot", false)):
+			here += 1
+	print("enforcement: a restricted good is sold in %d place(s), %d of them in "
+		% [src.size(), here]
+		+ "this build's rooms -- %s"
+		% ("a player can get one and be searched for it" if here > 0 else
+			"so `--arrest-contraband` is the only route into a search. "
+			+ "See enforcement.py::restricted_sources"))
+
+
+## DOES THIS BUILD'S `u()` AGREE WITH `consequence._u`? Four fixed strings with
+## known answers, checked before a credit can move. It is checked rather than
+## trusted because a wrong hash is invisible in the output: every fine it draws
+## is still inside the band and every cell is still inside the block, so the
+## only way to see it is to compare against the thing it is supposed to be.
+func _check_draw() -> void:
+	var vs: Array = _data.get("draw_check", [])
+	if vs.is_empty():
+		_draw_ok = false
+		print("enforcement: NO draw_check in the sidecar -- re-bake with "
+			+ "`python3 station/enforcement.py --bake`. Nothing will be charged.")
+		return
+	var bad := 0
+	var worst := 0.0
+	for row in vs:
+		var r := row as Dictionary
+		var got := u(r.get("parts", []))
+		var e := absf(got - float(r.get("u", -1.0)))
+		worst = maxf(worst, e)
+		if not (e < 1e-15):
+			bad += 1
+	_draw_ok = (bad == 0)
+	print("enforcement: draw check %d/%d against consequence._u (worst |d| %.3e)"
+		% [vs.size() - bad, vs.size(), worst]
+		+ ("" if _draw_ok else " -- FAILED, so nothing will be charged"))
+
+
+## THIS PERSON'S FINE FOR THIS OFFENCE, drawn here because the person is here.
+## `consequence.fine_amount`: `round(lo + (hi-lo) * _u("fine", off, id, seed), 2)`.
+## Returns -1.0 rather than 0.0 when it cannot be drawn, so a caller cannot
+## mistake "no fine is due" for "I could not work out the fine".
+func _fine_of(offence: String) -> float:
+	if not _draw_ok or _player == null:
+		return -1.0
+	var row = (_data.get("offence", {}) as Dictionary).get(offence, null)
+	if typeof(row) != TYPE_DICTIONARY:
+		return -1.0
+	var lo := float((row as Dictionary).get("fine_lo", 0.0))
+	var hi := float((row as Dictionary).get("fine_hi", 0.0))
+	if hi <= 0.0:
+		return 0.0
+	var nid := String(_player.get("npc_id"))
+	if nid == "":
+		return -1.0
+	return snappedf(lo + (hi - lo) * u(["fine", offence, nid, _seed()]), 0.01)
+
+
+## WHICH CELL THIS BOOKING GOES INTO. `enforcement.py::brig_cell` --
+## `1 + int(_u("brig_cell", npc_id, day, seed) * BRIG_CELLS)`, keyed on the two
+## things a booking is identified by. Derived here for the same reason the fine
+## is: it is a draw on the person, and the person is not known at bake time.
+func _cell_of() -> int:
+	if not _draw_ok or _player == null:
+		return 0
+	var cells := int(_data.get("brig_cells", _brig.get("cells", 0)))
+	var nid := String(_player.get("npc_id"))
+	if cells <= 0 or nid == "":
+		return 0
+	return 1 + int(u(["brig_cell", nid, _day(), _seed()]) * float(cells))
+
+
+func _seed() -> String:
+	return String(_data.get("seed", "b5"))
+
+
+## THE DAY THE BOOKING IS RECORDED ON, and it must be the LEDGER's day, not the
+## sidecar's. `interact.gd::convict` writes `"day %d: ..."` into the record from
+## `_led.day`, and `enforcement.py::bookings` reads that note back to recover
+## the day it re-derives the cell from. If this read the bake day the two would
+## name different cells for one booking, which is the defect this whole section
+## exists to close, arriving by a different door.
+func _day() -> int:
+	if _interact != null:
+		var led = _interact.get("_led")
+		if typeof(led) == TYPE_DICTIONARY and (led as Dictionary).has("day"):
+			return int((led as Dictionary)["day"])
+	return int(_data.get("day", 1))
 
 
 ## The contrast, printed on every run, because one number would hide it.
@@ -722,12 +980,12 @@ func _chain() -> Array:
 		"ESCORTED TO THE BRIG -- %.1f min on the routed graph"
 			% (float(legs.get("escort_s", 0.0)) / 60.0),
 		"BOOKED IN CELL %02d OF %d -- %s, %.0f min"
-			% [_cell, int(_brig.get("cells", 0)),
+			% [_cell_of(), int(_brig.get("cells", 0)),
 				String(d.get("offence", "")).to_upper().replace("_", " "),
 				float(legs.get("booking_s", 0.0)) / 60.0],
 		"HELD TO THE NEXT OMBUDS SITTING -- %.1f h" % (hold_s / 3600.0),
 		"OMBUDS COURT -- %s" % String(c.get("reason", "")).left(64),
-		"FINE %.2f CR -- %s" % [float(c.get("fine", 0.0)),
+		"FINE %.2f CR -- %s" % [maxf(_fine_of(String(d.get("offence", ""))), 0.0),
 			String(c.get("disposal", "")).to_upper()],
 		"RELEASED -- %.1f h in custody, %s" % [total_s / 3600.0, card],
 	]
@@ -778,6 +1036,7 @@ func _to_brig() -> void:
 	if inside:
 		brig_in_box += 1
 	brig_floor_m = _floor_under(brig_at)
+	_cell = _cell_of()
 	print("ARREST brig HELD at %s cell %02d of %d -- (%.1f, %.1f, %.1f), "
 		% [String(_brig.get("place", "brig")), _cell,
 			int(_brig.get("cells", 0)), brig_at.x, brig_at.y, brig_at.z]
@@ -923,12 +1182,22 @@ func _settle() -> void:
 		print("ARREST clock %05.2f -> %05.2f EMT (%.1f h in custody)"
 			% [now, hour_after, total_s / 3600.0])
 
-	# 2. THE MONEY, and it is the same purse a drink comes out of.
-	var fine := float(c.get("fine", 0.0))
+	# 2. THE MONEY, and it is THIS PERSON'S money -- see `_fine_of`. The sidecar
+	#    carries the band; the point inside it is drawn here off the live
+	#    `npc_id`, because `interact.gd::_my_purse` may well have loaded somebody
+	#    the bake never saw. A negative comes back when the draw could not be
+	#    made at all, and that is refused loudly rather than charged as zero.
+	var offence := String(d.get("offence", ""))
+	var fine := _fine_of(offence)
+	if fine < 0.0:
+		push_error("enforcement: no fine could be drawn for `%s` -- draw_ok=%s. "
+			% [offence, _draw_ok] + "NOTHING CHARGED, NOTHING RECORDED.")
+		print("ARREST fine UNPRICED for `%s` -- the sidecar carries no band or "
+			% offence + "the draw check failed. Re-bake enforcement.json.")
+		fine = 0.0
 	if _interact != null and _interact.has_method("fine") and fine > 0.0:
 		var paid: bool = _interact.call("fine", fine,
-			String(_data.get("court", "law_courts")),
-			String(d.get("offence", "")))
+			String(_data.get("court", "law_courts")), offence)
 		print("ARREST fine %.2f cr %s -- %.2f cr left"
 			% [fine, ("paid" if paid else "OUTSTANDING"),
 				float(_player.get("credits"))])
@@ -936,7 +1205,7 @@ func _settle() -> void:
 
 	# 3. THE RECORD AND THE RUNG. Written into the purse, so it survives.
 	if _interact != null and _interact.has_method("convict"):
-		_interact.call("convict", String(d.get("offence", "")), fine,
+		_interact.call("convict", offence, fine,
 			bool(c.get("revoked", false)), int(c.get("tier_after", -99)),
 			String(c.get("tier_after_name", "")))
 	last_line = String(c.get("disposal", ""))
@@ -954,9 +1223,10 @@ func _settle() -> void:
 	# 3b. AND IT IS READABLE. The booking is not stored: `enforcement.py::
 	#     bookings` recomputes it from the purse the line above just wrote, and
 	#     this is that record's one-line form, printed where a gate can read it.
+	_cell = _cell_of()
 	booking = ("%s, %s, cell %02d of %d, %.2f cr, %s"
 		% [String(_player.get("person")),
-			String(d.get("offence", "")), _cell,
+			offence, _cell,
 			int(_brig.get("cells", 0)), fine,
 			("%s WITHDRAWN" % String(c.get("tier_before_name", "")).to_upper()
 				if bool(c.get("revoked", false)) else "card endorsed")])
