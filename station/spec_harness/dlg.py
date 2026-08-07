@@ -103,18 +103,44 @@ def _dlg01(text):
     if d:
         bad.append(d)
 
-    # THE FLOOR. There is no per-NPC line store anywhere: every phrasing in the
-    # module is a template SHARED by whoever is speaking, which is also why the
-    # row's "no string may appear in two NPCs' sets" cannot hold as written.
-    shared = set()
-    for name in ("PHRASE", "ERA_PHRASE", "VISA_PHRASE", "DOWN_PHRASE", "GREET",
-                 "FAREWELL", "FAREWELL_DUE", "PERSONAL"):
-        shared |= _pool(getattr(dlg, name, ()))
-    bad.append("the floor is %d lines (%d each x %d cast) and dialogue.py has "
-               "%d NPC templates TOTAL, shared by every speaker -- so the "
-               "no-two-identical rule is violated by construction, not by a "
-               "shortfall" % (total, per, cast, len(shared)))
-    return False, "DLG-01: " + "; ".join(bad)
+    # THE FLOOR, AND IT IS COUNTED ON RENDERED STRINGS RATHER THAN TEMPLATES.
+    # `cast_lines(row)` returns the lines belonging to ONE person with that
+    # person's own facts already in them; the runtime braces that survive
+    # (`{ship}`, `{souls}`) are filled at speak() time, so this count still
+    # UNDERSTATES what a player hears, which is the safe direction for a floor.
+    roster = dlg.cast_roster()
+    if len(roster) != cast:
+        bad.append("dialogue.cast_roster() parses %d rows, spec says %d"
+                   % (len(roster), cast))
+    sets, short = {}, []
+    for r in roster:
+        ls = dlg.cast_lines(r)
+        sets[r["who"]] = set(ls)
+        if len(set(ls)) < per:
+            short.append((r["who"], len(set(ls))))
+    if short:
+        bad.append("%d of %d cast are under %d distinct lines, e.g. %s"
+                   % (len(short), len(roster), per, short[:3]))
+    # THE RULE THE ROW IS ACTUALLY ABOUT: no string in two NPCs' sets.
+    seen, shared = {}, []
+    for who, ls in sets.items():
+        for t in ls:
+            if t in seen:
+                shared.append((seen[t], who, t[:40]))
+            else:
+                seen[t] = who
+    if shared:
+        bad.append("%d strings appear in two NPCs' sets, e.g. %s"
+                   % (len(shared), shared[:2]))
+    got = len(seen)
+    if got < total:
+        bad.append("%d distinct Tier-1 lines against a floor of %d"
+                   % (got, total))
+    if bad:
+        return False, "DLG-01: " + "; ".join(bad)
+    return True, ("DLG-01: %d distinct Tier-1 lines (%d each x %d cast parsed "
+                  "from the annex), and no string appears in two NPCs' sets"
+                  % (got, per, len(roster)))
 
 
 def _dlg02(text):
@@ -160,16 +186,38 @@ def _dlg02(text):
     if _n(mt.group(1)) * got != _n(mt.group(2)):
         bad.append("%s x %d cells is not %s" % (mt.group(1), got, mt.group(2)))
 
-    # THE FLOOR: what a cell can actually say.
-    per_cell = len(_pool(dlg.PHRASE)) + len(_pool(dlg.GREET)) + \
-        len(_pool(dlg.FAREWELL)) + len(_pool(dlg.FAREWELL_DUE))
-    want_cell = _n(mt.group(1)) if mt else 30
-    bad.append("a cell draws from %d shared templates (%d role registers x %d "
-               "species voices modulate them, they do not multiply them); the "
-               "floor is %d per cell"
-               % (per_cell, len(dlg._ROLE_REGISTER), len(dlg._SPECIES_VOICE),
-                  want_cell))
-    return False, "DLG-02: " + "; ".join(bad)
+    # THE FLOOR: what a cell can actually say, measured over ALL of them.
+    want_cell = _n(mt.group(1))
+    cells = dlg.occupied_cells()
+    if len(cells) != got:
+        bad.append("dialogue.occupied_cells() gives %d, ROLE_WEIGHTS gives %d"
+                   % (len(cells), got))
+    pools = {c: dlg.cell_lines(*c) for c in cells}
+    thin = [(c, len(set(v))) for c, v in pools.items()
+            if len(set(v)) < want_cell]
+    if thin:
+        bad.append("%d of %d cells are under %d lines, e.g. %s"
+                   % (len(thin), len(cells), want_cell, thin[:3]))
+    # AND THE CELLS MUST BE DIFFERENT CELLS. A matrix of 79 identical pools
+    # passes every count above; identity is the only check that can see it.
+    flat = [t for v in pools.values() for t in v]
+    if len(set(flat)) != len(flat):
+        bad.append("%d of %d tier-2 lines are shared between cells"
+                   % (len(flat) - len(set(flat)), len(flat)))
+    # The annex's normative anti-repeat floor, walked rather than assumed.
+    mr = re.search(r"lines-before-first-repeat ≥(\d+)", text)
+    floor_rep = int(mr.group(1)) if mr else 20
+    worst = min((dlg.lines_before_repeat(sp, r, "harness") for sp, r in cells),
+                default=0)
+    if worst < floor_rep:
+        bad.append("a cell repeats itself after %d draws, floor is %d"
+                   % (worst, floor_rep))
+    if bad:
+        return False, "DLG-02: " + "; ".join(bad)
+    return True, ("DLG-02: %d occupied cells x %d lines = %d distinct tier-2 "
+                  "lines, no two cells sharing one, and %d draws before any "
+                  "cell repeats" % (len(cells), want_cell, len(set(flat)),
+                                    worst))
 
 
 def _dlg03(text):
@@ -199,13 +247,28 @@ def _dlg03(text):
         if bad:
             bad.append("on the live counter count the floor is %d, not %d"
                        % (each * counters, tot))
-    # THE FLOOR: `serve_response` returns one person saying one topic line; no
-    # place-specific trade pool exists at all.
-    bad.append("no per-counter trade vocabulary exists: serve_response() "
-               "returns speak(), whose trade line comes from the shared "
-               "PHRASE['trade'] pool of %d"
-               % len(_pool(dlg.PHRASE.get("trade", ()))))
-    return False, "DLG-03: " + "; ".join(bad)
+    # THE FLOOR: six place-specific trade lines per counter, naming wares.
+    tl = dlg.trade_lines()
+    thin = [(k, len(set(v))) for k, v in tl.items() if len(set(v)) < each]
+    if thin:
+        bad.append("%d counters are under %d place-specific trade lines, "
+                   "e.g. %s" % (len(thin), each, thin[:3]))
+    flat = [x for v in tl.values() for x in v]
+    if len(set(flat)) != len(flat):
+        bad.append("%d of %d trade lines are shared between counters"
+                   % (len(flat) - len(set(flat)), len(flat)))
+    # THE ROW'S OWN SPECIFICITY RULE, WHICH IS NOT A COUNT.
+    vague = [k for k, v in tl.items()
+             if any(re.search(r"\bgoods\b|\bwares\b|\bitems\b", x)
+                    for x in v)]
+    if vague:
+        bad.append("%d counters trade in unnamed goods: %s"
+                   % (len(vague), vague[:3]))
+    if bad:
+        return False, "DLG-03: " + "; ".join(bad)
+    return True, ("DLG-03: %d counters across %d places, %d distinct "
+                  "place-specific trade lines, every one naming its wares"
+                  % (counters, len(places), len(set(flat))))
 
 
 def _dlg04(text):
@@ -244,15 +307,36 @@ def _dlg04(text):
         return False, "DLG-04: cannot read the ambient/era floor"
     floor = int(m.group(1))
 
-    built = (len(br.ISN_BULLETINS) + len(br.MINIPAX_NOTICES)
-             + len(br.SHIP_CALL) + len(br.BOARD_VOICE) + 1)
-    bad.append("the floor is %d templates; broadcast.py ships %d (%d ISN, %d "
-               "MiniPax, %d ship calls at one call type each against the "
-               "spec's three, %d board voice, 1 sensor sweep) and there is no "
-               "denunciation set"
-               % (floor, built, len(br.ISN_BULLETINS), len(br.MINIPAX_NOTICES),
-                  len(br.SHIP_CALL), len(br.BOARD_VOICE)))
-    return False, "DLG-04: " + "; ".join(bad)
+    # THE FLOOR, read off broadcast.py's own census so the count and the
+    # content cannot drift apart.
+    cens = br.templates()
+    flat = [t for v in cens.values() for t in v]
+    if len(set(flat)) != len(flat):
+        bad.append("%d broadcast templates are duplicated"
+                   % (len(flat) - len(set(flat))))
+    if len(set(flat)) < floor:
+        bad.append("broadcast.py ships %d distinct templates against a floor "
+                   "of %d (%s)"
+                   % (len(set(flat)), floor,
+                      ", ".join("%s %d" % (k, len(v))
+                                for k, v in cens.items())))
+    if not cens.get("denunciation"):
+        bad.append("there is no denunciation set")
+    if len(cens.get("pa_ship", ())) != len(traffic.MANIFEST) * 3:
+        bad.append("PA covers %d of the %d ship-class x call-type templates"
+                   % (len(cens.get("pa_ship", ())), len(traffic.MANIFEST) * 3))
+    want_rumour = len(costume.ERA_EVENTS) * len(br.RUMOUR_SPEAKERS)
+    if len(cens.get("rumour", ())) != want_rumour:
+        bad.append("the era-rumour matrix has %d rows, %d events x %d speaker "
+                   "classes is %d" % (len(cens.get("rumour", ())),
+                                      len(costume.ERA_EVENTS),
+                                      len(br.RUMOUR_SPEAKERS), want_rumour))
+    if bad:
+        return False, "DLG-04: " + "; ".join(bad)
+    return True, ("DLG-04: %d distinct broadcast templates, all era-locked "
+                  "through costume.ERA_EVENTS (%s)"
+                  % (len(set(flat)),
+                     ", ".join("%s %d" % (k, len(v)) for k, v in cens.items())))
 
 
 def _dlg05(text):
@@ -276,20 +360,43 @@ def _dlg05(text):
         return False, "DLG-05: cannot read the player-line floor"
     floor = int(m2.group(1))
 
-    # THE ROW'S PREMISE IS STALE, AND THAT IS THE FINDING. It opens "From zero
-    # to a playable voice" and the section preamble says "zero player
-    # utterances"; `dialogue.SAY` exists and holds player lines under exactly
-    # the ask/press/let-go stances the row specifies.
-    say = _pool(dlg.SAY)
-    covered = len(dlg.SAY)
+    # THE FLOOR, over the four families the row's arithmetic names.
+    pl = dlg.player_lines()
+    flat = [t for v in pl.values() for t in v]
+    if len(set(flat)) != len(flat):
+        bad.append("%d player lines are duplicated"
+                   % (len(flat) - len(set(flat))))
     missing = [k for k, _f in dlg.TOPICS if k not in dlg.SAY]
-    bad.append("the annex says 'from zero'; dialogue.SAY ships %d player "
-               "templates over %d of the %d topics (missing %s) against a "
-               "floor of %d -- the openers/closers, the 96 role work-lines and "
-               "the 15 SHOW-PAPERS/BUY-SELL/refusal lines are still zero"
-               % (len(say), covered, len(dlg.TOPICS),
-                  ", ".join(missing) or "none", floor))
-    return False, "DLG-05: " + "; ".join(bad)
+    if missing:
+        bad.append("dialogue.SAY has no row for %s" % ", ".join(missing))
+    if len(set(flat)) < floor:
+        bad.append("dialogue ships %d distinct player lines against a floor "
+                   "of %d (%s)" % (len(set(flat)), floor,
+                                   ", ".join("%s %d" % (k, len(v))
+                                             for k, v in pl.items())))
+    # The 96 are two lists multiplied, and the lists are the project's own.
+    mw = re.search(r"role work-lines (\d+) roles × (\d+) shift verbs = (\d+)",
+                   text)
+    if mw:
+        nr, nv, nt = (int(mw.group(i)) for i in (1, 2, 3))
+        if len(dlg.PLAYER_ROLES) != nr:
+            bad.append("spec says %d player roles, dialogue has %d"
+                       % (nr, len(dlg.PLAYER_ROLES)))
+        if len(dlg.SHIFT_VERBS) != nv:
+            bad.append("spec says %d shift verbs, dialogue has %d"
+                       % (nv, len(dlg.SHIFT_VERBS)))
+        holes = [(r, v) for r in dlg.PLAYER_ROLES for v in dlg.SHIFT_VERBS
+                 if (r, v) not in dlg.WORK_LINE]
+        if holes:
+            bad.append("%d of %d work-grid cells are empty, e.g. %s"
+                       % (len(holes), nt, holes[:3]))
+    if bad:
+        return False, "DLG-05: " + "; ".join(bad)
+    return True, ("DLG-05: %d distinct player lines over %d topics x %d "
+                  "stances, %d roles x %d verbs, and the openers, papers and "
+                  "refusals" % (len(set(flat)), len(dlg.TOPICS),
+                                len(dlg.STANCES), len(dlg.PLAYER_ROLES),
+                                len(dlg.SHIFT_VERBS)))
 
 
 def _dlg06(text):
@@ -314,8 +421,31 @@ def _dlg06(text):
     elif len(_pool(pool)) > kosh:
         bad.append("Kosh pool is %d, over the ≤%d ceiling"
                    % (len(_pool(pool)), kosh))
-    if getattr(dlg, "BROKER_LINES", None) is None:
+    elif pool is not None:
+        # A CEILING IS NOT A COUNT, IT IS A BEHAVIOUR. "Never twice in one
+        # session" is checked by walking a session past the end of the pool
+        # and asserting the answer becomes silence rather than a repeat.
+        k = dlg._Speaker("kosh", "vorlon", "envoy", "council_chamber", "", "",
+                         "", "", "", "", False, "")
+        said = [dlg.scarce_line(k, dlg.World(session="spec", turn=t))[0]
+                for t in range(kosh + 2)]
+        spoke = [x for x in said if x]
+        if len(set(spoke)) != len(spoke):
+            bad.append("a Kosh session repeats itself inside %d lines" % kosh)
+        if any(said[kosh:]):
+            bad.append("the Kosh pool does not fall silent when exhausted")
+    bl = getattr(dlg, "BROKER_LINES", None)
+    if bl is None:
         bad.append("no Broker pool exists (≤%d, audience-gated)" % broker)
+    else:
+        if len({t for _g, t in bl}) > broker:
+            bad.append("Broker pool is %d, over the ≤%d ceiling"
+                       % (len({t for _g, t in bl}), broker))
+        alone, room = set(dlg.broker_lines(True)), set(dlg.broker_lines(False))
+        if not alone or not room or (alone & room):
+            bad.append("the Broker is not audience-gated: %d alone, %d with a "
+                       "room, %d shared" % (len(alone), len(room),
+                                            len(alone & room)))
 
     # The half that IS built and passes: an office-designate species has no
     # personal name to render, enforced by a raise rather than by a convention.
@@ -324,8 +454,12 @@ def _dlg06(text):
         if card["NAME"]:
             bad.append("%s renders a personal NAME %r" % (sp, card["NAME"]))
     if not bad:
-        return True, ("DLG-06: scarce voices capped and no office-designate "
-                      "species renders a personal name")
+        return True, ("DLG-06: Kosh %d lines (≤%d, distinct, then silence), "
+                      "Broker %d (≤%d, %d alone / %d with a room), and no "
+                      "office-designate species renders a personal name"
+                      % (len(_pool(pool)), kosh, len({t for _g, t in bl}),
+                         broker, len(dlg.broker_lines(True)),
+                         len(dlg.broker_lines(False))))
     return False, ("DLG-06: " + "; ".join(bad) + " [the no-name half holds: "
                    "%d species without a name grammar all render an empty NAME]"
                    % len(sched.SPECIES_WITHOUT_NAMES))
