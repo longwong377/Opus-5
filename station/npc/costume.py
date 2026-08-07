@@ -2719,6 +2719,121 @@ def report(out=print):
 
 
 # ---------------------------------------------------------------------------
+# 12b. The construction gate -- does a garment feature reach a POSED figure
+# ---------------------------------------------------------------------------
+# EVERY GATE IN THIS FILE SCORES THE MESH THIS FILE BUILDS, AND THE STATION
+# DOES NOT SHIP THAT MESH. `build_dressed` returns a rest-pose figure; every
+# person a player meets went through `npc/animation.py::rig` first, and that
+# is a door with a rule of its own -- one material group per PART, resolved by
+# the triangle offset the part starts at. A span split inside a part does not
+# fit through it. Ninety self-test assertions passed for as long as the yoke
+# existed and not one of them asked this question, because every one of them
+# measured the part in isolation, which is the failure mode CLAUDE.md names.
+#
+# So this gate asks the rule's question instead: take the mesh, put it through
+# the SAME function `animation` uses -- imported, not reimplemented, because a
+# second copy of a rule is how the two ends of a table drift apart -- and check
+# that every construction piece still owns its own material on the other side.
+#
+# Cheap on purpose: no build, no GPU, seconds. Run it before claiming a garment
+# is on anybody.
+CONSTRUCTION_PARTS = ("yoke_panel", "placket", "hem", "cuff", "boot_top")
+
+# The chain level the shipped corridor crowd is baked at. Read off
+# `populace.corridor_lod` when it can be imported, because that is the module
+# that decides; the fallback is the value it returns for a Blue ring today and
+# it is STATED as a fallback rather than silently substituted -- a gate that
+# quietly measures a different level from the one that ships is the tool that
+# manufactures evidence.
+SHIPPED_CROWD_LOD = 4
+
+
+def _shipped_lod():
+    try:
+        sys.path.insert(0, _STATION)
+        import populace as _pop                                 # noqa: PLC0415
+        return int(_pop.corridor_lod(211.478, 4.0)), "populace.corridor_lod"
+    except Exception as exc:                                    # noqa: BLE001
+        return SHIPPED_CROWD_LOD, f"FALLBACK ({exc})"
+
+
+def construction_gate(out=print, legacy=False, sample=12):
+    """Does a garment feature survive the door the shipped build goes through?
+
+    `legacy` is the negative control and it is the code as it stood before this
+    session: garment construction suppressed, so the yoke exists only as a span
+    split inside the torso part. It must FAIL.
+    """
+    import animation as _anim                                   # noqa: PLC0415
+    lod, lod_src = _shipped_lod()
+    chain = body.lod_chain()
+    dist = chain[lod]["switch_distance_m"]
+    species = ("human", "human", "human", "minbari", "narn", "centauri",
+               "drazi", "brakiri")
+    bad, carried, figures, pieces = [], 0, 0, 0
+    for sp in species:
+        for i in range(sample):
+            npc_id = f"gate/{sp}/{i}"
+            try:
+                m = dressed_mesh(sp, npc_id, lod=lod, distance_m=dist)
+            except Exception as exc:                            # noqa: BLE001
+                bad.append(f"{sp}/{i}: {exc}")
+                continue
+            if isinstance(m, tuple) or not getattr(m, "parts", None):
+                continue
+            if legacy:
+                # THE CONTROL: rebuild with every fitting culled, which is
+                # exactly what the corridor crowd got before this session --
+                # the yoke as a span, nothing else.
+                m = dressed_mesh(sp, npc_id, lod=lod,
+                                 distance_m=FITTINGS_NONE_M)
+            figures += 1
+            groups = _anim._groups_for_parts(m.parts, m.spans)
+            # What group did THIS module put each part under? The span whose
+            # range starts where the part starts. Compared against what the
+            # rig resolves, which is the only comparison that matters.
+            off, mine = 0, []
+            for _n, _v, t in m.parts:
+                hit = ""
+                for name, lo, hi in m.spans:
+                    if lo == off:
+                        hit = name
+                mine.append(hit)
+                off += len(t)
+            got = set()
+            for idx, (pname, _v, _t) in enumerate(m.parts):
+                if pname not in CONSTRUCTION_PARTS:
+                    continue
+                pieces += 1
+                if groups[idx] != mine[idx]:
+                    bad.append(f"{sp}/{i} {pname}: rig resolves "
+                               f"{groups[idx]!r}, this module wrote "
+                               f"{mine[idx]!r}")
+                got.add(groups[idx])
+            # THE QUESTION A PLAYER ASKS: is this person's COAT one flat
+            # colour? Boots are excluded deliberately -- `npc_leather__civ_boot`
+            # survived posing all along, and counting it would let the gate
+            # pass on a figure whose entire garment is one value, which is the
+            # frame this session started from.
+            if any(("cloth_trim" in g or "garment_soil" in g)
+                   for g in groups if g):
+                carried += 1
+    ok = (not bad) and figures and carried == figures and pieces > 0
+    out(f"construction gate: chain level {lod} ({lod_src}), "
+        f"switch distance {dist:.1f} m, {figures} figures")
+    out(f"  {pieces} construction pieces checked through "
+        f"animation._groups_for_parts")
+    out(f"  {carried}/{figures} figures carry a SECOND garment material "
+        f"after posing")
+    if bad:
+        for line in bad[:8]:
+            out(f"  FAIL {line}")
+        out(f"  ({len(bad)} findings)")
+    out("  PASS" if ok else "  FAIL")
+    return 0 if ok else 1
+
+
+# ---------------------------------------------------------------------------
 # 13. Self-test
 # ---------------------------------------------------------------------------
 def _selftest():
@@ -3375,6 +3490,12 @@ def main():
     ap.add_argument("--id", default="demo-1")
     ap.add_argument("--set")
     ap.add_argument("--lineup", action="store_true")
+    ap.add_argument("--construct", action="store_true",
+                    help="does a garment feature survive posing? The question "
+                         "no other gate here asks")
+    ap.add_argument("--legacy", action="store_true",
+                    help="--construct's negative control: the pre-4t build, "
+                         "where the yoke is a span inside the torso part")
     ap.add_argument("--lod", type=int, default=0)
     ap.add_argument("--datum", default="")
     a = ap.parse_args()
@@ -3382,6 +3503,8 @@ def main():
     if a.datum:
         s, e = a.datum.lower().lstrip("s").split("e")
         datum = (int(s), int(e))
+    if a.construct:
+        return construction_gate(legacy=a.legacy)
     if a.report:
         report()
         return 0
