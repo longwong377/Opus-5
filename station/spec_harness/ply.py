@@ -891,15 +891,25 @@ def _selftest(out=print):
     out("corpus control removed -> %s" % _absent("x", "brooch")[1][:120])
     _CACHE["corpus"] = body
 
-    # 2. AN ABSENCE CLAIM CAN GO THE OTHER WAY. Plant the string PLY-07 looks
-    #    for and watch the journal claim flip.
+    # 2. AN ABSENCE CLAIM CAN GO THE OTHER WAY: plant the string and watch it
+    #    flip.
+    #
+    #    THE NEEDLE MOVED WHEN THE JOURNAL WAS BUILT, and leaving it would have
+    #    left a control that cannot fire. This probe used to plant `journal`
+    #    and watch PLY-07's claim flip from absent to present; `journal` is now
+    #    genuinely everywhere in `station/`, so planting it proves nothing at
+    #    all -- the control would report a hit it did not cause. `phoneme` is
+    #    PLY-08's needle and is still absent from the whole tree, so it is what
+    #    the flip is demonstrated on now. A control has to be re-pointed at
+    #    something still missing every time one of its subjects gets built.
     import tempfile                                               # noqa: PLC0415
     fd, tmp = tempfile.mkstemp(suffix=".py")
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write("journal = {}\n")
+        fh.write("phoneme = {}\n")
+    out("`phoneme` absent    -> %s" % _absent("a phoneme bed", "phoneme")[1][:110])
     _CACHE["corpus"] = body + [(tmp, open(tmp, encoding="utf-8").read())]
-    out("`journal` planted -> %s" % _absent("a journal", "journal",
-                                            "JOURNAL")[1][:120])
+    out("`phoneme` planted   -> %s" % _absent("a phoneme bed",
+                                              "phoneme")[1][:110])
     _CACHE["corpus"] = body
     os.unlink(tmp)
 

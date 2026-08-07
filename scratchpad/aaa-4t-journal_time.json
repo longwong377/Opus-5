@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "bar": { "min_score": 4, "clean_rounds_required": 2, "max_rounds": 4 },
+  "subsystems": {
+    "journal_time": {
+      "status": "active",
+      "_merge_note": "Round zero is the BUILD and is not a review round (docs/AAA-STANDARD.md, 'Round zero is the build'). Written to scratchpad rather than docs/aaa-scorecard.json because eight other 4t agents share that file.",
+      "rounds": [
+        {
+          "round": 1,
+          "reviewer": "build-4t-journal_time",
+          "scores": { "craft": 3, "fidelity": 4, "performance": 3, "robustness": 4 },
+          "evidence": {
+            "fidelity": "SYS-16's eight kinds and CAST-05's two-ledger rule taken from docs/spec/SYSTEMS.md 362-371 and docs/spec/PEOPLE.md 710; every derived number is INV-760..765; the brooch tell is read out of npc/faction.py rather than restated; route times come through transit.walk_leg",
+            "robustness": "station/journal.py --selftest is 32/32 with eight negative controls that fire (a fact with no source, an unlisted kind, an actor row with nobody in it, an incident with no cid, a favour with no cause, standing with no cause, a stored fid contradicting its own fields, a route time transit.py contradicts); station/journal.py --gate is PASS with three controls that FAIL as required"
+          },
+          "broke_assertions": true,
+          "what_is_good": [
+            "the acceptance is two Godot PROCESSES -- learn, quit, reload -- which is strictly stronger than coldstart.py --g8's in-process restore",
+            "the fact id is FNV-1a checked across the Python/GDScript boundary at load, and journal.gd REFUSES to mint on a mismatch",
+            "time compression is discriminated from a jump by the only accumulating state in the build, because life.gd's Director is pure in the hour by design",
+            "journal.gd is instantiated by main.gd::_start_journal on the shipped _ready path and appears in save.gd::_subjects, not under a gate flag"
+          ],
+          "findings": [
+            { "severity": "major", "dimension": "craft", "descriptor": "C3",
+              "where": "godot/scripts/journal.gd",
+              "text": "There is no journal SURFACE. SUR-09 asks for a diegetic identicard-adjacent screen; the journal has entries() and prints them to stdout, and a player in the build cannot open it. It reads as a data store rather than as a thing in the world." },
+            { "severity": "major", "dimension": "performance", "descriptor": "P3",
+              "where": "godot/scripts/journal.gd::_witness_span",
+              "text": "The witness loop is O(days x calls) per frame over the deck's 62 calls with no index; at 62 calls it is trivial and at a streamed station of 174-plus calls across many cells it is not, and nothing gates the cost." },
+            { "severity": "minor", "dimension": "robustness", "descriptor": "R4",
+              "where": "station/journal.py::gate",
+              "text": "The gate SKIPs rather than fails when there is no built deck, which is the correct shape and means CI (which has no deck) never runs the acceptance test." }
+          ]
+        }
+      ]
+    }
+  }
+}
