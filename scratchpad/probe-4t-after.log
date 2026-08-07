@@ -1,0 +1,8 @@
+build_collision blue/0/0 at z=7460: 2,288 triangles, floor r=211.528 m
+  customs_north at x=+0.00 m, z=7460: floor 1.896 m below the head, ceiling 5.554 m above
+  customs_north at x=+4.00 m, z=7460: floor 1.899 m below the head, ceiling 5.551 m above
+  customs_north at x=+6.00 m, z=7460: floor 1.899 m below the head, ceiling 5.551 m above
+  customs_north at x=+7.00 m, z=7460: floor 1.897 m below the head, ceiling 5.553 m above
+  customs_north at x=+8.00 m, z=7460: floor 1.897 m below the head, ceiling 5.553 m above
+  customs_north at x=+8.60 m, z=7460: floor 1.899 m below the head, ceiling 5.551 m above
+after rc=0
