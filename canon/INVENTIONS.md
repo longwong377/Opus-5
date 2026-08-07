@@ -12161,3 +12161,62 @@ made cannot pass.
 **What would overturn it.** Generators that emit paths relative to the repository root, which
 would make the whole function a no-op and is the better long-term answer; a `res://`-mounted or
 packed world, which would remove the external tree entirely.
+
+## INV-890 — a memo key quantises exactly once, and the value is built from the key's own value
+
+**What.** `station/incident.py::_pool()`. One local `h = float(int(hour) % 24)` feeds BOTH the
+memo key and the `resident.roster` call the value is built from. Authority 5 — a code rule, not
+a station fact.
+
+**Why.** The function previously keyed on `int(hour) % 24` and built its value from
+`hour % 24.0`. Both are defensible readings of "the cast pool for a place-hour"; holding both at
+once is not. Whichever fractional minute reached a place-hour FIRST froze the roster every later
+incident there drew its named people from, so `incident.absence()` stopped being a function of
+its arguments: measured, running an unrelated register-wide `headless_day(Ctx(day=1, seed="b5"))`
+first in the same process moved the same seed's fingerprints from
+`('73c2b0b24230d4a9','d7cd07f85eeced99')` to `('673fa4bd36591140','e56cbfa7ebc93561')`. Every
+absent-vs-present comparison built on top of that was a comparison of two accidents.
+
+**What constrained it.** `_LAM`/`_bucket_h` in the same module had already answered the question
+correctly — key on `int(hour) % 24`, evaluate at `int(hour) % 24 + 0.5`, a pure function of the
+same quantisation. `_pool` was the one site of the idiom that broke it, and the fix is the
+project's own rule about checking every site of an idiom before deciding which one is wrong.
+
+**What would overturn it.** Evidence that the cast pool should vary WITHIN an hour — that a
+16-person roster at 13:05 should differ from the one at 13:55. If so, the fix is the other
+direction: put the fraction in the key. What is not permissible is the third state, where the
+key and the value disagree.
+
+**How it is held.** `_selftest` asserts the pool for a place-hour is the same roster in either
+warming order (13.9-then-13.0 against 13.0-then-13.9; on the broken code 8 of 16 people sit in a
+different seat) and asserts it over the memo's KEYS rather than over the one call site, so a
+second call site cannot reintroduce it. `--absence` asserts the end-to-end consequence: 576 cast
+pools dropped and re-warmed at +0.97 h, then the identical call must return the identical
+fingerprints.
+
+## INV-891 — a ten-day horizon for "can a body fall over where the player stands"
+
+**What.** `incident.collapse_gate` asks whether the producer behind `boot.json`'s `collapses`
+array is non-empty **somewhere in ten station-days**, not on day 1. Authority 5.
+
+**Why.** The shipped bake is deterministic — `boot.py::_collapses(rooms, day=1, seed="b5")` — and
+the shipped deck is three customs rooms whose only reachable ragdoll class is INC-SICK at
+**0.2323/day**. P(an empty day) is 0.79, day 1 is one of those, and `main.gd::_fire_collapses`
+has therefore never dropped a body on the shipped build. A gate demanding a body on day 1 would
+be a gate demanding the content be tuned until a number went green, which is the failure mode
+this project has recorded most often. A gate demanding one *ever* is unfalsifiable. Ten days is
+the horizon at which P(no body at all) = e^(-2.323) = **0.098** on the shipped deck — under one
+run in ten — and it is a span a player plausibly plays.
+
+**What constrained it.** It must be long enough that the current, untuned content passes (the
+drawn answer is day 5) and short enough to run inside a gate (7.1 s over three places with the
+day-1 caches already warm). Both bounds are measured, not chosen.
+
+**What would overturn it.** A deck whose room set reaches docking_bays — the probe at
+customs_north expects **49.620** collapses a day and its first day is day 1, so on that scope the
+horizon is irrelevant. The horizon exists for the SHIPPED scope, and if the bake's scope widens
+it should shrink.
+
+**What it does NOT claim.** That a player sees a collapse. `main.gd` reads `collapses` and not
+`if_helped`, so the stance the simulation resolved is baked and unread; and on the shipped deck
+the array is empty. The gate's own output says so in words.
