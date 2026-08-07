@@ -73,6 +73,64 @@ def _cast_rows():
     return len([l for l in body.splitlines() if re.match(r"^\|\s*\d+\s*\|", l)])
 
 
+def _mask(dlg, row, line):
+    """One Tier-1 line with everything that is THIS PERSON'S removed.
+
+    What survives is the sentence frame -- the part somebody wrote. Every
+    string the roster row carries and every string `_cast_facts` derives from
+    it is replaced by a sentinel, longest first so that a substring can never
+    eat the token that contains it, and whitespace tokens as well as whole
+    values so that "Ruth" is masked out of a line that only used the forename.
+    Runs of sentinels collapse, because "@ and @" against "@" is a difference
+    in how many of the person's own names the sentence happened to use, not a
+    difference in what was written.
+
+    Tokens shorter than three characters are left alone deliberately: masking
+    "a" or "of" would erase the sentence rather than the person, and this must
+    stay a measurement of writing.
+    """
+    vals = [v for v in row.values() if isinstance(v, str)]
+    try:
+        vals += [v for v in dlg._cast_facts(row).values() if isinstance(v, str)]
+    except Exception:                                        # pragma: no cover
+        pass
+    toks = set()
+    for v in vals:
+        v = v.strip()
+        if len(v) > 2:
+            toks.add(v)
+        toks.update(t for t in v.split() if len(t) > 2)
+    for t in sorted(toks, key=len, reverse=True):
+        line = line.replace(t, "@")
+    return re.sub(r"(?:@[\s,.'-]*)+", "@", line)
+
+
+def _minted_names():
+    """Names the population actually casts, so Tier-1 reach can be asked.
+
+    `resident.roster` is the same function every room build uses to decide who
+    is standing in it, so a name it never returns is a name no player can be
+    in front of. Three places, four hours and three species is a sample rather
+    than the station -- the smoke tier may not build anything -- and a sample
+    is enough to answer "does ANY of this reach a player", which is the
+    question the ninth no-caller defect in CLAUDE.md is about.
+    """
+    try:
+        from npc import resident as res                       # noqa: PLC0415
+    except Exception:                                        # pragma: no cover
+        return ()
+    out = set()
+    for pk in ("zocalo", "docking_bays", "medlab"):
+        for h in (2, 9, 13, 20):
+            for sp in ("human", "narn", "centauri"):
+                try:
+                    out.update(r.name for r in res.roster(pk, h, sp, 20)
+                               if r.name)
+                except Exception:                            # pragma: no cover
+                    pass
+    return tuple(sorted(out))
+
+
 def _drift(claim, got, what):
     return None if claim == got else "spec says %s %s, code has %s" % (
         claim, what, got)
@@ -103,24 +161,48 @@ def _dlg01(text):
     if d:
         bad.append(d)
 
-    # THE FLOOR, AND IT IS COUNTED ON RENDERED STRINGS RATHER THAN TEMPLATES.
-    # `cast_lines(row)` returns the lines belonging to ONE person with that
-    # person's own facts already in them; the runtime braces that survive
-    # (`{ship}`, `{souls}`) are filled at speak() time, so this count still
-    # UNDERSTATES what a player hears, which is the safe direction for a floor.
+    # THE FLOOR, AND IT IS COUNTED ON MASKED LINES RATHER THAN RENDERED ONES.
+    #
+    # THIS IS THE CHECK THE ROW HAD TO HAVE AND DID NOT, and the reason is
+    # worth keeping because the old version PASSED on content that violated the
+    # rule it was written to enforce. `cast_lines(row)` returns one person's
+    # lines with that person's own facts already substituted in, and the old
+    # count hashed those. Two people therefore compared UNEQUAL whenever they
+    # had different names -- which is always -- so 50 renderings of one
+    # sentence counted as 50 distinct lines, and the row's own rule ("no string
+    # may appear in two NPCs' sets") could not fail by construction. A reviewer
+    # passed it with "<name> says thing number 0."
+    #
+    # `_mask` removes every proper noun the roster row carries, and every value
+    # `dialogue._cast_facts` derives from it, so what is hashed is the SENTENCE
+    # FRAME -- what was actually written -- rather than what name substitution
+    # made unequal. It is the strictly harder reading and it is the honest one:
+    # if the frame is the same, Ruth Delgado and Ade Bankole are saying the same
+    # sentence, and a player standing in front of both hears that.
+    #
+    # AND IT IS NOT A LOOSENING ANYWHERE: the rendered-string checks below are
+    # kept as well. A masked collision is a finding; a rendered collision is
+    # still a finding.
     roster = dlg.cast_roster()
     if len(roster) != cast:
         bad.append("dialogue.cast_roster() parses %d rows, spec says %d"
                    % (len(roster), cast))
-    sets, short = {}, []
+    sets, msets, short, mshort = {}, {}, [], []
     for r in roster:
         ls = dlg.cast_lines(r)
         sets[r["who"]] = set(ls)
+        msets[r["who"]] = {_mask(dlg, r, l) for l in ls}
         if len(set(ls)) < per:
             short.append((r["who"], len(set(ls))))
+        if len(msets[r["who"]]) < per:
+            mshort.append((r["who"], len(msets[r["who"]])))
     if short:
         bad.append("%d of %d cast are under %d distinct lines, e.g. %s"
                    % (len(short), len(roster), per, short[:3]))
+    if mshort:
+        bad.append("%d of %d cast are under %d distinct SENTENCE FRAMES once "
+                   "their own proper nouns are masked out, e.g. %s"
+                   % (len(mshort), len(roster), per, mshort[:3]))
     # THE RULE THE ROW IS ACTUALLY ABOUT: no string in two NPCs' sets.
     seen, shared = {}, []
     for who, ls in sets.items():
@@ -132,15 +214,56 @@ def _dlg01(text):
     if shared:
         bad.append("%d strings appear in two NPCs' sets, e.g. %s"
                    % (len(shared), shared[:2]))
-    got = len(seen)
-    if got < total:
-        bad.append("%d distinct Tier-1 lines against a floor of %d"
-                   % (got, total))
+    mseen, mshared = {}, []
+    for who, ls in msets.items():
+        for t in ls:
+            if t in mseen:
+                mshared.append((mseen[t], who, t[:52]))
+            else:
+                mseen[t] = who
+    if mshared:
+        bad.append("%d masked frames are spoken word for word by two of the "
+                   "fifty, e.g. %s" % (len(mshared), mshared[:2]))
+    got, mgot = len(seen), len(mseen)
+    if mgot < total:
+        bad.append("%d distinct sentence frames against a floor of %d "
+                   "(%d rendered strings, but they differ only by the "
+                   "speaker's own proper nouns)" % (mgot, total, got))
+
+    # AND THE FIFTY MUST BE PEOPLE THE SIMULATION CAN PRODUCE. A pool of lines
+    # for names nobody is ever cast under is content no player can reach --
+    # the ninth instance of this project's standing defect, at content scale.
+    # `phrase()` reaches Tier-1 through `cast_by_name(sp.name)`, so the test is
+    # that names the population actually mints resolve there.
+    minted = _minted_names()
+    hit = sum(1 for nm in minted if dlg.cast_by_name(nm) is not None)
+    reached = len({r["who"] for r in roster if r["who"] in set(minted)})
+    if not minted:
+        bad.append("could not mint a single resident name to test Tier-1 "
+                   "reachability against")
+    elif not hit:
+        bad.append("none of the %d names populace/names.py actually mints "
+                   "resolves through dialogue.cast_by_name(), so no Tier-1 "
+                   "line is reachable by any resident the station casts"
+                   % len(minted))
+    if bad and minted:
+        # NOT A GATE, A NUMBER THE OWNER NEEDS BESIDE THE OTHERS. The hard
+        # check above is the critic's ("some minted name reaches a row"); this
+        # says how much of the cast the population actually casts, and it is
+        # CAST-02's own defect rather than this row's, so it is reported here
+        # and enforced there.
+        bad.append("and %d of the %d Tier-1 cast are ever minted by "
+                   "resident.roster over the sample -- the rest have lines "
+                   "and no body (CAST-02's finding, reported here because "
+                   "this is the row that writes for them)"
+                   % (reached, len(roster)))
     if bad:
         return False, "DLG-01: " + "; ".join(bad)
-    return True, ("DLG-01: %d distinct Tier-1 lines (%d each x %d cast parsed "
-                  "from the annex), and no string appears in two NPCs' sets"
-                  % (got, per, len(roster)))
+    return True, ("DLG-01: %d distinct sentence frames over %d rendered "
+                  "Tier-1 lines (%d each x %d cast parsed from the annex), no "
+                  "frame shared by two of the fifty, and %d of %d minted "
+                  "resident names reach a Tier-1 row"
+                  % (mgot, got, per, len(roster), hit, len(minted)))
 
 
 def _dlg02(text):
@@ -193,11 +316,32 @@ def _dlg02(text):
         bad.append("dialogue.occupied_cells() gives %d, ROLE_WEIGHTS gives %d"
                    % (len(cells), got))
     pools = {c: dlg.cell_lines(*c) for c in cells}
-    thin = [(c, len(set(v))) for c, v in pools.items()
-            if len(set(v)) < want_cell]
+    # AND IT IS COUNTED WITH THE SPECIES REGISTER FRAME STRIPPED BACK OFF.
+    #
+    # THE FIRST BUILD OF THIS MATRIX PASSED 30 WITHOUT WRITING 30. Each cell
+    # held 11 role clauses put through the species' 2 `SPECIES_FRAME` affixes
+    # and the pair was counted as two lines, so nineteen real utterances --
+    # 11 topics + 4 greetings + 4 farewells -- reported as thirty. The affix is
+    # the same two strings on all eleven topics; it is register modulation,
+    # which the annex asks for under its own heading, and a modulation applied
+    # to one sentence is not two sentences.
+    #
+    # `dialogue.cell_utterances` inverts the frame exactly (every frame is
+    # prefix + "{say}" + suffix, so the strip is a prefix/suffix match), which
+    # means adding a THIRD frame buys a cell nothing here. That is the property
+    # that makes this a floor rather than a knob, and it is why the check is
+    # the inverse rather than a division by `len(SPECIES_FRAME[species])`:
+    # division would still reward padding the frame table as long as the pool
+    # grew with it.
+    utt = {c: set(dlg.cell_utterances(*c)) for c in cells}
+    thin = [(c, len(v)) for c, v in utt.items() if len(v) < want_cell]
     if thin:
-        bad.append("%d of %d cells are under %d lines, e.g. %s"
-                   % (len(thin), len(cells), want_cell, thin[:3]))
+        bad.append("%d of %d cells are under %d DISTINCT UTTERANCES once the "
+                   "species register frame is stripped off (rendered pools are "
+                   "%s), e.g. %s"
+                   % (len(thin), len(cells), want_cell,
+                      "/".join(str(x) for x in sorted(
+                          {len(set(v)) for v in pools.values()})), thin[:3]))
     # AND THE CELLS MUST BE DIFFERENT CELLS. A matrix of 79 identical pools
     # passes every count above; identity is the only check that can see it.
     flat = [t for v in pools.values() for t in v]
@@ -214,10 +358,11 @@ def _dlg02(text):
                    % (worst, floor_rep))
     if bad:
         return False, "DLG-02: " + "; ".join(bad)
-    return True, ("DLG-02: %d occupied cells x %d lines = %d distinct tier-2 "
-                  "lines, no two cells sharing one, and %d draws before any "
-                  "cell repeats" % (len(cells), want_cell, len(set(flat)),
-                                    worst))
+    return True, ("DLG-02: %d occupied cells x %d distinct utterances "
+                  "(measured with the species register frame stripped off, so "
+                  "the affix buys nothing) = %d rendered tier-2 lines, no two "
+                  "cells sharing one, and %d draws before any cell repeats"
+                  % (len(cells), want_cell, len(set(flat)), worst))
 
 
 def _dlg03(text):

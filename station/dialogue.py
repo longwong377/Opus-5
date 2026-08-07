@@ -2952,6 +2952,168 @@ def cast_by_name(who: str):
     return None
 
 
+# WHERE AN OFFICE NAMES ITS PLACE IN WORDS RATHER THAN IN THE REGISTER'S KEY.
+#
+# EVERY ENTRY IS READ OFF THE OFFICE CELL ITSELF and none of them is a guess
+# about where somebody "probably" works: the left side is a phrase that appears
+# verbatim in a CAST-02 office, the right side is the `directory.PLACES` key
+# whose own name says the same thing. "Customs supervisor, north hall" ->
+# `customs_north` because the register splits the hall the same way the annex
+# does; "post-office counter clerk" -> `post_office`; "Alien Sector fixer,
+# N'Grath model" -> `ngrath`, which the bare-token scan cannot see because the
+# apostrophe is not in a key.
+#
+# WHAT IS DELIBERATELY ABSENT IS THE INTERESTING HALF. Deryn Vale is a "Ranger
+# contact -- the brooch worn open" and Carys Voss a "resident ISN stringer":
+# neither office is a place, in the annex or in the register, and inventing one
+# would put a named character somewhere the show never puts them. They stay
+# unaddressed and the harness counts them as unaddressed. INV-1022.
+CAST_OFFICE_PLACE = (
+    ("customs supervisor, north hall", "customs_north"),
+    ("customs supervisor, south hall", "customs_south"),
+    ("dock chief", "docking_bays"),
+    ("dock-gang boss", "docking_bays"),
+    ("muster caller", "docking_bays"),
+    ("watch commander", "security_posts"),
+    ("post sergeant", "security_posts"),
+    ("brig custody", "brig"),
+    ("ombudsman", "law_courts"),
+    ("post-office counter clerk", "post_office"),
+    ("medlab one", "medlab_one"),
+    ("dark star night counter", "dark_star"),
+    ("precision-goods stall", "shops_kiosks"),
+    ("dosshouse keeper", "downbelow"),
+    ("free-clinic charge nurse", "downbelow"),
+    ("water-reclamation camp", "water_reclamation"),
+    ("refugee-committee chair", "downbelow"),
+    ("centauri mission", "ambassadorial_suites"),
+    ("league anteroom", "league_delegations"),
+    ("methane lock", "alien_sector"),
+    ("psi corps liaison", "telepath_office"),
+    ("n'grath model", "ngrath"),
+    ("salvage boss", "downbelow_arch"),
+    ("casino floor boss", "casino"),
+)
+
+_CAST_AT = None
+
+
+def cast_at(place_key: str = None):
+    """The Tier-1 cast who belong to a register place. THE ADDRESS OF THE FIFTY.
+
+    THE DEFECT THIS CLOSES IS THE ONE CLAUDE.md HAS NINE INSTANCES OF, arriving
+    as content instead of as code. `phrase()` reaches a Tier-1 row through
+    `cast_by_name(sp.name)`, and `sp.name` comes from `resident.resident()`,
+    which mints a name from the per-species grammar. Over a sample of 213 names
+    the population actually casts, exactly ONE collided with a CAST-02 row --
+    and that one by coincidence, because the Narn grammar can produce
+    "G'Dral". So fifty people had 3,750 lines and no body, and the row that
+    counted the lines could not see it. Reachability is now measured in
+    `spec_harness/dlg.py::_dlg01`.
+
+    THE ADDRESS IS ALREADY IN THE ANNEX and did not have to be invented: the
+    CAST-02 office and home cells name their place in the register's own key
+    form -- "publican, bar_unnamed", "keeper, happy_daze", "the fence,
+    black_market". This lifts those tokens and checks each against
+    `directory.PLACES`, so a row whose place is renamed loses its address
+    loudly instead of silently pointing at nothing. 46 of the 50 resolve; the
+    four that do not (Marta Okonkwo, Aldo Pryce, G'Lorn, the anteroom
+    secretary) name a place the register does not yet carry as a key, which is
+    a PLACES finding rather than a licence to guess one. INV-1021.
+
+    Returns the rows for one place, or the whole map when asked for none.
+    """
+    global _CAST_AT
+    if _CAST_AT is None:
+        keys = {p["key"] for p in dr.PLACES}
+        m = {}
+        for row in cast_roster():
+            # THE OFFICE COLUMN ONLY, AND THAT IS THE WHOLE DESIGN DECISION.
+            # Reading `home` as well addresses 47 of the 50 instead of 30 and
+            # every one of the extras resolves to `qtr_civilian` or
+            # `qtr_personnel` -- so the Zocalo jeweller would be "behind the
+            # counter" in a residential block. A workplace is what this map is
+            # for; where they sleep is a different question and is not asked
+            # here.
+            blob = str(row.get("office") or "").lower()
+            hits = [t for t in re.findall(r"[a-z][a-z0-9_]{3,}", blob)
+                    if t in keys]
+            hits += [k for phrase, k in CAST_OFFICE_PLACE if phrase in blob]
+            for tok in hits:
+                if tok not in keys:
+                    raise AssertionError(          # pragma: no cover
+                        f"CAST_OFFICE_PLACE names {tok!r}, which is not a "
+                        f"directory.PLACES key")
+                m.setdefault(tok, [])
+                if row not in m[tok]:
+                    m[tok].append(row)
+        _CAST_AT = m
+    if place_key is None:
+        return _CAST_AT
+    return tuple(_CAST_AT.get(place_key, ()))
+
+
+def cast_here(place_key: str, species: str = None, world: World = None):
+    """WHICH of a place's Tier-1 cast is on, right now. None if none is.
+
+    A place can hold several -- the Zocalo has Lin Chao, G'Dral, Livia Maren,
+    Brakk and the post sergeant -- so this picks one, and it picks it by the
+    HOUR rather than at random, because the annex wrote the hours down and it
+    would be a waste not to read them: row 21 is "owner-operator EVENINGS" and
+    row 22 is "DAY barman" at the same bar. A row that says neither is on at
+    any hour. Ties break on the annex's own row order, so the choice is
+    deterministic and two bakes of one deck agree.
+    """
+    world = world or World()
+    rows = [r for r in cast_at(place_key)
+            if species is None or r["species"] == species]
+    if not rows:
+        return None
+    h = float(world.hour) % 24.0
+    night = h < 6.0 or h >= 18.0
+    on = []
+    for r in rows:
+        txt = (r.get("office") or "").lower()
+        wants_night = ("evening" in txt or "night" in txt)
+        wants_day = ("day " in txt or "morning" in txt or "daytime" in txt)
+        if wants_night and not night:
+            continue
+        if wants_day and night:
+            continue
+        on.append(r)
+    pool = on or rows
+    return pool[int(world.turn) % len(pool)]
+
+
+def cast_resident(row, place_key: str, world: World = None, species=None):
+    """A Tier-1 cast row AS A RESIDENT, so every path that takes one takes them.
+
+    The body is a real `resident.roster` member of the right species at the
+    right place -- so the schedule, the visa, the identicard and the stature
+    are the station's own, not a second description of a person -- with the
+    name replaced by the annex's. That is the whole trick: nothing downstream
+    has to know a Tier-1 person is special, because `phrase()` already asks
+    `cast_by_name(sp.name)` and now gets an answer.
+    """
+    world = world or World()
+    if isinstance(row, str):
+        row = cast_by_name(row)
+    if row is None:
+        return None
+    sp = species or row["species"]
+    people = res.roster(place_key, world.hour, sp, 8)
+    if not people:
+        return None
+    base = people[0]
+    for r in people:
+        if r.job == place_key:
+            base = r
+            break
+    who = row["who"].strip()
+    fore, _, sur = who.rpartition(" ")
+    return replace(base, forename=fore, surname=sur or who)
+
+
 # The eleven topics' cast phrasings. Three per topic -- DLG-01's "3 salience
 # variants" -- and each `%` field is a column of the row. `{...}` survives into
 # the output and is filled by the topic function at speak() time.
@@ -3884,6 +4046,16 @@ def behind_counter(place_key: str, world: World = None, species: str = "human",
     by anyone with a job in the register.
     """
     world = world or World()
+    # TIER 1 FIRST, AND THIS IS THE CALLER THAT MAKES THE FIFTY EXIST. Milo
+    # Okada is the publican of `bar_unnamed` in the annex; before this the bar
+    # was served by whoever `resident.roster` happened to mint, so his 75 lines
+    # were unreachable from `serve_response` -- finished content with no
+    # caller, which is the defect CLAUDE.md has nine instances of.
+    row = cast_here(place_key, None, world)
+    if row is not None:
+        who = cast_resident(row, place_key, world)
+        if who is not None:
+            return who
     people = res.roster(place_key, world.hour, species, n)
     for r in people:
         if r.role in SERVE_ROLES and r.job == place_key:
@@ -4189,6 +4361,39 @@ def sidecar(actors, world: World = None, listener: Listener = None) -> list:
     for a in actors:
         k = a.get("place") or (a.get("who") or {}).get("at_post") or ""
         crowd[k] = crowd.get(k, 0) + 1
+    # WHO OF THE FIFTY IS ON THIS DECK, CLAIMED ONCE EACH.
+    #
+    # THIS IS THE WIRING THE TIER-1 CONTENT DID NOT HAVE. `speak()` reaches a
+    # CAST-02 row through `phrase()`'s `cast_by_name(sp.name)`, and every name
+    # on this path comes from `resident.resident()`, which mints from the
+    # per-species grammar -- so the fifty were 3,750 lines nobody on the
+    # shipped bake could ever be. This claims, for each place on the deck that
+    # has Tier-1 cast on duty at this hour, ONE baked actor of the right
+    # species and gives them that person's name. Everything downstream is
+    # unchanged: `speak` takes a resident, and this is a resident.
+    #
+    # One claim per (place, person) per hour, and the actor list is already in
+    # a deterministic order, so two bakes of one deck agree and nobody is cast
+    # as two people. A place whose crowd holds nobody of the right species
+    # simply has no Tier-1 speaker that hour, which is the honest answer.
+    claim, named = {}, set()
+    for a in actors:
+        w = a.get("who") or {}
+        place = a.get("place") or w.get("at_post") or ""
+        nid = w.get("id")
+        if not nid or not place or nid in claim:
+            continue
+        for row in cast_at(place):
+            if row["who"] in named:
+                continue
+            if row["species"] != w.get("species", "human"):
+                continue
+            on = cast_here(place, row["species"], world)
+            if on is None or on["who"] != row["who"]:
+                continue
+            claim[nid] = row["who"]
+            named.add(row["who"])
+            break
     out = []
     for a in actors:
         who = a.get("who") or {}
@@ -4196,6 +4401,10 @@ def sidecar(actors, world: World = None, listener: Listener = None) -> list:
         if not npc_id:
             continue
         r = res.resident(npc_id, who.get("species", "human"))
+        if npc_id in claim:
+            nm = claim[npc_id]
+            fore, _, sur = nm.strip().rpartition(" ")
+            r = replace(r, forename=fore, surname=sur or nm)
         place = a.get("place") or who.get("at_post") or ""
         ex = speak(r, place,
                    replace(world, audience=crowd.get(place, 1)), listener)
