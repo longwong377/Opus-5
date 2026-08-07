@@ -8650,3 +8650,87 @@ it: `Workflow({scriptPath: "/home/user/Opus-5/scratchpad/wf-craft-4s.js"})`. Che
 3. `docs/MASTER-PLAN.md` §R1's 64 spec failures remain the standing work-list, and each still needs
    the same decision: *is the spec wrong, or the station?* Neither may be edited to make the other
    pass.
+
+## 27. Session 4t — a working AAA game in every aspect, nine items, two kinds of critic
+
+**The owner's instruction:** *"make this project into a working AAA game in every aspect. Fan out
+sub-agents and have sub-agents tackle each one individually so that the game is utterly perfect...
+have a separate sub-agent check it to ensure it is triple A. That separate sub-agent should be a
+really harsh critic, and if it isn't triple A, it should keep going."*
+
+### 27.1 The environment was dead on arrival, and it would have killed every craft agent silently
+
+The container recycled since 4s. Four preconditions were missing and **not one of them announces
+itself** — each fails as something else:
+
+| missing | how it presents |
+|---|---|
+| `numpy` | **37 spec harnesses "HARNESS RAISED"** — reads as 37 broken harnesses. It is one `pip install`. `tools/export_scene.py` imports it too, so no agent could have rendered anything |
+| the Godot binary | `/home/user/godot-build/.../bin/` absent. **Vendored in this repo since 4d** — `bash tools/build_godot.sh` restores it in seconds rather than the ~61 minute build |
+| `lvp_icd.json` | no Vulkan ICD at all. This is the one that lies: Godot falls back to **OpenGL 3 Compatibility**, which has no Forward+, therefore no SSAO, glow, SSIL or volumetric fog — and **exits 0 with a PNG**. Session 4e lost a whole session of visual judgement to exactly this |
+| `station/generated/hull.obj` | the engine reads generated artefacts; `wiring.py --selftest` reports 11 missing paths and they are container state, not a code defect |
+
+`requirements.txt` predicted this precisely — its own header says *"The project loses its container
+regularly... or every fresh session pays the same twenty minutes."* It was right and nobody had run
+it. **Run all four at the top of any session that will render**, and prove the last one:
+
+```
+pip install -r requirements.txt
+bash tools/build_godot.sh
+apt-get update -qq && apt-get install -y -qq mesa-vulkan-drivers
+cd station && python3 generate_hull.py
+tools/render_godot.sh --shot exterior --orbit 9200,18,214 --res 640x360 --out /tmp/probe.png
+  → grep for: "Vulkan 1.4.318 - Forward+ - llvmpipe"      ← anything else and the frame is a lie
+```
+
+The probe frame came back correct: the station in space, hull materialled, stars behind it.
+
+### 27.2 The work list is the honest red list, not a guess
+
+`python3 station/spec_check.py --red` after the numpy fix — **the first time in this container that
+all 300 rows could actually run**:
+
+```
+0 GREEN / 300 RED / 0 CAPPED of 300
+   224 passed their harness but it is not sufficient for GREEN on its own
+    39 RAN a harness and FAILED it -- findings about the station or the spec, not gaps
+     0 have no harness at all
+    37 HARNESS CRASHED -- a bug in the harness, not a verdict about the row   ← was numpy
+```
+
+The 39 are the deliverable and they cluster hard: **all six DLG rows** (69 NPC templates total against
+a floor of 3,750 lines — violated *by construction*, not by shortfall), **eight VRB rows** (SELL not
+implemented at all, TAKE/PLACE does not persist, 1 of 12 roles has a work loop, no launch-to-recovery
+sortie), **PLY-05/07 and SYS-16** (time compression and the journal exist *nowhere* in the tree), and
+a scatter of spec-vs-station arithmetic disagreements.
+
+### 27.3 The batch, and why the critic differs by kind
+
+`scratchpad/wf-aaa-4t.js`, run `wf_32d5b5cb-aab`. Nine items, file lists disjoint and checked for
+hidden artefact and import collisions rather than assumed separate because the names differ.
+
+**Craft items** (`npc_bodies`, `interior_lighting_4b`, `observation`, `drum_interior_engine`) reuse
+4s's blind harness verbatim, because it works: the builder renders BEFORE and AFTER at *identical*
+cameras, copies both into `scratchpad/blind/` as `left-*`/`right-*` choosing the mapping itself,
+writes that mapping **nowhere on disk**, and a critic forbidden `git log` has to pick the new one.
+A critic that cannot tell which frame is new cannot be agreeable.
+
+**System items** (`streaming_reach`, `dialogue_depth`, `verbs_economy`, `journal_time`, `shell_fit`)
+cannot be judged from a picture, so their critic **runs the acceptance test itself** and then tries to
+make the new gate pass on content that should fail it. That second half is the important one:
+MASTER-PLAN R6 — *a static scan can tell you a caller exists; only running the thing tells you the
+caller runs* — and this project has shipped finished, tested, gated machinery with no caller **nine
+times**. `converged` for a system item therefore requires `gate_can_fail == true` **as observed by the
+critic**, not as reported by the builder.
+
+### 27.4 The next batch, in order, when this one returns
+
+1. Whatever batch 1 leaves in `still_short`, with the critic's own `worst_defect` fed back.
+2. `generated_rooms` (fidelity 2, **58% of the station**), `tram` (**robustness 0**), `drum_ground`
+   (performance 1, robustness 0), `walkable_deck` (3/2/2/2) — the next tier of the scorecard.
+3. **The frame budget**, which CLAUDE.md flags as owed and stale: 4.34× was measured *before* 4r's
+   z-aware rebuild took deck geometry from 29.4 M to 13.1 M triangles. Re-measure with
+   `python3 station/budget.py` before quoting it — and note the direction is favourable, which is
+   exactly when a stale figure survives longest, because nobody re-checks a number that will improve.
+4. R1's remaining spec failures, each needing the same decision: *is the spec wrong, or the station?*
+   Neither may be edited to make the other pass.
