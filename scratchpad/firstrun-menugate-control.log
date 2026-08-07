@@ -1,0 +1,9 @@
+Godot Engine v4.4.stable.custom_build.4c311cbee (2025-03-02 23:31:23 UTC) - https://godotengine.org
+
+main: deck blue_0_0_z7440, spawn -44.75,206.69,7478.24 in corridor, 3 rooms
+menu: title screen -- 4 entries, 1 playable  -- NO WORLD: withheld by --no-world (control)
+menu:   new_game       NEW GAME                           unavailable -- withheld by --no-world (control)
+menu:   continue_game  CONTINUE                           unavailable -- withheld by --no-world (control)
+menu:   station        WALK THE STATION                   unavailable -- withheld by --no-world (control)
+menu:   quit           QUIT                               ready
+MENUGATE want=new_game entries=[new_game=no, continue_game=no, station=no, quit=ready] selected=false fired=- world=- player=false card=false who=- identicard_fields=0 verdict=FAIL

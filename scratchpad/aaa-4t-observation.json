@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "bar": {
+    "min_score": 4,
+    "clean_rounds_required": 2,
+    "max_rounds": 4
+  },
+  "subsystems": {
+    "observation_rotunda": {
+      "status": "active",
+      "rounds": [
+        {
+          "round": 2,
+          "reviewer": "build agent, session 4t -- THIS IS THE BUILDER'S OWN RECORD AND IS NOT A REVIEW ROUND",
+          "date": "2026-08-07",
+          "scores": {
+            "craft": 3,
+            "fidelity": 4,
+            "performance": 4,
+            "robustness": 4
+          },
+          "evidence": {
+            "_frames": "scratchpad/blind/observation/r1/*-rotunda-{normal,half,arm}.png -- 1280x720, Forward+ confirmed in every render log. WHICH SIDE IS THE NEW BUILD IS DELIBERATELY NOT RECORDED HERE.",
+            "_cameras": "normal 9.51 m, half 4.76 m, arm 0.75 m; derivation in the agent's return",
+            "_gate": "station/observation.py 28/28, open=0 nonmanifold=0 (was 489)",
+            "fidelity": "INV-950: 21 material picks, each naming the clause of reference/05-sector-green/rotunda.webp it answers; no colour invented, every value already measured into materials.py",
+            "performance": "29,184 tri for a 14.4 m room; the whole three-place set is 71,008",
+            "robustness": "three new gates, each shown failing by a control in the same file"
+          },
+          "broke_assertions": true,
+          "what_is_good": [
+            "the room is its reference's bronze and gold rather than three greys",
+            "16 casting cove sources; the room had ONE and measured 970x under the corridor anchor",
+            "the banner sigil is relief geometry, closing round 1's C1",
+            "non-manifold 489 -> 0"
+          ],
+          "findings": [
+            {
+              "severity": "major",
+              "dimension": "craft",
+              "descriptor": "C3",
+              "where": "station/observation.py (rotunda, half distance)",
+              "text": "The builder's own score, held at 3 because CRAFT 4 requires wear and grime to VARY ACROSS a surface and this varies BETWEEN surfaces: each group still carries one flat value, and the variation is that there are now twenty-one values instead of three. Nothing in the room is dirtier at the bottom of one bay than at the bottom of the next. That needs per-instance material variation, which materials.py owns."
+            }
+          ]
+        }
+      ],
+      "_merge_note": "Session 4t build agent. Written here rather than to docs/aaa-scorecard.json, which several agents share this session. Round 2 for both subsystems; round 1 is the 4k review already in the scorecard."
+    },
+    "observation_domes": {
+      "status": "active",
+      "rounds": [
+        {
+          "round": 2,
+          "reviewer": "build agent, session 4t -- THIS IS THE BUILDER'S OWN RECORD AND IS NOT A REVIEW ROUND",
+          "date": "2026-08-07",
+          "scores": {
+            "craft": 3,
+            "fidelity": 4,
+            "performance": 4,
+            "robustness": 4
+          },
+          "evidence": {
+            "_frames": "scratchpad/blind/observation/r1/*-dome{1,2}-{normal,half,arm}.png. WHICH SIDE IS THE NEW BUILD IS DELIBERATELY NOT RECORDED HERE.",
+            "_gate": "station/observation.py 28/28, open=0 nonmanifold=0 (was 360 and 209)",
+            "fidelity": "the angled bracing LOCATIONS.md records at authority 1 is built for the first time (INV-953); the bulkhead is panelled and banded (INV-952)",
+            "performance": "22,764 and 19,060 tri",
+            "robustness": "non-manifold gate with the overlap rule withdrawn as its control"
+          },
+          "broke_assertions": true,
+          "what_is_good": [
+            "the windows show the station's own sky (station/vista.py, built for these places for the first time)",
+            "the emissive deck pools and the 0.96 m disc of ee-6.0 on the plot table are gone; nothing in frame clips",
+            "prop_console is a machine with a lit lip rather than a saturated orange slab"
+          ],
+          "findings": [
+            {
+              "severity": "major",
+              "dimension": "craft",
+              "descriptor": "C3",
+              "where": "station/observation.py (dome bulkhead, normal distance)",
+              "text": "The dome overhead still reads smoother than it should. Five concentric bands and 16 major plus 16 minor ribs are built and they carry, but the field between them is one value across 60 square metres of ceiling and the eye can index the ring spacing. Same clause as the rotunda's: this is variation between surfaces, not across one."
+            }
+          ]
+        }
+      ],
+      "_merge_note": "Session 4t build agent. Written here rather than to docs/aaa-scorecard.json, which several agents share this session. Round 2 for both subsystems; round 1 is the 4k review already in the scorecard."
+    }
+  }
+}

@@ -1,0 +1,51 @@
+package: Babylon 5 -- what a stranger would download
+
+  engine      /home/user/godot-build/godot-4.4-stable/bin/godot.linuxbsd.editor.double.x86_64
+  preset      godot/export_presets.cfg [Linux]
+  front door  godot/scripts/main_menu.gd
+  template    none (0 in /root/.local/share/godot/export_templates) -- using --export-pack plus the
+              project's own double-precision engine binary. Godot's stock
+              templates are SINGLE precision and would be wrong here.
+  world       station/generated/scene/boot.json (16K)
+  world       station/generated/scene/deck (60M)
+  world       station/generated/audio (5.7M)
+  world       station/generated/navgraph.json (228K)
+  world       station/generated/economy.json (56K)
+  world       station/generated/scene/npc (4.7M)
+  world       station/generated/scene/vista  ABSENT (optional) -- vista.gd -- the three windowed rooms show background instead of the station
+  world       station/generated/journal.json (60K)
+
+package: mode=pack+engine  data=yes  diminished_by=1
+
+package: exporting res:// ...
+package: staging the world ...
+
+package: launching the artefact (from a moved directory, so a build that
+         only works where it was made fails) ...
+  | main: deck blue_0_0_z7440, spawn -44.75,206.69,7478.24 in corridor, 3 rooms
+  | menu: title screen -- 4 entries, 3 playable
+  | menu:   new_game       NEW GAME                           ready
+  | menu:   continue_game  CONTINUE                           unavailable -- No saved station.
+  | menu:   station        WALK THE STATION                   ready
+  | menu:   quit           QUIT                               ready
+  | menu: chose new_game -> mode=arrival
+  | main: front door -> new_game (mode=arrival)
+  | main: Babylon 5 -- mode=arrival, boot from /home/user/wt-firstrun/dist/_relocated_14132/station/generated/scene/boot.json
+  | main: the arrival sidecar names 4 path(s) from the machine that generated it -- rebased onto /home/user/wt-firstrun/dist/_relocated_14132, written to /root/.local/share/godot/app_userdata/Babylon 5/arrival_rebased.json
+  | arrival: Michael Chowdhury -- human aboard Transport Cousteau, bay 7B, customs_north area 4
+  | arrival: Transport Cousteau arriving from EARTH is now docking in bay 7B. Passengers will disembark through customs area 4.
+  | arrival: 6 of 11 steps are on this build; 5 are on another cluster or have no mesh here (berth:no mesh in this build, disembark:no mesh in this build, transit:no mesh in this build, door:no mesh in this build, bunk:no mesh in this build)
+  | arrival: step 0 queue -> customs_north__prop_info_board in customs_north  room 159.2,133.7,7460.2  obj 166.1,128.6,7444.1
+  | arrival: step 1 present -> customs_north__prop_identicard_reader in customs_north  room 159.2,133.7,7460.2  obj 161.1,135.2,7446.2
+  | arrival: step 2 scan -> customs_north__baggage_scanner in customs_north  room 159.2,133.7,7460.2  obj 161.1,135.2,7452.0
+  | arrival: step 3 desk -> customs_north__customs_desk in customs_north  room 159.2,133.7,7460.2  obj 161.5,135.5,7445.9
+  | arrival: step 4 welcome -> arrival_concourse__prop_welcome_board in arrival_concourse  room 133.3,159.5,7460.2  obj 142.1,154.7,7446.6
+  | arrival: step 5 orient -> arrival_concourse__prop_station_schematic_screen in arrival_concourse  room 133.3,159.5,7460.2  obj 142.0,154.6,7444.4
+  | MENUGATE want=new_game entries=[new_game=ready, continue_game=no, station=ready, quit=ready] selected=true fired=new_game world=Arrival player=true card=true who=Michael_Chowdhury identicard_fields=9 verdict=PASS
+
+package: taring ...
+
+package: DONE -- mode=pack+engine
+  staged   /home/user/wt-firstrun/dist/Babylon5  (324M)
+  one file /home/user/wt-firstrun/dist/Babylon5-linux-x86_64.tar.gz  (113M)
+  run it   cd /home/user/wt-firstrun/dist/Babylon5 && ./Babylon5

@@ -1,0 +1,27 @@
+package: Babylon 5 -- what a stranger would download
+
+  engine      /home/user/godot-build/godot-4.4-stable/bin/godot.linuxbsd.editor.double.x86_64
+  preset      godot/export_presets.cfg [Linux]
+  front door  godot/scripts/main_menu.gd
+  template    none (0 in /root/.local/share/godot/export_templates) -- using --export-pack plus the
+              project's own double-precision engine binary. Godot's stock
+              templates are SINGLE precision and would be wrong here.
+  world       SKIPPED (--no-data) -- this build will NOT be playable.
+              It is the negative control: it must boot to 'no boot
+              manifest' and exit 2, and package.sh asserts that it does.
+
+package: mode=pack+engine  data=NO  diminished_by=0
+
+package: exporting res:// ...
+
+package: launching the artefact ...
+  | main: NO WORLD -- no /home/user/wt-firstrun/dist/Babylon5/station/generated/scene/deck (res:// is , so the world is expected under /home/user/wt-firstrun/dist/Babylon5)
+  | menu: title screen -- 4 entries, 1 playable  -- NO WORLD: no /home/user/wt-firstrun/dist/Babylon5/station/generated/scene/deck. Build one: `python3 station/arrival.py --build` then `python3 station/boot.py`
+  | menu:   new_game       NEW GAME                           unavailable -- no /home/user/wt-firstrun/dist/Babylon5/station/generated/scene/deck. Build one: `python3 station/arrival.py --build` then `python3 station/boot.py`
+  | menu:   continue_game  CONTINUE                           unavailable -- no /home/user/wt-firstrun/dist/Babylon5/station/generated/scene/deck. Build one: `python3 station/arrival.py --build` then `python3 station/boot.py`
+  | menu:   station        WALK THE STATION                   unavailable -- no /home/user/wt-firstrun/dist/Babylon5/station/generated/scene/deck. Build one: `python3 station/arrival.py --build` then `python3 station/boot.py`
+  | menu:   quit           QUIT                               ready
+  | MENUGATE want=new_game entries=[new_game=no, continue_game=no, station=no, quit=ready] selected=false fired=- world=- player=false card=false who=- identicard_fields=0 verdict=FAIL
+
+package: --no-data CONTROL FIRED as it must -- the title screen came up
+         and NEW GAME refused. rc=2
