@@ -445,7 +445,7 @@ def counters_for(t: int) -> tuple:
     return tuple(v for v in EC.vendors() if sells_to(v, t)[0])
 
 
-def purchase(led, buyer, place_key, good, n=1):
+def purchase(led, buyer, place_key, good, n=1, bag=False):
     """BUY, with the card check in front of it.
 
     Delegates to `economy.buy` for every credit that moves. This function adds
@@ -457,7 +457,103 @@ def purchase(led, buyer, place_key, good, n=1):
     ok, why = sells_to(place_key, t)
     if not ok:
         raise EC.Refused(f"{place_key} will not serve {tier_name(t)}: {why}")
-    return EC.buy(led, buyer, place_key, good, n)
+    return EC.buy(led, buyer, place_key, good, n, bag=bag)
+
+
+# ===========================================================================
+# 3b.  THE OTHER DIRECTION -- what a rung can SELL, and to whom
+# ===========================================================================
+# VRB-05 IS "BUY/SELL" AND ONLY ONE HALF OF IT EXISTED. `sells_to` above has
+# answered "will this counter serve that rung" since 4r; nothing anywhere
+# answered the mirror question, so `spec_check.py --red` read
+# *"the buy side is consequence.purchase; the sell side is not implemented --
+# no sell/fence entry point exists"*.
+#
+# THE ASYMMETRY IS THE CONTENT, and it is not a copy of `sells_to` with the
+# arrow turned round. Buying and selling are gated by DIFFERENT things:
+#
+#   BUYING is gated by the reader, because the identicard IS the credit card
+#     (INV-342) -- a card that will not read cannot pay. One rung is excluded.
+#
+#   SELLING is gated by the reader AND by what a payout looks like on a
+#     docket. A licensed counter handing credits to a card is a named
+#     transaction with a named counterparty, so it will not take a
+#     customs-sealed or route line at any rung: `economy.buys_list` refuses
+#     those in the counter's own words and `OFFENCE["contraband"]` is what it
+#     would be if it did. That is exactly why FACTIONS 11.4's fence exists,
+#     and it is why `fence()` below is a real alternative rather than a worse
+#     shop.
+#
+# So a player with a clean card and a clean crate has two buyers and takes the
+# better price; a player with either problem has one, and Solly Vane pays 75%
+# of what a shopfront would (`economy.FENCE_TAKE`). INV-722.
+def buys_from(place_key: str, t: int) -> tuple:
+    """(will this counter buy from that rung, the reason a keeper would give).
+
+    The mirror of `sells_to`, and it reuses that function for the half the two
+    genuinely share -- getting through the door and the reader -- rather than
+    restating the ladder, so a change to the ladder cannot move one direction
+    and not the other.
+    """
+    q = dr.by_key(place_key)
+    fns = set(q["functions"])
+    if not (fns & EC.SELLING_FUNCTIONS):
+        return False, f"{place_key} is not a counter"
+    if t == DETAINED:
+        return False, "in custody -- property is held with the person"
+    if fns & UNCHECKED_FUNCTIONS:
+        return True, "no reader on this counter (FACTIONS 11.4)"
+    ok, why = admits(place_key, t)
+    if not ok:
+        return False, f"cannot get in: {why}"
+    if t < COUNTER_MIN:
+        return False, ("the reader will not take that card, and a payout has "
+                       "to go somewhere (6.4)")
+    return True, "card accepted"
+
+
+def fences_for(t: int) -> tuple:
+    """Every counter this rung can sell into. Ordered, deterministic."""
+    return tuple(v for v in EC.counters() if buys_from(v, t)[0])
+
+
+def fence(led, seller, place_key, good, n=1):
+    """SELL, with the card check in front of it. The mirror of `purchase`.
+
+    Named `fence` rather than `sell` on purpose: `economy.sell` is the till,
+    this is the person behind it deciding whether to deal with you, and the
+    only counters that will deal with everybody are the ones FACTIONS 11.4
+    calls the black market. `economy.FENCE_NAME` is who that is.
+
+    Delegates to `economy.sell` for every credit that moves.
+    """
+    t = tier_of(seller.card, getattr(seller, "record", None))
+    ok, why = buys_from(place_key, t)
+    if not ok:
+        raise EC.Refused(f"{place_key} will not buy from "
+                         f"{tier_name(t)}: {why}")
+    return EC.sell(led, seller, place_key, good, n)
+
+
+def would_book(place_key: str, good: str) -> str:
+    """The offence a licensed counter would file instead of paying you.
+
+    "" when the sale is ordinary. This is what makes the refusal in
+    `economy.sell` more than a shrug: the docket it names is a real row of
+    `OFFENCES`, with a real fine band behind it.
+    """
+    if place_key not in EC.counters():
+        return ""
+    if EC.unchecked(place_key):
+        return ""
+    g = EC.GOODS_BY_NAME.get(good)
+    if g is None:
+        return ""
+    if g.klass == "contraband":
+        return "smuggling_military" if "weapon" in g.name else "contraband"
+    if g.cargo == "bonded" or g.supply == "route":
+        return "contraband"
+    return ""
 
 
 # What a rung can RENT. `economy.LADDER`'s own rows, in order, so this is a
