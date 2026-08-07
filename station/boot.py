@@ -1098,16 +1098,51 @@ def axial_gate(stem=None, extra=(), timeout=1500):
                                                "*_cells.json"))):
             seen.add(os.path.basename(p)[:-len("_cells.json")])
         cands = sorted(seen)
-    picked, man_p = "", ""
+    # EVERY DECK WITH A CELL SET, NOT THE FIRST ONE. The version before this
+    # `break`-ed on the first candidate and the review named the consequence
+    # exactly: the gate tested one deck of the 71 the register addresses, and
+    # said so nowhere. On this container that is the same run either way --
+    # ONE deck is baked -- and the difference matters the moment a full bake
+    # lands, which is precisely when a gate that quietly tests 1/71 would be
+    # read as testing the station. The denominator is printed whether it is 1
+    # or 71, because R5's own open question is which denominator is intended
+    # and this driver must not answer it by omission.
+    runs = []
     for s in cands:
         p, _m = cells_for(s, dd)
         if p:
-            picked, man_p = s, p
-            break
-    if not picked:
+            runs.append((s, p))
+    if not runs:
         return 2, ("no deck on disk has a cell set. Bake one:\n"
                    "    python3 tools/export_station.py --max-decks 1\n"
                    "    python3 tools/bake_station.py --max-decks 1")
+    print("boot: axial gate over %d deck(s) with a cell set, of %d candidate "
+          "deck stem(s) on disk: %s"
+          % (len(runs), len(cands), ", ".join(s for s, _ in runs)))
+    sys.path.insert(0, HERE)
+    try:
+        import walkable as W                                      # noqa: PLC0415
+        godot = W.godot_binary()
+    except Exception as e:                                        # noqa: BLE001
+        return 2, "could not find a Godot binary (%s)" % e
+    if godot is None:
+        return 2, ("no double-precision Godot binary -- "
+                   "`bash tools/build_godot.sh`")
+    bad, good = [], []
+    for picked, man_p in runs:
+        rc, why = _axial_run_one(picked, man_p, godot, extra, timeout)
+        (good if rc == 0 else bad).append("%s (%s)" % (picked, why))
+    if bad:
+        return 1, ("%d of %d deck(s) FAILED: %s%s"
+                   % (len(bad), len(runs), "; ".join(bad),
+                      ("; passed: " + ", ".join(good)) if good else ""))
+    return 0, "PASS on %d of %d deck(s) with a cell set: %s" % (
+        len(good), len(runs), ", ".join(s for s, _ in runs))
+
+
+def _axial_run_one(picked, man_p, godot, extra, timeout):
+    """One deck's axial walk. (rc, why). Split out of `axial_gate` so that
+    driver can loop; everything here was already in it."""
     part = picked.split("_")
     if len(part) >= 3:
         sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -1123,14 +1158,6 @@ def axial_gate(stem=None, extra=(), timeout=1500):
                       "written for %s" % picked)
         except Exception as e:                                   # noqa: BLE001
             print("boot: could not write a places sidecar (%s)" % e)
-    sys.path.insert(0, HERE)
-    try:
-        import walkable as W                                     # noqa: PLC0415
-        godot = W.godot_binary()
-    except Exception as e:                                       # noqa: BLE001
-        return 2, "could not find a Godot binary (%s)" % e
-    if godot is None:
-        return 2, "no double-precision Godot binary -- `bash tools/build_godot.sh`"
     cmd = [godot, "--headless", "--path", GODOT_DIR,
            "res://scenes/stream_gate.tscn", "--", "--axial-gate",
            "--cells=" + os.path.abspath(man_p)] + list(extra)

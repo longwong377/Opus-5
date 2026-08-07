@@ -1136,6 +1136,55 @@ func _meshes(node: Node, out: Array[MeshInstance3D] = []) -> Array[MeshInstance3
 	return out
 
 
+## WHICH REGISTER PLACES HAVE GEOMETRY IN A RESIDENT CELL -> {key: n_groups},
+## read off the cell's OWN node names. `_write_cell` above sets `mi.name` to the
+## source group name verbatim, and every group a place builder emits is
+## `z<z>__<place_key>__<part>` -- so a cell's place inventory is derivable from
+## the scene that was loaded, with no sidecar to write and nothing to go stale.
+##
+## WHY THIS EXISTS, and it is a defect the review found in the version before
+## this one rather than a precaution. `--axial-gate` decided it had "ARRIVED at
+## obs_dome_2" from two facts: the body's z was inside a footprint read out of
+## `<stem>_places.json`, and the cell it stood in was resident. NEITHER OF THOSE
+## MENTIONS THE STATION. Moving one number in that 4 KB sidecar walked the body
+## into `blue_0_0_c04z12` -- a generic connecting corridor whose every group is
+## `join7440_7920__*` and which holds no `obs_dome_2` triangle at all -- and the
+## gate printed ARRIVED and exited 0. That is CLAUDE.md's session-4h shape
+## exactly: the register named a place, a build path dropped it, and every gate
+## scored the register.
+##
+## THE MATCH IS A WHOLE `__`-DELIMITED SEGMENT, NEVER A SUBSTRING. `customs` is
+## a substring of `customs_north`, and `obs_dome_1` differs from `obs_dome_2` in
+## one character; a substring test would report a place present in a cell that
+## holds a DIFFERENT place, which is the same lie this function exists to catch,
+## arriving by the back door. A two-segment name (`join7440_7920__deck_grid`)
+## therefore names no place, which is right: a connecting corridor belongs to
+## nobody, and the ghost run above stood in a cell of exactly those.
+##
+## Computed once per cell and cached on the resident record, so a per-frame
+## caller costs a dictionary lookup and the node walk happens `loads` times.
+func cell_place_keys(id: String) -> Dictionary:
+	if not _resident.has(id):
+		return {}
+	var r: Dictionary = _resident[id]
+	if r.has("place_keys"):
+		return r["place_keys"]
+	var keys := {}
+	for mi in _meshes(r["vis"]):
+		var parts: PackedStringArray = String(mi.name).split("__", false)
+		if parts.size() >= 3:
+			keys[parts[1]] = int(keys.get(parts[1], 0)) + 1
+	r["place_keys"] = keys
+	return keys
+
+
+## How many mesh groups of `key` a resident cell holds. 0 means "this place is
+## not built here", which is a statement about the station rather than about the
+## register.
+func cell_has_place(id: String, key: String) -> int:
+	return int(cell_place_keys(id).get(key, 0))
+
+
 # ===========================================================================
 # RUNTIME -- residency
 # ===========================================================================
@@ -1930,7 +1979,17 @@ func _ax_setup(args: Dictionary) -> int:
 		# footprint with the cell absent has walked into a room that is not
 		# loaded, and a resident cell with the body 200 m short is a streamer
 		# that works over ground nobody covered.
+		# AND THAT THE CELL HOLDS THE PLACE'S OWN TRIANGLES. `arrived_groups` is
+		# how many mesh groups of the target key were under the body when it
+		# said so, and `ghost_*` records the case this was written for: frames
+		# spent inside the footprint standing in a cell that holds none of it,
+		# with the cell named and its actual place inventory printed. See the
+		# arrival block in `_physics_process` for the run that made it
+		# necessary.
 		"arrived": false, "arrived_z": 0.0, "arrived_resident": false,
+		"arrived_cell": "", "arrived_groups": 0,
+		"ghost_frames": 0, "ghost_cell": "", "ghost_keys": "",
+		"goal_z": z_b,
 		"tgt_cell": cell_at(Vector3(float(tgt["floor_xyz"][0]),
 			float(tgt["floor_xyz"][1]), float(tgt["floor_xyz"][2]))),
 		"visited": {},
@@ -1966,7 +2025,11 @@ func _physics_process(delta: float) -> void:
 	# plane at the body's own angle, so a pure +z steer stays a pure +z walk.
 	var a := deg_to_rad(float(_ax["deg"]))
 	var rr: float = _ax["r"]
-	var goal: float = (_ax["z_b"] if _ax["dir"] > 0.0 else _ax["z_a"])
+	# `goal_z` starts at `z_b` -- the footprint's near edge -- and moves to the
+	# footprint's CENTRE the moment the body crosses that edge, so the walk does
+	# not stop 5 m short of the cell that actually holds the room. `z_b` itself
+	# is untouched and is what the report calls `target_z`.
+	var goal: float = (_ax["goal_z"] if _ax["dir"] > 0.0 else _ax["z_a"])
 	var ahead: float = p.z + _ax["dir"] * 5.0
 	if _ax["dir"] > 0.0:
 		ahead = minf(ahead, goal)
@@ -2056,24 +2119,74 @@ func _physics_process(delta: float) -> void:
 			print(step)
 			(_ax["steps"] as Array).append(step)
 
-	# ARRIVAL IS A FOOTPRINT TEST, NOT A DISTANCE. `reach` is a tolerance for
-	# stopping the walk; being INSIDE `obs_dome_2` means |z - 7960| <= 18.0 and
-	# the walk angle inside its 2.71 deg half-width, which the target selection
-	# already guaranteed. The cell is checked in the same frame, because "the
-	# room was loaded at some point" is not the claim.
-	if not bool(_ax["arrived"]):
-		var t: Dictionary = _ax["tgt"]
-		if absf(q.z - float(t["z_m"])) <= float(t["half_z_m"]):
+	# =====================================================================
+	# ARRIVAL, AND IT TAKES THREE FACTS, NOT TWO.
+	# =====================================================================
+	#
+	# 1. the body's z is inside the target's footprint -- a FOOTPRINT test and
+	#    not a distance. `reach` is a tolerance for stopping a walk; being
+	#    inside `obs_dome_2` means |z - 7960| <= 18.0 and the walk angle inside
+	#    its 2.71 deg half-width, which target selection already guaranteed.
+	# 2. the cell the body is standing in is RESIDENT in that same frame,
+	#    because "the room was loaded at some point" is not the claim.
+	# 3. THAT CELL HOLDS THE TARGET'S OWN GEOMETRY -- `cell_has_place`.
+	#
+	# THE THIRD ONE IS NEW AND THE FIRST TWO PASSED WITHOUT IT ON AN EMPTY
+	# CORRIDOR. Facts 1 and 2 are both statements about `<stem>_places.json`
+	# and the cell GRID; neither mentions the station. The review moved
+	# `obs_dome_2`'s `z_m` from 7960 to 7700 in that sidecar, changed nothing
+	# else, and this gate printed `ARRIVED at obs_dome_2 (Observation Dome 2)
+	# ... in cell blue_0_0_c04z12 which is RESIDENT` and `PASS`, exit 0, with
+	# the body standing in a generic connecting corridor built entirely of
+	# `join7440_7920__*` groups. The streamer had done its job perfectly and
+	# the sentence the gate printed was false.
+	#
+	# So the claim "a body ARRIVES AT A NAMED PLACE" is now a claim about
+	# triangles that exist: 110 groups of `z7920__obs_dome_2__*` and
+	# `z7960__obs_dome_2__*` are in `blue_0_0_c04z15`, and the body is standing
+	# in that cell when it says so.
+	var t: Dictionary = _ax["tgt"]
+	var in_fp := absf(q.z - float(t["z_m"])) <= float(t["half_z_m"])
+	if not bool(_ax["arrived"]) and in_fp:
+		var cid := String(cell_by_index(now).get("id", "")) if now >= 0 else ""
+		var res := cid != "" and is_resident(cid)
+		var ng := cell_has_place(cid, String(t["key"])) if res else 0
+		# THE FOOTPRINT'S NEAR EDGE IS NOT NECESSARILY WHERE THE ROOM IS. A
+		# place 36 m deep can begin in a cell that carries none of it, so
+		# entering the footprint retargets the walk from the near edge to the
+		# CENTRE and the test re-runs every frame from here on. Without this a
+		# legitimate room whose geometry starts 5 m in would fail on the stall
+		# detector -- a gate failing for its own bookkeeping, which this file
+		# has already paid for once at the turn.
+		if float(_ax["goal_z"]) != float(t["z_m"]):
+			_ax["goal_z"] = float(t["z_m"])
+			_ax["best"] = absf(q.z - float(t["z_m"]))
+			_ax["since"] = 0
+			print("axial-gate: inside %s's footprint at z=%.2f -- walking on "
+				% [String(t["key"]), q.z] + "to its centre z=%.1f until the "
+				% [float(t["z_m"])] + "cell under the body holds its geometry")
+		if not res or ng < 1:
+			_ax["ghost_frames"] = int(_ax["ghost_frames"]) + 1
+			_ax["ghost_cell"] = cid
+			var inv: Array = cell_place_keys(cid).keys()
+			inv.sort()
+			_ax["ghost_keys"] = (", ".join(PackedStringArray(inv))
+				if not inv.is_empty() else "(no place-tagged group at all)")
+		else:
 			_ax["arrived"] = true
 			_ax["arrived_z"] = q.z
-			_ax["arrived_resident"] = (now >= 0 and is_resident(
-				String(cell_by_index(now).get("id", ""))))
+			_ax["arrived_resident"] = true
+			_ax["arrived_cell"] = cid
+			_ax["arrived_groups"] = ng
 			print("axial-gate: ARRIVED at %s (%s) -- z=%.2f, inside its "
 				% [String(t["key"]), String(t["name"]), q.z]
-				+ "%.1f m footprint about z=%.1f, in cell %s which is %s"
-				% [float(t["half_z_m"]), float(t["z_m"]),
-					String(cell_by_index(now).get("id", "?")),
-					("RESIDENT" if _ax["arrived_resident"] else "NOT RESIDENT")])
+				+ "%.1f m footprint about z=%.1f, in cell %s which is RESIDENT "
+				% [float(t["half_z_m"]), float(t["z_m"]), cid]
+				+ "AND HOLDS %d MESH GROUP(S) OF %s"
+				% [ng, String(t["key"])]
+				+ (" after %d frame(s) inside the footprint with none"
+					% int(_ax["ghost_frames"]) if int(_ax["ghost_frames"]) > 0
+					else ""))
 	if int(_ax["trace"]) > 0 and int(_ax["frame"]) % int(_ax["trace"]) == 0:
 		print("  f%-6d z=%9.2f  cell %3d  resident %d (%d tri)  on_floor=%s"
 			% [int(_ax["frame"]), q.z, now, _resident.size(), resident_tris(),
@@ -2142,12 +2255,21 @@ func _ax_finish() -> void:
 	var want: float = float(_ax["z_b"])
 	var travelled: float = absf(reached - float(_ax["z_a"]))
 	var tgt: Dictionary = _ax["tgt"]
+	# `arrived_groups` AND `ghost_frames` ARE ON THE HEADLINE LINE ON PURPOSE.
+	# A reader scanning this one line can now tell a body that reached a room
+	# from a body that reached a coordinate: `arrived_groups=110` is triangles
+	# of the named place under its feet, `arrived_groups=0 ghost_frames=N` is
+	# the corridor the previous version of this gate passed on.
 	var line := ("AXIALWALK legs=%d floor_m=%.1f axial_m=%.1f reached_z=%.1f "
-		+ "target_z=%.1f arrived=%s@%s offfloor=%d/%d settle=%d "
+		+ "target_z=%.1f arrived=%s@%s arrived_cell=%s arrived_groups=%d "
+		+ "ghost_frames=%d offfloor=%d/%d settle=%d "
 		+ "cells_entered=%d crossings=%d resident_peak=%d resident_drawdown="
 		+ "%d places_visited=%d %s") % [
 		int(_ax["legs"]), float(_ax["floor_m"]), travelled, reached, want,
 		String(tgt["key"]), ("yes" if _ax["arrived"] else "NO"),
+		(String(_ax["arrived_cell"]) if String(_ax["arrived_cell"]) != ""
+			else "-"),
+		int(_ax["arrived_groups"]), int(_ax["ghost_frames"]),
 		int(_ax["off"]), int(_ax["frame"]), int(_ax["settle_frames"]),
 		(_ax["seen"] as Dictionary).size(), int(_ax["crossings"]),
 		int(_ax["peak_seen"]), int(_ax["drawdown"]),
@@ -2158,19 +2280,38 @@ func _ax_finish() -> void:
 	print("axial-gate: named places the body stood inside: %s"
 		% [", ".join(PackedStringArray(vis)) if not vis.is_empty() else "(none)"])
 	var bad: PackedStringArray = PackedStringArray()
-	if String(_ax["blocked"]) != "":
-		bad.append(String(_ax["blocked"]))
-	# THE ACCEPTANCE, AND IT IS THE FIRST THING CHECKED. Metres and hand-offs
-	# are the mechanism; arriving somewhere named is the claim.
-	if not bool(_ax["arrived"]):
+	# THE ACCEPTANCE, AND IT IS LITERALLY THE FIRST THING CHECKED. Metres and
+	# hand-offs are the mechanism; arriving somewhere named is the claim -- and
+	# the ordering earns its place rather than being tidiness. On the ghost
+	# control the stall detector ALSO fires, because a body walking to the
+	# centre of a footprint that holds nothing runs out of progress there, and
+	# its text is "something solid is in the way, not a missing cell", which is
+	# a wrong diagnosis of a real symptom. Put first, the true cause is the
+	# first thing a reader sees and the stall reads as the consequence it is.
+	if not bool(_ax["arrived"]) and int(_ax["ghost_frames"]) > 0:
+		# THE GHOST CASE, NAMED SEPARATELY FROM "never got there", because the
+		# two are different defects and the old gate could report neither. The
+		# body DID reach the coordinates the register gives for this place and
+		# the streamer DID have the cell loaded; what is missing is the place.
+		bad.append("the body stood inside %s (%s)'s footprint for %d frame(s) "
+			% [String(tgt["key"]), String(tgt["name"]),
+				int(_ax["ghost_frames"])]
+			+ "and NO cell under it held a single mesh group of %s. The last "
+			% [String(tgt["key"])]
+			+ "was %s, which holds: %s. The register names a place the station "
+			% [String(_ax["ghost_cell"]), String(_ax["ghost_keys"])]
+			+ "does not build there -- or the sidecar's z is wrong. Streaming "
+			+ "is not the fault here and this gate must not report it as one")
+	elif not bool(_ax["arrived"]):
 		bad.append("the body never stood inside %s (%s) -- got to z=%.1f, its "
 			% [String(tgt["key"]), String(tgt["name"]), reached]
 			+ "footprint is z=%.1f+-%.1f"
 			% [float(tgt["z_m"]), float(tgt["half_z_m"])])
-	elif not bool(_ax["arrived_resident"]):
-		bad.append("the body stood inside %s at z=%.1f and the cell it was in "
-			% [String(tgt["key"]), float(_ax["arrived_z"])]
-			+ "was NOT resident -- it walked into a room that had not loaded")
+	if String(_ax["blocked"]) != "":
+		bad.append(String(_ax["blocked"])
+			+ (" (and note the arrival clause above: the stall is where the "
+				+ "body ran out of footprint to walk into, not an obstruction)"
+				if int(_ax["ghost_frames"]) > 0 else ""))
 	# FREEING HAPPENS, rather than freeing is implemented. See the note where
 	# `min_after_peak` is initialised.
 	var pk := int(_ax["peak_seen"])
@@ -2237,6 +2378,37 @@ func _ax_finish() -> void:
 		print("axial-gate: OVER BUDGET -- " + over_txt)
 		if bool(_ax["strict_budget"]):
 			bad.append(over_txt)
+	# =====================================================================
+	# TWO QUESTIONS, TWO VERDICTS, ONE LINE -- and the review is why it is here.
+	# =====================================================================
+	# The charge was fair: a budget assertion that used to fail was moved behind
+	# `--strict-budget`, and the zero-arg run's exit 0 therefore depends on that
+	# move. The defence above is the 4e rule -- one honestly-red gate must not
+	# blind the answers behind it -- and a defence is worth nothing if a reader
+	# has to find the OVER BUDGET line in 2,600 lines of streamer log to know it
+	# fired. So both verdicts are printed together, always, in the same shape,
+	# whether or not either is red, and the ledger says which one drove the exit
+	# code. Nothing here is quieter than the version that welded them together.
+	#
+	# THREE FIELDS, NOT ONE VERDICT WEARING THREE HATS. `handoff` is derived
+	# from the streamer's own behaviour -- boundaries crossed, cells in and out,
+	# and a resident set that came DOWN -- and NOT from `bad`, so the ghost
+	# control reports `handoff=PASS arrival=NONE`, which is the true reading:
+	# the streamer did its job and the station had no room there.
+	var handoff_ok := (int(_ax["crossings"]) >= 2 and loads >= 1 and frees >= 1
+		and dd >= 1 and int(_ax["off"]) == 0)
+	print("AXIALGATE verdict=%s handoff=%s arrival=%s budget=%s "
+		% [("PASS" if bad.is_empty() else "FAIL"),
+			("PASS" if handoff_ok else "FAIL"),
+			("%s@%s x%d groups" % [String(tgt["key"]),
+				String(_ax["arrived_cell"]), int(_ax["arrived_groups"])]
+				if bool(_ax["arrived"]) else "NONE"),
+			("RED" if over else "GREEN")]
+		+ "(%d/%d tri, %.2fx, %d frame over) exit_driven_by=%s"
+		% [peak_tris, resident_tris_budget,
+			float(peak_tris) / maxf(float(resident_tris_budget), 1.0),
+			over_budget_frames,
+			("walk+budget" if bool(_ax["strict_budget"]) else "walk")])
 	if bad.is_empty():
 		print("axial-gate: PASS -- a body walked from %s to %s (%s) and back, "
 			% [(String((_ax["start_place"] as Dictionary).get("key", ""))
@@ -2246,6 +2418,9 @@ func _ax_finish() -> void:
 			+ "%.1f m of spine across %d cell hand-off(s), the resident set "
 			% [float(_ax["floor_m"]), int(_ax["crossings"])]
 			+ "peaking at %d cells and falling %d below that" % [pk, dd]
+			+ ", standing on %d mesh group(s) of %s in cell %s when it said so"
+			% [int(_ax["arrived_groups"]), String(tgt["key"]),
+				String(_ax["arrived_cell"])]
 			+ (" -- AND IT IS OVER TRIANGLE BUDGET: " + over_txt if over
 				else ""))
 	else:
