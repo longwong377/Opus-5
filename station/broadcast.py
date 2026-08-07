@@ -169,25 +169,33 @@ def port_calls(day: int = 0) -> list:
                 "hour": (a["hour"] - LINER_WARNING_H) % 24.0, "kind": "port",
                 "places": ("customs_north", "customs_south",
                            "arrival_concourse"),
-                "text": (f"CUSTOMS ADVISORY. {what} arriving in fifteen "
-                         f"minutes with {a['souls']} passengers. All "
-                         f"processing positions to be manned."),
+                "text": LINER_ADVISORY.format(what=what,
+                                              souls=a["souls"]),
                 "source": "traffic.arrivals + TRAFFIC-AND-CUSTOMS 5.2",
             })
         out.append({
             "hour": a["hour"], "kind": "port", "places": PA_PLACES,
-            "text": (f"{what.upper()} NOW ARRIVING"
-                     + (f", {where.replace('_', ' ')}" if where else
-                        ", standing off")
-                     + (f". {a['souls']} arriving passengers to customs."
-                        if a["souls"] else ".")),
-            "source": f"traffic.arrivals({day})[{i}]",
+            "text": ship_call(a["type"], "arrival"),
+            "source": f"traffic.arrivals({day})[{i}] -> "
+                      f"SHIP_CALLS[{a['type']!r}] arrival",
+        })
+        # THE BOARDING CALL IS THE ONE A PLAYER CAN ACT ON. It goes out a
+        # quarter-hour before she breaks moorage, in the bay the hull is
+        # actually in, and it is the third of DLG-04's three call types.
+        out.append({
+            "hour": (a["hour"] + a["stay_h"] - LINER_WARNING_H) % 24.0,
+            "kind": "port",
+            "places": ("docking_bays", "bay_elevators", "cargo_bays",
+                       "transfer_systems"),
+            "text": ship_call(a["type"], "boarding"),
+            "source": f"traffic.arrivals({day})[{i}] + stay_h - "
+                      f"{LINER_WARNING_H:.2f} h",
         })
         # And it leaves again. A port whose ships only arrive fills up.
         out.append({
             "hour": (a["hour"] + a["stay_h"]) % 24.0, "kind": "port",
             "places": ("docking_bays", "bay_elevators", "cargo_bays"),
-            "text": f"{what.upper()} DEPARTING. Bay doors closing.",
+            "text": ship_call(a["type"], "departure"),
             "source": f"traffic.arrivals({day})[{i}] + stay_h",
         })
     return out
@@ -199,8 +207,8 @@ def watch_calls() -> list:
     for h, name in ((0.0, "A"), (8.0, "B"), (16.0, "C")):
         out.append({
             "hour": h, "kind": "watch", "places": PA_PLACES,
-            "text": (f"{name} WATCH. All personnel report to duty stations. "
-                     f"{sched.role_on_duty('security', h)} security on watch."),
+            "text": WATCH_CALL[name].format(
+                n=sched.role_on_duty("security", h)),
             "source": "npc/schedule.role_on_duty + "
                       "LAW-CRIME-DOWNBELOW 2.2's three-shift table",
         })
@@ -226,27 +234,73 @@ def civic_calls() -> list:
 # genuine journalism; after Clark's consolidation it becomes a propaganda organ
 # defending the government's xenophobic policies and attacking dissidents", so
 # the later ones are drier and more official, not shriller.
-ISN_BULLETINS = (
-    ("markab_extinct",
-     "ISN. Earth Alliance medical authorities confirm no surviving Markab "
-     "population. Quarantine protocols aboard commercial stations remain in "
-     "force."),
-    ("narn_surrender",
-     "ISN. The Narn Regime has accepted terms. The Earth Alliance restates "
-     "its neutrality and urges nationals in former Narn space to register "
-     "with the nearest consulate."),
-    ("nightwatch_visible",
-     "ISN. The Ministry of Peace reports continued public support for the "
-     "Nightwatch programme. A spokesman described participation as, quote, "
-     "an ordinary civic duty."),
-    ("rangers_visible",
-     "ISN. Earth Alliance security services are reviewing reports of an "
-     "unregistered organisation operating along the rim. Citizens are asked "
-     "to report unusual activity."),
-    ("martial_law",
-     "ISN. Emergency measures remain in effect. Normal commercial traffic is "
-     "unaffected."),
-)
+# THE ROTATION IS THE CONTENT, NOT A DECORATION. A newsfeed screen in a
+# concourse is on for the whole watch and a player stands under it for several
+# minutes, so ONE string per story is the thing that reads as a placeholder --
+# the same defect a repeated tertiary greeble is, in text. DLG-04 asks for
+# 5 bulletins x 3 rotation variants, and the three are written as a REAL
+# rotation rather than three paraphrases: the lead, the follow-up with the
+# detail a bulletin adds an hour later, and the official reaction. Which one is
+# on screen is `(hour + day)` -- see `isn_bulletins`. INV-680.
+ISN_ROTATION = {
+    "markab_extinct": (
+        "ISN. Earth Alliance medical authorities confirm no surviving Markab "
+        "population. Quarantine protocols aboard commercial stations remain "
+        "in force.",
+        "ISN. The Markab quarter aboard Babylon 5 remains sealed pending "
+        "medical clearance. Xenobiology teams say the sealing is procedural "
+        "and there is no continuing risk to other species.",
+        "ISN. A memorial motion was laid before the Earth Alliance Senate "
+        "today. A spokesman confirmed the Markab consular accounts will be "
+        "held in trust against claimants.",
+    ),
+    "narn_surrender": (
+        "ISN. The Narn Regime has accepted terms. The Earth Alliance restates "
+        "its neutrality and urges nationals in former Narn space to register "
+        "with the nearest consulate.",
+        "ISN. Centauri administration of the Narn homeworld begins this week. "
+        "Commercial shipping to the former Regime is suspended until further "
+        "notice; carriers are advised to reroute through Ragesh Three.",
+        "ISN. The Centauri Republic has thanked the Earth Alliance for what "
+        "its ambassador called, quote, a properly neutral posture throughout "
+        "the conflict.",
+    ),
+    "nightwatch_visible": (
+        "ISN. The Ministry of Peace reports continued public support for the "
+        "Nightwatch programme. A spokesman described participation as, quote, "
+        "an ordinary civic duty.",
+        "ISN. Nightwatch enrolment aboard Earth Alliance stations has passed "
+        "one in three of security personnel. The Ministry stresses that "
+        "enrolment is voluntary and carries a supplementary allowance.",
+        "ISN. Asked about reports of pressure on officers who have not "
+        "enrolled, a Ministry of Peace spokesman said the reports were, "
+        "quote, without foundation, and declined further questions.",
+    ),
+    "rangers_visible": (
+        "ISN. Earth Alliance security services are reviewing reports of an "
+        "unregistered organisation operating along the rim. Citizens are "
+        "asked to report unusual activity.",
+        "ISN. The organisation is said to identify itself by a badge rather "
+        "than a registry. Station authorities remind travellers that an "
+        "unregistered courier carries no legal standing under Alliance law.",
+        "ISN. A Ministry of Peace statement described the reports as a matter "
+        "for internal security and confirmed no arrests have been made.",
+    ),
+    "martial_law": (
+        "ISN. Emergency measures remain in effect. Normal commercial traffic "
+        "is unaffected.",
+        "ISN. Under the emergency measures, station commanders hold summary "
+        "authority over movement and assembly. Travellers are advised to "
+        "carry identification at all times.",
+        "ISN. The President's office says the measures are temporary and will "
+        "be reviewed. No date for review has been given.",
+    ),
+}
+
+# The five stories, one row each, in event order -- DERIVED from the rotation
+# above so there is no second copy of a string. `ISN_BULLETINS` is the shape
+# every existing caller reads and the shape DLG-04's arithmetic counts.
+ISN_BULLETINS = tuple((ev, v[0]) for ev, v in ISN_ROTATION.items())
 
 # Ministry of Peace notices. FACTIONS.md 5: a paramilitary division of MiniPax,
 # set up under President Clark in 2259, whose stated purpose is "internal
@@ -254,17 +308,356 @@ ISN_BULLETINS = (
 # where "dissent is relabelled treason". The notices are written to the STATED
 # purpose in the customs board's own voice, which is the build note's whole
 # point -- an official, reasonable surface is what makes it sinister.
-MINIPAX_NOTICES = (
-    "MINISTRY OF PEACE. Report suspicious activity at any station terminal. "
-    "Your cooperation protects your neighbours.",
-    "MINISTRY OF PEACE. Nightwatch is now recruiting. Enquire at any station "
-    "house. A supplementary allowance is payable.",
-    "MINISTRY OF PEACE. Loyalty is the ordinary condition of a citizen. "
-    "Reports may be filed anonymously.",
+MINIPAX_ROTATION = (
+    ("MINISTRY OF PEACE. Report suspicious activity at any station terminal. "
+     "Your cooperation protects your neighbours.",
+     "MINISTRY OF PEACE. A report costs you nothing and may cost a stranger "
+     "very little. Terminals are available in every public concourse."),
+    ("MINISTRY OF PEACE. Nightwatch is now recruiting. Enquire at any station "
+     "house. A supplementary allowance is payable.",
+     "MINISTRY OF PEACE. Nightwatch enrolment is open to all station "
+     "residents in good standing. No previous service is required."),
+    ("MINISTRY OF PEACE. Loyalty is the ordinary condition of a citizen. "
+     "Reports may be filed anonymously.",
+     "MINISTRY OF PEACE. Those with nothing to conceal have nothing to "
+     "explain. Anonymity is guaranteed to every reporting citizen."),
 )
 
+MINIPAX_NOTICES = tuple(v[0] for v in MINIPAX_ROTATION)
 
-def isn_bulletins(datum=None) -> list:
+
+# ===========================================================================
+# 3b.  THE REST OF DLG-04 -- three call types, the watch, the scene set and
+#      the rumour matrix
+# ===========================================================================
+#
+# WHY THIS EXISTS AS CONTENT AND NOT AS ONE PARAMETERISED SENTENCE. The module
+# used to announce every hull with one arrival string and one departure string
+# and substitute the class name into both -- so a fuel tanker standing off at
+# forty kilometres and an Asimov liner discharging eight hundred people through
+# the customs hall were the same announcement with a different noun in it. A
+# player who stands in the concourse for one station-day hears fifty-one port
+# calls (`traffic.arrivals` at the datum), and two phrasings across fifty-one
+# calls is the audible equivalent of the tiling seam the eye can index.
+#
+# So the three call types are the three things a port actually says about a
+# hull, and each class says them in its own terms:
+#
+#   arrival   -- she is here, and where. A bay hull names its tier; a standoff
+#                hull names the lighterage that has to go out to her.
+#   departure -- she is going, and what that closes.
+#   boarding  -- the call that only matters to somebody who has to BE on her:
+#                passengers, crew, a work gang, a customs party.
+#
+# 10 classes x 3 = 30, which is DLG-04's PA figure. The class list is
+# `traffic.MANIFEST`'s and the selftest asserts the two agree, so a class added
+# to the manifest cannot leave a hole here. Authority 5 throughout; the
+# register is the customs board's (authority 1) as everywhere else in this
+# file. INV-681.
+SHIP_CALLS = {
+    "freighter_bay": (
+        "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to "
+        "grapple stations.",
+        "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors "
+        "closing.",
+        "Cargo detail for the Achilles-type freighter, report to the bay "
+        "gallery. Manifests to the quartermaster before you go up.",
+    ),
+    "transport": (
+        "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers "
+        "to customs on disembarkation.",
+        "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing.",
+        "Final call, United Spaceways transport. Ticketed passengers to the "
+        "bay elevators with identicards in hand.",
+    ),
+    "shuttle": (
+        "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays.",
+        "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing.",
+        "Shuttle boarding at the bay elevators. Hand baggage only; no cargo "
+        "will be carried.",
+    ),
+    "freighter_standoff": (
+        "STANDOFF-CLASS FREIGHTER ARRIVED AND STANDING OFF. Lighterage to be "
+        "arranged through the cargo desk.",
+        "STANDOFF-CLASS FREIGHTER DEPARTING. All lighters to be recovered "
+        "before she breaks moorage.",
+        "Lighter crews for the standoff freighter, muster at transfer "
+        "systems. Suits and tethers checked at the lock.",
+    ),
+    "tanker": (
+        "FUEL TANKER ARRIVED AND STANDING OFF. No transfer until the "
+        "guard boat reports on station.",
+        "FUEL TANKER DEPARTING. Transfer lines purged and stowed.",
+        "Transfer party for the fuel tanker, report to transfer systems. "
+        "No open work in the transfer corridor while she is connected.",
+    ),
+    "diplomatic": (
+        "DIPLOMATIC VESSEL ARRIVED AND STANDING OFF. Reception party to the "
+        "diplomatic wing.",
+        "DIPLOMATIC VESSEL DEPARTING. The wing is closed to visitors until "
+        "she is clear.",
+        "The diplomatic party will embark from the transfer lock. The "
+        "concourse route is closed for the next quarter-hour.",
+    ),
+    "liner": (
+        "ASIMOV-CLASS LINER NOW ARRIVING, docking bays. Arriving passengers "
+        "to customs.",
+        "ASIMOV-CLASS LINER DEPARTING. Bay doors closing.",
+        "Final call, Asimov-class liner. Passengers with cleared papers to "
+        "the bay elevators. Uncleared passengers remain in the hall.",
+    ),
+    "ef_transport": (
+        "EARTHFORCE PERSONNEL TRANSPORT NOW ARRIVING, docking bays. Station "
+        "personnel to receive.",
+        "EARTHFORCE PERSONNEL TRANSPORT DEPARTING. Bay doors closing.",
+        "Drafted personnel for the EarthForce transport, muster at the bay "
+        "gallery with orders and kit.",
+    ),
+    "ef_warship": (
+        "EARTHFORCE VESSEL MOORED. Station traffic to keep the moorage "
+        "approach clear.",
+        "EARTHFORCE VESSEL UNMOORING. Approach lanes closed until she is "
+        "under way.",
+        "Liberty party for the EarthForce vessel returns at the change of "
+        "the watch. Shore leave passes to be shown at the lock.",
+    ),
+    "alien_warship": (
+        "VISITING PATROL VESSEL MOORED. Her crew are guests of the station "
+        "and hold no authority aboard.",
+        "VISITING PATROL VESSEL UNMOORING. Approach lanes closed.",
+        "The visiting patrol vessel recalls her crew at the change of the "
+        "watch. Station security will escort to the moorage lock.",
+    ),
+}
+
+CALL_TYPES = ("arrival", "departure", "boarding")
+
+# The watch call, one per watch, and each one says what that watch INHERITS --
+# LAW-CRIME-DOWNBELOW 2.2's three-shift table read as three different jobs
+# rather than as one string with a letter substituted into it. A is the watch
+# that holds the station while it sleeps; B is the one that meets the traffic;
+# C is the one that takes the Zocalo at closing.
+WATCH_CALL = {
+    "A": ("A WATCH. All personnel report to duty stations. {n} security on "
+          "watch. Downbelow boundary patrols to be walked hourly until "
+          "oh-eight-hundred."),
+    "B": ("B WATCH. All personnel report to duty stations. {n} security on "
+          "watch. Customs positions to be manned for the day's arrivals."),
+    "C": ("C WATCH. All personnel report to duty stations. {n} security on "
+          "watch. Zocalo and licensed premises to be cleared at closing."),
+}
+
+# The liner customs advisory, named because DLG-04 counts it as one template
+# and it was previously an f-string inside `port_calls` where nothing could
+# count it.
+LINER_ADVISORY = ("CUSTOMS ADVISORY. {what} arriving in fifteen minutes with "
+                  "{souls} passengers. All processing positions to be manned.")
+
+# ---------------------------------------------------------------------------
+# THE DENUNCIATION SCENE. FACTIONS.md 5's Nightwatch is a propaganda instrument
+# in which "dissent is relabelled treason", and DLG-04 asks for the scene set
+# as CONTENT rather than as a mood: eight lines that play out one questioning
+# in a public corridor, which is the form the show gives it -- it happens where
+# people are, and the crowd's job is to not be involved.
+#
+# The eight are ordered as the scene plays: the approach, the demand, the
+# denouncer, the accusation, the defence, the crowd, the disposal, the aftermath.
+# `speaker` says who says it, so the runtime can put the line in the right
+# mouth instead of on the tannoy. Authority 5. INV-682.
+DENUNCIATION = (
+    ("nightwatch", "A word. Station business. You needn't stop what you are "
+                   "doing -- just answer where you are."),
+    ("nightwatch", "Identicard. And your business at this hour, in your own "
+                   "words, if you would."),
+    ("informant", "That's him. That's the one I filed on. He said it twice "
+                  "and the second time there were four of us stood there."),
+    ("nightwatch", "It is reported that you spoke against the Ministry in a "
+                   "public place. Do you say the report is false?"),
+    ("accused", "I said the docks were being run badly. That is not the same "
+                "sentence and you know it is not."),
+    ("bystander", "Nobody here saw anything. We were none of us stood close "
+                  "enough to hear a word of it."),
+    ("nightwatch", "You will present yourself at the station house at the "
+                   "change of the watch. Do not make me come and find you."),
+    ("bystander", "Get on. Look at your boots and get on. It is not your "
+                  "turn today."),
+)
+
+# ---------------------------------------------------------------------------
+# THE ERA RUMOUR MATRIX -- 8 ERA_EVENTS x 4 speaker classes = 32.
+#
+# WHY FOUR CLASSES AND NOT FIFTEEN SPECIES. What changes when the news is the
+# same and the mouth is different is not the SPECIES, it is what the speaker
+# stands to lose by it, and the station sorts that four ways: the office that
+# has to administer it, the trade that has to price it, the people below who
+# find out last and pay first, and the non-human resident for whom an Earth
+# Alliance emergency is somebody else's emergency happening to them. Species
+# register is applied on top by `dialogue._SPECIES_VOICE`; doing it twice would
+# be two descriptions of one fact.
+#
+# Every row is era-locked through `costume.ERA_EVENTS` -- the SAME clock as the
+# armband and the ISN screen (INV-240), so a rumour cannot circulate before its
+# event. Authority 5. INV-683.
+RUMOUR_SPEAKERS = ("official", "trader", "downbelow", "alien")
+
+ERA_RUMOUR = {
+    ("markab_extinct", "official"):
+        "The quarter is sealed and it stays sealed. That is a medical order "
+        "and I do not have the authority to lift it.",
+    ("markab_extinct", "trader"):
+        "Three of my standing orders were Markab. Nobody has told me who I "
+        "invoice now, and nobody is going to.",
+    ("markab_extinct", "downbelow"):
+        "There are empty quarters up there with the air still running and "
+        "they would rather seal them than let us in.",
+    ("markab_extinct", "alien"):
+        "An entire people, aboard this station, and it took eleven days. Do "
+        "not ask me to find a lesson in it.",
+    ("psi_resident_ends", "official"):
+        "The resident telepath's posting is closed. Requests go to Earthdome "
+        "now, and Earthdome is not quick.",
+    ("psi_resident_ends", "trader"):
+        "No commercial scan aboard for the moment. Every contract on this "
+        "level is being signed on somebody's word.",
+    ("psi_resident_ends", "downbelow"):
+        "The reader's gone. That is the first good news down here in a year "
+        "and nobody up there thinks so.",
+    ("psi_resident_ends", "alien"):
+        "The Corps kept one of theirs here and now it does not. I am told to "
+        "read nothing into that. I read something into it.",
+    ("narn_surrender", "official"):
+        "The Regime's registry is void. Every Narn-flagged hull in the "
+        "berth-map is a stateless hull and I have no procedure for it.",
+    ("narn_surrender", "trader"):
+        "The Narn lines are gone. Everything that came up that route now "
+        "comes through Centauri hands and it comes at Centauri prices.",
+    ("narn_surrender", "downbelow"):
+        "There will be another thousand of them down here by the month's end "
+        "and there was no room for the last thousand.",
+    ("narn_surrender", "alien"):
+        "They have terms. Terms are what you are given when you have nothing "
+        "left to give in return.",
+    ("nightwatch_visible", "official"):
+        "One in three of my officers now wears it. I sign the same duty roster "
+        "and I no longer know who is reading it.",
+    ("nightwatch_visible", "trader"):
+        "I keep my opinions behind the counter with the takings. Both are "
+        "safer there.",
+    ("nightwatch_visible", "downbelow"):
+        "They pay for a report. Down here that is a week's food for a name, "
+        "and there are names for sale.",
+    ("nightwatch_visible", "alien"):
+        "It is a human arrangement, in a human corridor, and it will be at my "
+        "door within the year.",
+    ("rangers_visible", "official"):
+        "Unregistered couriers, moving without a filed route. I am asked to "
+        "report them and not asked what they are.",
+    ("rangers_visible", "trader"):
+        "Somebody is running cargo without a manifest and being paid well for "
+        "it. That is either very good work or a very short career.",
+    ("rangers_visible", "downbelow"):
+        "One of them bought a berth off me and paid in cash and asked me "
+        "nothing. That is not how anybody down here behaves.",
+    ("rangers_visible", "alien"):
+        "The badge is Minbari work. Whatever it is, it is older than the "
+        "Alliance that is looking for it.",
+    ("monastics_resident", "official"):
+        "The order has permanent quarters now. It is a residency grant and it "
+        "went through in a week, which is not usual.",
+    ("monastics_resident", "trader"):
+        "They buy plainly, they pay on the day, and they never once haggle. I "
+        "would take a corridor of them.",
+    ("monastics_resident", "downbelow"):
+        "The brothers come down with soup and they do not ask for a name to "
+        "put against it. That is the whole of it.",
+    ("monastics_resident", "alien"):
+        "Humans who study rather than trade. It is the first thing your "
+        "species has done here that I understand.",
+    ("martial_law", "official"):
+        "Summary authority over movement and assembly. I have read the order "
+        "four times looking for the part that limits it.",
+    ("martial_law", "trader"):
+        "Curfew closes me two hours early and the same rent falls due. Write "
+        "to whom, exactly?",
+    ("martial_law", "downbelow"):
+        "Emergency measures. Down here that means a sweep, and a sweep means "
+        "they take the ones who cannot run.",
+    ("martial_law", "alien"):
+        "Your government has suspended itself and calls it order. Mine would "
+        "at least have the decency to call it what it is.",
+    ("secession", "official"):
+        "We are independent as of this morning. I am still wearing the "
+        "uniform of the service that is now going to come and take it back.",
+    ("secession", "trader"):
+        "No Alliance clearing, no Alliance credit line. Every account on this "
+        "level settles in cash until somebody says otherwise.",
+    ("secession", "downbelow"):
+        "They have broken away and there is still no post below the eighth "
+        "deck. Nothing changed down here at all.",
+    ("secession", "alien"):
+        "You have made yourselves a small power with a large enemy. The "
+        "League will be very interested and very careful.",
+}
+
+
+def era_rumours(datum=None) -> list:
+    """The rumour lines circulating at `datum`, one per (event, speaker class).
+
+    Era-locked through the SAME clock as the armband and the ISN screen.
+    """
+    return [{"hour": None, "kind": "rumour", "places": ISN_PLACES,
+             "text": t, "event": ev, "speaker": who,
+             "source": f"costume.ERA_EVENTS[{ev!r}] + FACTIONS.md 11.5 "
+                       f"({who} register)"}
+            for (ev, who), t in ERA_RUMOUR.items() if _era_on(ev, datum)]
+
+
+def denunciation_scene(datum=None) -> list:
+    """The Nightwatch questioning, as an ordered scene. Empty before the era.
+
+    FACTIONS.md 5.1: *"Any armband before The Fall of Night is an error."* The
+    scene is the armband speaking, so it is locked to the same event.
+    """
+    if not _era_on("nightwatch_visible", datum):
+        return []
+    return [{"hour": None, "kind": "denunciation", "places": MINIPAX_PLACES,
+             "text": t, "speaker": who, "beat": i,
+             "event": "nightwatch_visible",
+             "source": "FACTIONS.md 5 -- dissent relabelled treason"}
+            for i, (who, t) in enumerate(DENUNCIATION)]
+
+
+def ship_call(kind: str, call: str = "arrival") -> str:
+    """One PA line for one hull class and one of the three call types."""
+    row = SHIP_CALLS.get(kind)
+    if row is None:                                          # pragma: no cover
+        return SHIP_CALL.get(kind, kind).upper()
+    return row[CALL_TYPES.index(call)]
+
+
+def templates() -> dict:
+    """DLG-04's census, computed rather than asserted.
+
+    Every distinct broadcast string this module can put in front of a player,
+    grouped the way `docs/spec/PEOPLE.md` DLG-04's arithmetic groups them. The
+    harness reads THIS, so the count and the content cannot drift apart -- a
+    row added to a table below is counted the moment it exists and a row
+    deleted stops being counted the same moment.
+    """
+    return {
+        "isn": {t for v in ISN_ROTATION.values() for t in v},
+        "minipax": {t for v in MINIPAX_ROTATION for t in v},
+        "pa_ship": {t for v in SHIP_CALLS.values() for t in v},
+        "watch": set(WATCH_CALL.values()),
+        "board": set(BOARD_VOICE),
+        "sweep": {SENSOR_SWEEP},
+        "advisory": {LINER_ADVISORY},
+        "denunciation": {t for _who, t in DENUNCIATION},
+        "rumour": set(ERA_RUMOUR.values()),
+    }
+
+
+def isn_bulletins(datum=None, rotation: int = 0) -> list:
     """The bulletins in force at `datum`, in event order.
 
     THE ERA LOCK IS THE POINT. At the S3E05 datum four of the five are on; at
@@ -272,13 +665,15 @@ def isn_bulletins(datum=None) -> list:
     that moves `costume.ERA_DATUM` moves what the screens say, and nothing here
     has to know.
     """
-    return [{"hour": None, "kind": "isn", "places": ISN_PLACES, "text": txt,
-             "event": ev, "source": f"costume.ERA_EVENTS[{ev!r}] + "
-                                    f"FACTIONS.md 11.5"}
-            for ev, txt in ISN_BULLETINS if _era_on(ev, datum)]
+    return [{"hour": None, "kind": "isn", "places": ISN_PLACES,
+             "text": ISN_ROTATION[ev][rotation % len(ISN_ROTATION[ev])],
+             "event": ev, "rotation": rotation % len(ISN_ROTATION[ev]),
+             "source": f"costume.ERA_EVENTS[{ev!r}] + FACTIONS.md 11.5, "
+                       f"rotation slot {rotation % len(ISN_ROTATION[ev])}"}
+            for ev, _txt in ISN_BULLETINS if _era_on(ev, datum)]
 
 
-def minipax_notices(datum=None) -> list:
+def minipax_notices(datum=None, rotation: int = 0) -> list:
     """Ministry of Peace notices -- ONLY after Nightwatch surfaces aboard.
 
     FACTIONS.md 5.1 is explicit: *"Any armband before The Fall of Night is an
@@ -288,9 +683,11 @@ def minipax_notices(datum=None) -> list:
     if not _era_on("nightwatch_visible", datum):
         return []
     return [{"hour": None, "kind": "minipax", "places": MINIPAX_PLACES,
-             "text": t, "event": "nightwatch_visible",
-             "source": "FACTIONS.md 5 and 11.5's build note"}
-            for t in MINIPAX_NOTICES]
+             "text": v[rotation % len(v)], "event": "nightwatch_visible",
+             "rotation": rotation % len(v),
+             "source": "FACTIONS.md 5 and 11.5's build note, rotation slot "
+                       f"{rotation % len(v)}"}
+            for v in MINIPAX_ROTATION]
 
 
 # ===========================================================================
@@ -305,7 +702,11 @@ def day(day_n: int = 0, datum=None) -> list:
     """
     timed = port_calls(day_n) + watch_calls() + civic_calls()
     timed.sort(key=lambda a: a["hour"])
-    return timed + isn_bulletins(datum) + minipax_notices(datum)
+    # THE ROTATION SLOT IS THE DAY. A screen that shows the same three
+    # sentences forever is one sentence with extra steps, so which of a story's
+    # three phrasings is up is a function of the day the player is standing in.
+    return (timed + isn_bulletins(datum, day_n) + minipax_notices(datum, day_n)
+            + era_rumours(datum) + denunciation_scene(datum))
 
 
 def audible_at(place_key: str, hour: float, day_n: int = 0, window_h=0.25,
@@ -425,6 +826,39 @@ def _selftest(out=print):                                       # noqa: C901
     orphan = [k for k in SHIP_CALL if k not in {r[0] for r in _t.MANIFEST}]
     check(not orphan, "...and no SHIP_CALL names a class the manifest dropped",
           f"{orphan}")
+
+    # -- DLG-04: THREE CALL TYPES PER CLASS, AND NO TWO CLASSES SHARE ONE ----
+    # The defect this catches is the one the module HAD: one arrival string
+    # with the class name substituted into it, which is 51 announcements a day
+    # in two phrasings. Identity, not similarity -- `deck.py --degeneracy`'s
+    # question asked of text. Two hulls whose calls hash the same ARE one hull.
+    n += 1
+    gaps = [k for k, *_ in _t.MANIFEST
+            if len(SHIP_CALLS.get(k, ())) != len(CALL_TYPES)]
+    check(not gaps, f"every manifest class has all {len(CALL_TYPES)} call types",
+          f"{gaps}")
+    n += 1
+    calls = [t for v in SHIP_CALLS.values() for t in v]
+    check(len(set(calls)) == len(calls),
+          "no two hull classes share a PA line",
+          f"{len(calls) - len(set(calls))} duplicated")
+
+    # -- DLG-04: the census is the content, and it is 98 --------------------
+    n += 1
+    cens = templates()
+    flat = [t for v in cens.values() for t in v]
+    check(len(set(flat)) == len(flat),
+          "every broadcast template in the census is distinct",
+          f"{len(flat) - len(set(flat))} duplicated")
+    n += 1
+    check(len(ERA_RUMOUR) == len(cos.ERA_EVENTS) * len(RUMOUR_SPEAKERS),
+          f"the rumour matrix is {len(cos.ERA_EVENTS)} events x "
+          f"{len(RUMOUR_SPEAKERS)} speaker classes",
+          f"{len(ERA_RUMOUR)} rows")
+    n += 1
+    holes = [(e, w) for e in cos.ERA_EVENTS for w in RUMOUR_SPEAKERS
+             if (e, w) not in ERA_RUMOUR]
+    check(not holes, "...with no hole in it", f"{holes[:4]}")
 
     # -- every place a voice reaches is a real place ---------------------
     for name, group in (("PA_PLACES", PA_PLACES),
