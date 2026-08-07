@@ -72,7 +72,7 @@ import hashlib
 import json
 import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:                                    # pragma: no cover
@@ -163,6 +163,14 @@ class World:
     hour: float = 13.0
     day: int = 0
     datum: tuple = None
+    # DLG-06's two halves, and they are properties of the SITTING rather than
+    # of the station -- which is why they live here and not on the speaker.
+    # `session` is the play session a scarce voice must not repeat inside;
+    # `audience` is how many bodies are in the room, because the Broker's
+    # price is set by who else is listening. `None` means the caller did not
+    # say, and a caller who did not say gets the public manner.
+    session: str = ""
+    audience: int = None
 
     @property
     def era(self):
@@ -1316,6 +1324,16 @@ def yields_to_press(reg: Register) -> bool:
 # Every line names a value out of the topic's own `fact`, for the same reason
 # the NPC's do: a line any NPC could hear is a line that has not been earned.
 SAY = {
+    # THE ELEVENTH ROW, AND IT IS THE ONE THAT WAS MISSING. `TOPICS` has
+    # eleven entries and `SAY` had ten: `refusal` returns from `speak` before
+    # any menu is built, so the player met the one exchange in the module they
+    # could not answer -- a silence with no reply key. DLG-05's arithmetic is
+    # 11 x 3 and it was 10 x 3. The three stances still mean what they mean:
+    # ask gets nothing back (they said nothing), press gets the deflection,
+    # let-go ends it. INV-687.
+    "refusal": ("That was not an answer. I would still like one.",
+                "You can look at me while you refuse me.",
+                "Understood. I will not push it."),
     "port":    ("The {ship} -- were you expecting her?",
                 "{souls} through one hall. How is that going?",
                 "I'll leave you to the {ship}."),
@@ -1347,6 +1365,482 @@ SAY = {
                 "What did that actually change for you?",
                 "We needn't talk about it."),
 }
+
+
+# ===========================================================================
+# 4c.  THE REST OF DLG-05 -- 152 player lines, and what each family is FOR
+# ===========================================================================
+#
+# THE ROW'S ARITHMETIC, AND EVERY MULTIPLICAND IS A NUMBER THIS REPOSITORY
+# ALREADY HOLDS rather than a figure chosen to make a total come out:
+#
+#   11 topics x 3 stances                          = 33   (`TOPICS`, `STANCES`)
+#   openers / closers                              =  8
+#   12 player roles x 8 shift verbs                = 96   (ROLE-01..12 x
+#                                                          `interact.VERBS`)
+#   SHOW-PAPERS / BUY-SELL / refusal               = 15
+#                                                   ----
+#                                                    152
+#
+# THE 96 ARE THE PART THAT IS NOT DECORATION. `docs/spec/PEOPLE.md` ROLE-01..12
+# are the twelve jobs a PLAYER can hold, and `interact.VERBS` is the whole verb
+# set the station is built around -- eight verbs, and `tread` deliberately has
+# no prompt. So a work line is what the player says while doing one job with
+# one verb, and the grid is the two lists multiplied rather than a list
+# somebody wrote down. When a thirteenth role is specified or a ninth verb is
+# added, the hole is a missing key and the selftest names it; that is the
+# "a fix applied to a table entry and not to the table" defect closed in
+# advance.
+#
+# WHAT IS INVENTED: the phrasings, authority 5, exactly as `PHRASE` and
+# `broadcast.py`'s tannoy lines are. The player has ONE register -- no role
+# row, no species row -- for the reason `SAY` already gives: nothing in this
+# repository describes how the player speaks, and banding them would be
+# inventing a person the simulation does not have. INV-684.
+
+# The twelve. Keys are this module's; `_selftest` asserts they are exactly the
+# ROLE-01..12 headings in the annex, so the list cannot quietly drift from the
+# spec that defines it.
+PLAYER_ROLES = ("customs_officer", "security_deputy", "dockworker",
+                "bartender", "stall_trader", "medlab_assistant",
+                "maintenance_tech", "lurker", "porter", "info_broker",
+                "diplomat_aide", "starfury_pilot")
+
+# The eight verbs, in `interact.VERBS` order. Named here rather than imported
+# at module scope because `interact` imports `directory` and this module is
+# loaded by the deck baker; the selftest does the import and asserts equality.
+SHIFT_VERBS = ("open", "operate", "read", "sit", "rest", "store", "serve",
+               "tread")
+
+# 12 x 8. Every line is the player DOING the job, not describing it -- ROLE-05's
+# acceptance shape is a Nightwatch questioning at the player's own stall, which
+# only works if the player has a stall voice to be questioned in.
+WORK_LINE = {
+    ("customs_officer", "open"): "Hall's open. Single file, cards out.",
+    ("customs_officer", "operate"): "Running your card. Look at the plate.",
+    ("customs_officer", "read"): "Card says transit. Say where, and say when.",
+    ("customs_officer", "sit"): "Take the chair. This goes faster sitting.",
+    ("customs_officer", "rest"): "Twenty minutes off the line. Wake me if the "
+                                 "liner comes in early.",
+    ("customs_officer", "store"): "That goes in the bond locker until somebody "
+                                  "senior signs for it.",
+    ("customs_officer", "serve"): "Next. Card and declaration together, please.",
+    ("customs_officer", "tread"): "Stand behind the line. The yellow one, not "
+                                  "the edge of the mat.",
+
+    ("security_deputy", "open"): "Security. I am opening this and you are "
+                                 "standing where I can see you.",
+    ("security_deputy", "operate"): "Logging the caution. Your name goes on it "
+                                    "either way.",
+    ("security_deputy", "read"): "Identicard. And I will read it properly, so "
+                                 "do not walk off halfway.",
+    ("security_deputy", "sit"): "Sit down. You are not under arrest and you "
+                                "are not leaving yet either.",
+    ("security_deputy", "rest"): "Post relief. I am on the bench for ten and "
+                                 "then I walk the ring again.",
+    ("security_deputy", "store"): "Into the property locker, sealed, and you "
+                                  "get the tag.",
+    ("security_deputy", "serve"): "Station house. What is it, and is anybody "
+                                  "hurt?",
+    ("security_deputy", "tread"): "Mind the step down. People come off that "
+                                  "lip every watch.",
+
+    ("dockworker", "open"): "Hatch is coming up. Stand clear of the swing.",
+    ("dockworker", "operate"): "Taking the grapple in. Call it if she drifts.",
+    ("dockworker", "read"): "Manifest says forty-one. I have counted "
+                            "thirty-nine twice.",
+    ("dockworker", "sit"): "Sitting on the gantry for five. My back has done "
+                           "its shift already.",
+    ("dockworker", "rest"): "That is me finished. Whoever has the next hull "
+                            "can have my gloves too.",
+    ("dockworker", "store"): "Stow it forward and lash it. She rolls on the "
+                             "way out.",
+    ("dockworker", "serve"): "Gang boss is over there. I only carry things.",
+    ("dockworker", "tread"): "Walk the yellow, not the deck plate. That plate "
+                             "is not fixed down.",
+
+    ("bartender", "open"): "We are open. Mind the step and mind the Drazi.",
+    ("bartender", "operate"): "Working the taps. Give it a moment, the line is "
+                              "cold.",
+    ("bartender", "read"): "Slate is behind me. If it is chalked out, it is "
+                           "out.",
+    ("bartender", "sit"): "Take a stool. The far end is quieter if you want "
+                          "quiet.",
+    ("bartender", "rest"): "Cellar for ten minutes. Shout if anybody starts "
+                           "anything.",
+    ("bartender", "store"): "That goes under the counter and it stays under "
+                            "the counter.",
+    ("bartender", "serve"): "What will it be, and are you paying now or "
+                            "running a slate?",
+    ("bartender", "tread"): "Watch your footing there. Somebody went over "
+                            "earlier and I have not had the mop out.",
+
+    ("stall_trader", "open"): "Stall is up. Everything on the front cloth is "
+                              "priced as marked.",
+    ("stall_trader", "operate"): "Weighing it out. You can watch the scale, I "
+                                 "do not mind.",
+    ("stall_trader", "read"): "That label is the origin, not the grade. The "
+                              "grade is the second line.",
+    ("stall_trader", "sit"): "Sit on the crate if you like. I am not going "
+                             "anywhere for an hour.",
+    ("stall_trader", "rest"): "Shutting the cloth for a bit. The noon crowd "
+                              "has gone through.",
+    ("stall_trader", "store"): "Back in the case. It does not keep in this "
+                               "air.",
+    ("stall_trader", "serve"): "You are looking at it. Tell me what you want "
+                               "and I will tell you what it costs.",
+    ("stall_trader", "tread"): "Round the front of the cloth, not over it. "
+                               "People have.",
+
+    ("medlab_assistant", "open"): "Curtain back. Say your name before I touch "
+                                  "anything.",
+    ("medlab_assistant", "operate"): "Running the scanner. It is cold and it "
+                                     "takes eleven seconds.",
+    ("medlab_assistant", "read"): "Chart says you were in here two weeks ago "
+                                  "with the same thing.",
+    ("medlab_assistant", "sit"): "Sit up here and let your legs hang. Do not "
+                                 "lock your knees.",
+    ("medlab_assistant", "rest"): "Lie back. You are staying until the charge "
+                                  "physician has seen you.",
+    ("medlab_assistant", "store"): "Into the sharps bin, and it is signed for "
+                                   "in the log.",
+    ("medlab_assistant", "serve"): "Medlab. Is it an injury, a fever, or "
+                                   "paperwork?",
+    ("medlab_assistant", "tread"): "Mind the cable run. That is oxygen, and it "
+                                   "matters.",
+
+    ("maintenance_tech", "open"): "Panel off. Do not put your hand in until I "
+                                  "say the bus is dead.",
+    ("maintenance_tech", "operate"): "Cycling it. If it trips again the fault "
+                                     "is upstream of us.",
+    ("maintenance_tech", "read"): "Gauge is reading low and it has been "
+                                  "reading low since the last shift signed it "
+                                  "off.",
+    ("maintenance_tech", "sit"): "Sitting in the crawl to do this properly. It "
+                                 "is a two-hour job done badly standing.",
+    ("maintenance_tech", "rest"): "Ten minutes with my back against something "
+                                  "that is not vibrating.",
+    ("maintenance_tech", "store"): "Tools back in the roll and counted. You do "
+                                   "not leave a spanner in a duct.",
+    ("maintenance_tech", "serve"): "Works order desk. Give me the deck and the "
+                                   "frame number, not the room name.",
+    ("maintenance_tech", "tread"): "That grating is lifted. Step over, not on.",
+
+    ("lurker", "open"): "It was already open. That is the whole of my story "
+                        "and I am sticking to it.",
+    ("lurker", "operate"): "I have seen this worked a hundred times. Nobody "
+                           "ever showed me.",
+    ("lurker", "read"): "Notice says the queue starts at five. It never "
+                        "starts at five.",
+    ("lurker", "sit"): "I will sit where the warm air comes up. Everyone does.",
+    ("lurker", "rest"): "This is my patch. Two metres of it, and nobody comes "
+                        "down here anyway.",
+    ("lurker", "store"): "Everything I own goes under my coat when I move. "
+                         "That is the system.",
+    ("lurker", "serve"): "I am not behind a counter. I am the one on the wrong "
+                         "side of it.",
+    ("lurker", "tread"): "Keep to the dry side. That run has been leaking "
+                         "since before I came aboard.",
+
+    ("porter", "open"): "Delivery. I will hold the leaf, you take the weight.",
+    ("porter", "operate"): "Calling the lift. It is four minutes if it is at "
+                           "the drum end.",
+    ("porter", "read"): "Docket says Blue seven and there is no Blue seven on "
+                        "this ring.",
+    ("porter", "sit"): "Two minutes off my feet and then I have six more of "
+                       "these.",
+    ("porter", "rest"): "That is the round done. Eleven kilometres of ring, "
+                        "same as yesterday.",
+    ("porter", "store"): "Signed, dated, and into the rack. If it walks it is "
+                         "not on me.",
+    ("porter", "serve"): "Parcel counter. Name it is under, and something with "
+                         "your face on it.",
+    ("porter", "tread"): "Give me the corridor. I cannot see past this and I "
+                         "am not stopping.",
+
+    ("info_broker", "open"): "Come in and shut it behind you. That is half of "
+                             "what you are paying for.",
+    ("info_broker", "operate"): "Pulling the berth-map. Public record, and "
+                                "nobody reads it but me.",
+    ("info_broker", "read"): "Read it here. It does not leave the desk and it "
+                             "does not get copied.",
+    ("info_broker", "sit"): "Sit. People who stand up are people who are about "
+                            "to lie to me.",
+    ("info_broker", "rest"): "Desk is shut. Come back when the night broker is "
+                             "on and pay his rates.",
+    ("info_broker", "store"): "It goes in the safe and it stays there until "
+                              "one of us needs it more.",
+    ("info_broker", "serve"): "I sell what is true and what is useful. They "
+                              "are different prices.",
+    ("info_broker", "tread"): "Take the long way round the gallery. The short "
+                              "way has a post on it.",
+
+    ("diplomat_aide", "open"): "The wing is open to the delegation only. I can "
+                               "take a message for anyone else.",
+    ("diplomat_aide", "operate"): "Logging the appointment. It will be "
+                                  "acknowledged within the day.",
+    ("diplomat_aide", "read"): "The note is in three languages and it says the "
+                               "same thing in none of them.",
+    ("diplomat_aide", "sit"): "Please sit. The ambassador is running twenty "
+                              "minutes behind and always will be.",
+    ("diplomat_aide", "rest"): "The reception is over. I am going to stand "
+                               "somewhere nobody is watching my face.",
+    ("diplomat_aide", "store"): "Sealed and filed under the mission, not under "
+                                "the station.",
+    ("diplomat_aide", "serve"): "The mission is receiving. State your business "
+                                "and your standing, in that order.",
+    ("diplomat_aide", "tread"): "Please keep to the carpet. The rest of the "
+                                "floor is not ours.",
+
+    ("starfury_pilot", "open"): "Canopy up. Do not touch the rail, it is still "
+                                "hot from the launch.",
+    ("starfury_pilot", "operate"): "Running the pre-flight. Forty-one items "
+                                   "and I do all forty-one.",
+    ("starfury_pilot", "read"): "Board is green except for the aft attitude "
+                                "quad, and that has been amber all week.",
+    ("starfury_pilot", "sit"): "Strapping in. Five points, and the harness "
+                               "gets checked by somebody who is not me.",
+    ("starfury_pilot", "rest"): "Down and safed. I have eleven hours before I "
+                                "am on the board again.",
+    ("starfury_pilot", "store"): "Helmet in the rack with my name on it. Never "
+                                 "anybody else's rack.",
+    ("starfury_pilot", "serve"): "Cobra bay. If you are not on the launch "
+                                 "roster you should not be on this gallery.",
+    ("starfury_pilot", "tread"): "Walk the catwalk, hold the rail. There is no "
+                                 "floor under that grating, there is a bay.",
+}
+
+# The openers and closers -- four of each. These are the only player lines that
+# name nothing about the person in front of them, because that is what an
+# opener IS: the thing you say before you know anything.
+PLAYER_OPEN = (
+    "Have you got a moment?",
+    "Sorry -- can I ask you something?",
+    "You look like you know this deck.",
+    "I will not keep you.",
+)
+PLAYER_CLOSE = (
+    "Thanks. That helps.",
+    "I will let you get on.",
+    "Good watch to you.",
+    "If I need to find you again, is it here?",
+)
+
+# SHOW-PAPERS: what the player says when a card is demanded. Five, because the
+# station has five things a card can be -- ROLE-01's own ladder: in order,
+# lapsed, absent, sanctuary, and the refusal to produce it at all.
+PAPERS = (
+    "Here. Transit visa, and the date is on the second line.",
+    "It has lapsed. I know it has lapsed, and I know how many of us that is.",
+    "I do not have a card. That is the answer whether you like it or not.",
+    "Sanctuary status. It is not the same as being welcome and we both know "
+    "it.",
+    "You can read it when somebody senior to you asks me for it.",
+)
+
+# BUY / SELL: the trade verbs a player uses across a counter. Five, matching
+# what a counter can actually be asked -- price, haggle, buy, sell, decline.
+BUY_SELL = (
+    "What do you want for it?",
+    "That is a liner-day price and there is no liner in.",
+    "I will take it. Cash, and no docket.",
+    "I am selling, not buying. Tell me what it is worth to you.",
+    "Not at that. I will come back when the shelf is fuller.",
+)
+
+# REFUSAL: what the player says to somebody who has already turned away.
+# FACTIONS.md 12's "95% avoidance" from the other side -- the player is allowed
+# to be the one who lets it go.
+PLAYER_REFUSAL = (
+    "I am not looking for trouble. I am looking for an answer.",
+    "You have not said a word and you have said plenty.",
+    "Fine. I will ask somebody who will.",
+    "Whatever that is about, it is not about me.",
+    "I will stand here until you decide I am not worth the trouble.",
+)
+
+
+def player_lines() -> dict:
+    """DLG-05's census, computed. The harness reads this, not a hand count."""
+    return {
+        "topics": {t for row in SAY.values() for t in row},
+        "openers": set(PLAYER_OPEN) | set(PLAYER_CLOSE),
+        "work": set(WORK_LINE.values()),
+        "papers": set(PAPERS) | set(BUY_SELL) | set(PLAYER_REFUSAL),
+    }
+
+
+def work_line(role: str, verb: str) -> str:
+    """What the player says doing `verb` in `role`. The shipped-path reader."""
+    return WORK_LINE[(role, verb)]
+
+
+# ===========================================================================
+# 4d.  DLG-06 -- the two scarce voices, and scarcity enforced as content
+# ===========================================================================
+#
+# THE CEILING IS THE CONTENT. Every other pool in this module has a FLOOR;
+# these two have a maximum, and the reason is in FACTIONS.md 12: Kosh is
+# *"almost never seen"*, and `_ROLE_REGISTER["envoy"]` already carries the
+# consequence -- formality 1.00, terseness 0.95, "two public hours a day, and
+# almost nothing said in them". A Vorlon with fifty lines is not a better
+# Vorlon, it is a different character. So the pool is twelve, the runtime
+# refuses to repeat one inside a session, and `_selftest` asserts the ceiling
+# from the annex rather than from a number in this file.
+#
+# TWELVE, AND WHY TWELVE: the annex's ceiling, and it is the same twelve as the
+# two public hours in the role register's own note -- one utterance an hour of
+# audience, six days of public hours before a player could exhaust the pool.
+# Nothing here answers a question. INV-685.
+KOSH_LINES = (
+    "You are not ready.",
+    "The avalanche has already begun. It is too late for the pebbles to vote.",
+    "Understanding is a three-edged sword.",
+    "And so it begins.",
+    "You seek meaning where there is only arrangement.",
+    "The question you asked is not the question you came with.",
+    "You have always been here. You have simply not been listening.",
+    "Truth is a river. You are standing in it and asking where the water is.",
+    "I was, and will be. You are.",
+    "When the long night comes, return to the end of the beginning.",
+    "You ask what I want. Nothing you have.",
+    "Go away.",
+)
+
+# THE BROKER IS THE OTHER SHAPE OF SCARCITY: not silence, but AUDIENCE. The
+# night broker (CAST-02 row 36) works 18:30-02:30 -- `schedule.species_work_shift`
+# for a Brakiri, whose day begins at 16:00 -- and sells to whoever is in front
+# of him at a price set by who else is listening. So the pool is gated on the
+# ROOM rather than on the clock: the same twenty lines, and which of them he
+# will say depends on whether the player is alone with him.
+#
+# Twenty, the annex's ceiling. The split is 10 alone / 10 with an audience,
+# because a broker who says the same thing in both rooms is not a broker.
+# INV-686.
+BROKER_LINES = (
+    # audience present -- the public price, the public manner
+    (True, "The desk is open to anyone standing at it. That includes you and "
+           "it includes them."),
+    (True, "Commodities only, at this hour. Anything else is a daytime "
+           "conversation."),
+    (True, "The posted rate is the posted rate. I do not move it because a "
+           "room is watching."),
+    (True, "I keep no ledger anyone can subpoena and no opinion anyone can "
+           "quote."),
+    (True, "If you want the manifest, it is public. If you want what is on it, "
+           "that is not."),
+    (True, "Three of you have asked me the same question tonight. I have given "
+           "three answers and one of them was true."),
+    (True, "Your standing is your credit. Neither is my business to explain in "
+           "front of company."),
+    (True, "I am a licensed commodities desk. Say that back to whoever sent "
+           "you.",),
+    (True, "Come back at the turn of the watch. The room will be emptier."),
+    (True, "No. Not here, not at this volume."),
+    # alone -- the real desk
+    (False, "Now. What is it you actually want, and who is not to know you "
+            "wanted it?"),
+    (False, "There is a lot on that hull that is not on that manifest. The "
+            "difference is what I sell."),
+    (False, "Passage without a name on it costs four times passage with one. "
+            "It is not a fine, it is the risk."),
+    (False, "The Collector bought that debt in the spring. He has not called "
+            "it in because he is waiting for you to be worth more."),
+    (False, "I can tell you which berth she is in. I cannot tell you what she "
+            "is carrying and neither can her master."),
+    (False, "Names are the expensive part. Everything around a name is nearly "
+            "free."),
+    (False, "You are the third person this week asking after that quarter. The "
+            "other two wore the armband."),
+    (False, "I will take Centauri paper at eighty. I will not take Narn paper "
+            "at any figure, and you know why."),
+    (False, "There is a way off this station that does not touch customs. I am "
+            "not going to say it twice."),
+    (False, "You have run out of things I want. Come back when that changes."),
+)
+
+
+def kosh_lines(session: str = "", spoken=()) -> tuple:
+    """The Kosh utterances still available in this session.
+
+    NEVER TWICE IN ONE SESSION IS ENFORCED HERE AND NOT REMEMBERED ELSEWHERE.
+    `spoken` is what the session has already heard; the draw is what is left.
+    An exhausted pool returns () -- and that is the correct answer, because a
+    Vorlon who has said his twelve things says nothing, which is the register.
+    """
+    said = set(spoken)
+    return tuple(l for l in KOSH_LINES if l not in said)
+
+
+def broker_lines(alone: bool) -> tuple:
+    """What the Broker will say with, or without, a room listening."""
+    return tuple(t for gate, t in BROKER_LINES if gate is not alone)
+
+
+# What one play session has already heard from a scarce voice. Keyed by
+# (which voice, session), so two sessions are two ledgers and the
+# "never twice in one session" rule is enforced by the pool shrinking rather
+# than by a caller remembering to check.
+_HEARD = {}
+
+
+def forget_session(session: str = "") -> None:
+    """Start a fresh session's scarce-voice ledger. The gate's own reset."""
+    for k in [k for k in _HEARD if k[1] == session]:
+        del _HEARD[k]
+
+
+def scarce_voice(sp) -> str:
+    """Is this speaker one of DLG-06's two, and which?
+
+    KOSH IS A ROLE, NOT A NAME. `_ROLE_REGISTER["envoy"]` is already written
+    for him -- formality 1.00, terseness 1.00 with the species delta -- and
+    `schedule.ROLE_WEIGHTS["vorlon"]` has exactly one occupied cell, which is
+    why DLG-02's matrix counts vorlon as 1. Matching on the role means the
+    ceiling holds for the office rather than for one npc_id.
+
+    The Broker is CAST-02 row 36: a Brakiri commodities desk at
+    `business_center`, working 18:30-02:30 because that is what
+    `schedule.species_work_shift` does to a species whose day starts at 16:00.
+    """
+    if sp.role == "envoy" or sp.species == "vorlon":
+        return "kosh"
+    if (sp.role == "financier" and sp.species == "brakiri"
+            and sp.place == "business_center"):
+        return "broker"
+    return ""
+
+
+def scarce_line(sp, world: World):
+    """One scarce utterance, or None if this speaker is not a scarce voice.
+
+    Returns `(text, why)`. An empty `text` means the session has exhausted the
+    pool and the answer is silence -- which is the only honest thing a CEILING
+    can do when it is reached, and the opposite of what a floor would do.
+    """
+    kind = scarce_voice(sp)
+    if not kind:
+        return None
+    if kind == "kosh":
+        heard = _HEARD.setdefault(("kosh", world.session), set())
+        left = kosh_lines(world.session, heard)
+        if not left:
+            return ("", f"dialogue.KOSH_LINES exhausted: all "
+                        f"{len(KOSH_LINES)} spoken in session "
+                        f"{world.session!r} (DLG-06 ceiling, FACTIONS.md 12)")
+        i = int(_u(f"kosh|{world.session}|{len(heard)}|{sp.npc_id}")
+                * len(left)) % len(left)
+        t = left[i]
+        heard.add(t)
+        return (t, f"dialogue.KOSH_LINES[{KOSH_LINES.index(t)}] -- "
+                   f"{len(left) - 1} of {len(KOSH_LINES)} left this session")
+    alone = world.audience is not None and world.audience <= 1
+    pool = broker_lines(alone)
+    i = int(_u(f"broker|{world.session}|{world.hour:.2f}|{sp.npc_id}")
+            * len(pool)) % len(pool)
+    return (pool[i], f"dialogue.BROKER_LINES, "
+                     f"{'alone with him' if alone else 'a room listening'} "
+                     f"(audience={world.audience}) -- {len(pool)} available")
 
 # The ASK answer -- the QUALITATIVE half. Named facts, no salience number.
 ASKED = {
@@ -1509,7 +2003,9 @@ def choices_for(pick, reg: Register, sp: _Speaker, world: World) -> tuple:
     silence FACTIONS.md 12 is explicit about would be inventing the opposite of
     what is attested.
     """
-    if pick is None or pick["key"] not in SAY:
+    if pick is None or pick["key"] not in SAY or pick["key"] == "refusal":
+        # `refusal` has a SAY row and NO `ASKED`/`PRESSED` row, because the
+        # NPC has nothing to be asked. `speak` builds its menu itself, above.
         return ()
     key = pick["key"]
     f = dict(pick.get("fact") or {})
@@ -1574,15 +2070,36 @@ def speak(resident, place_key: str, world: World = None,
     word = _GREET_WORD[daypart(sp.species, world.hour)]
 
     if pick is not None and pick["key"] == "refusal":
-        # No words at all. The action IS the answer, and it is the gazetteer's.
+        # No words FROM THEM. The action IS the answer, and it is the
+        # gazetteer's -- but the player is not mute, and DLG-05's eleventh
+        # topic row is what they say into the silence. Ask gets nothing back;
+        # press gets the band's own deflection; let-go ends it. Nothing new is
+        # invented for the NPC here: `DEFLECT` is the row that already exists
+        # for a person who will not give up the number.
         lines.append(Line("npc", "action", pick["action"], pick["source"]))
         sources.append(pick["source"])
+        say = SAY["refusal"]
+        refuse = (
+            Choice(stance="ask", text=say[0], reply=(), yielded=False,
+                   source=f"{pick['source']} -> they said nothing, and say "
+                          f"nothing again"),
+            Choice(stance="press", text=say[1],
+                   reply=(Line("npc", "speech", DEFLECT[reg.band],
+                               f"{pick['source']} -> band "
+                               f"{BAND_NAME[reg.band]} deflection"),),
+                   yielded=False,
+                   source=f"{pick['source']} -> pressed a refusal"),
+            Choice(stance="let_go", text=say[2], reply=(), yielded=True,
+                   source="the refusal is accepted; FACTIONS.md 12's "
+                          "avoidance is allowed to stand"),
+        )
         return Exchange(npc_id=sp.npc_id, name=sp.name, species=sp.species,
                         role=sp.role, place=place_key, hour=world.hour,
                         topic="refusal", band=reg.band, lines=tuple(lines),
                         ranking=tuple((t["key"], round(t["salience"], 3))
                                       for t in ranked),
-                        sources=tuple(sources))
+                        sources=tuple(sources),
+                        choices=refuse, choice_at=len(lines) - 1)
 
     greet = (COLD_GREET if reg.warmth < WARM_FLOOR else GREET)[reg.band]
     if greet:
@@ -1616,9 +2133,29 @@ def speak(resident, place_key: str, world: World = None,
     choices = ()
     choice_at = -1
     if pick is not None:
-        lines.append(Line("npc", "speech", phrase(pick, reg, sp),
-                          pick["source"]))
-        sources.append(pick["source"])
+        # THE SCARCE VOICES INTERCEPT HERE AND NOWHERE ELSE. A Vorlon does not
+        # answer the question he was asked -- that IS the register -- so the
+        # topic is still ranked, still sourced, and the utterance that comes
+        # out of it is drawn from the capped pool instead of the matrix. Put
+        # anywhere else this would have been a table with no caller, which is
+        # the defect this project has produced nine times.
+        scarce = scarce_line(sp, world)
+        if scarce is not None:
+            text, why = scarce
+            if text:
+                lines.append(Line("npc", "speech", text,
+                                  f"{pick['source']} -> {why}"))
+                sources.append(lines[-1].source)
+            else:
+                # An exhausted pool is SILENCE, not a repeat. FACTIONS.md 12's
+                # "almost never seen" has a floor of nothing said at all.
+                lines.append(Line("npc", "action",
+                                  "The encounter suit does not move.", why))
+                sources.append(why)
+        else:
+            lines.append(Line("npc", "speech", phrase(pick, reg, sp),
+                              pick["source"]))
+            sources.append(pick["source"])
         # THE MENU GOES HERE AND NOWHERE ELSE. A player can answer a topic;
         # there is nothing to say back to "good afternoon", and interrupting
         # before they have said what is on their mind would make every stance
@@ -1746,6 +2283,15 @@ def sidecar(actors, world: World = None, listener: Listener = None) -> list:
     """
     world = world or World()
     listener = listener or Listener()
+    # THE AUDIENCE IS THE BAKED CROWD, COUNTED, NOT A PARAMETER SOMEBODY SETS.
+    # DLG-06's Broker is audience-gated, and the only honest source for "who
+    # else is in this room" is the actor list this function is already reading
+    # -- the same bodies `populace` placed and `walk.gd` loads. Deriving it
+    # from anything else would be a second description of the crowd.
+    crowd = {}
+    for a in actors:
+        k = a.get("place") or (a.get("who") or {}).get("at_post") or ""
+        crowd[k] = crowd.get(k, 0) + 1
     out = []
     for a in actors:
         who = a.get("who") or {}
@@ -1754,7 +2300,8 @@ def sidecar(actors, world: World = None, listener: Listener = None) -> list:
             continue
         r = res.resident(npc_id, who.get("species", "human"))
         place = a.get("place") or who.get("at_post") or ""
-        ex = speak(r, place, world, listener)
+        ex = speak(r, place,
+                   replace(world, audience=crowd.get(place, 1)), listener)
         out.append({
             "group": a.get("group", ""),
             "id": npc_id,
