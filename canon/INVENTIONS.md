@@ -13439,3 +13439,153 @@ card relative to a cube face — 1:6 is the geometric count, not a timing. If a 
 allocated at the same resolution as one cube face the ratio holds; if the renderer allocates spot
 maps larger, it does not. Nothing in this container can measure that; see `docs/AAA-STANDARD.md`,
 "What this rubric cannot judge".
+
+## INV-1222 — the observation rooms' wall plate is the corridor's wall plate
+
+**What.** `station/observation.py::PLATE_L_M / PLATE_COURSES / PLATE_SEAM_M / PLATE_PROUD_M /
+PLATE_DRAFT_M` = 1.15 m, 3, 0.038 m, 0.045 m, 0.006 m, and `_plated_ring()`, which lays that
+build-up on an annular sector: a substrate, then a grid of proud plates `round(arc / 1.15)`
+across the bay by 3 up it, each inset 38 mm on all four sides and standing 45 mm off the
+substrate with a 6 mm arris.
+
+**Why it exists at all.** Session 4t round 2's finding on this module: *"At arm's length the
+dominant surface — the window-band wall plate and its mullions — has no second detail tier and
+no varying wear ... a smooth lambert gradient: no panel-line micro-detail."*
+`scratchpad/frames2/before-dome1-arm.png` is that frame and it shows one plate, one horizontal
+joint and one value filling the left half of a 1,280 px image taken 0.7 m from the wall.
+
+**What constrained the numbers — and it is that NOTHING here is a new number.** Every figure is
+read out of `interior_kit.PROVISIONAL`, where the corridor's `plated()` has used them since the
+kit was written. The cause of the defect was not that this module chose a coarse plate; it is
+that this module never used the station's plate at all, and built a framed rectangle instead.
+Hard rule 4 — inside and outside come from one description — applied at fitting scale: if the
+observation room's plate and the corridor's plate were separately authored they would drift, and
+a player walks from one into the other. `kit._drafted_slab`'s own comment supplies the reason the
+arris is not optional: a square edge *"is what made these read as rectangles printed on a wall at
+the rubric's half distance"*.
+
+**Where it is honest about a difference.** The arris is a `PLATE_DRAFT_M` STEP inset by
+`PLATE_DRAFT_M`, not a true draft, because `_prism` extrudes one quad along y and cannot taper
+it. Same twelve triangles, same read under a raking light, and it is written down as a step
+rather than claimed as a draft.
+
+**What would overturn it.** A change to the kit's plate module — which this module would then
+follow automatically, which is the point. An authority-1 or -2 frame establishing a different
+plate size *for these rooms specifically* would split the two, and would need `PLATE_L_M` to stop
+being an alias.
+
+## INV-1223 — the bolt pitch is the plate module quartered
+
+**What.** `BOLT_PITCH_M` = `PLATE_L_M / 4` = 0.2875 m, `BOLT_R_M` = `PLATE_SEAM_M * 0.42` =
+0.016 m, `GASKET_W_M` = `kit.PROVISIONAL["wall_reveal_m"]` = 0.060 m. `_glazing_gasket()` puts a
+continuous bead on all four sides of every viewport aperture and a bolt line down both jambs and
+along the sill.
+
+**Why.** The same finding: *"model a gasket bead and bolt line on the mullion faces that meet the
+glazing — that face is where the arm's-length camera lands ... and it is currently the least
+plausible surface in the frame."* It was: a flat plate met black glass on a square edge with
+nothing between them, on a pressure hull.
+
+**What constrained them.** The pitch is derived rather than picked: four fixings to a plate
+length is the coarsest pattern that still lands a fixing either side of every plate seam, so the
+bolts stay on the seams if the kit's plate ever changes size. The head radius is 42% of the seam,
+which is a head that sits inside its own seam rather than bridging it. The bead's section is the
+kit's own shadow gap, because a bead fills a reveal — a bead wider than the reveal it sits in is
+a bead standing on the face.
+
+**Why there are no bolts along the HEAD.** The blast-shutter track descends past the aperture
+head (PLC-001 gives the dome blast shutters and `_dome_fittings` builds their stowed leaves), so
+a fixing there would foul the leaf. Authority 5 throughout; nothing in the reference set resolves
+a fixing on this window.
+
+**What would overturn it.** Any authority-1 frame of a B5 viewport that resolves its frame
+fixings — a visible pitch between 0.15 m and 0.5 m would replace the derivation with a
+measurement.
+
+## INV-1224 — per-plate variation is WHICH measured material, not a jittered one
+
+**What.** `PLATE_COOL` and `PLATE_WARM`, six members each, and `_vary(key, element, i, options)`
+— a keyed blake2b of `(place, element, instance)` selecting one member per plate.
+
+**Why it is shaped this way, which is the whole entry.** The finding asks to *"seed a per-plate
+roughness/albedo jitter from a blake2b of the plate's angular index so materials.py is not
+binding one flat value to every plate on the ring."* A per-instance material override does not
+exist in this pipeline: a group name resolves to exactly one library material and `materials.py`
+is not this session's file. So the jitter is applied one level up — which measured surface each
+plate takes — and the visible result is the same, because the members differ in albedo, in
+roughness, in metallic AND in which procedural texture they carry.
+
+**What constrained the members.** Every one is already measured into `materials.py` by another
+session; the choice here is which measured surface the reference asks for, exactly as INV-950 did
+for the palette. `PLATE_WARM` spans albedo 0.215→0.468, roughness 0.34→0.78, metallic 0→0.30 and
+four texture maps (metal_grain, truss_steel, stone_agg, deck_plate); `PLATE_COOL` spans
+0.253→0.469, 0.42→0.70, 0→0.20 and three maps. Neither contains a `prop_*` name, because
+`interact.resolve` and `collision.prop_boxes` both key off that prefix and a wall plate that
+registers as a lab bench is a wall plate a player can be told to operate.
+
+**A constraint discovered by the gate rather than reasoned to.** No member may be a name the
+module also uses for a bulk solid, because gate (5) decides family membership by name.
+`zoc_rail_wall` and `transit_wall` were both, and the second was reachable only through
+`_vestibule`'s `f"{pre}_wall"` — invisible to a grep of this file, which is session 4f's lesson
+by a new route. They are now `zoc_rail_dado` and `cc_panel`, resolving to the identical
+materials.
+
+**What would overturn it.** `materials.py` gaining per-instance parameter overrides, which would
+make a true jitter possible and this indirection unnecessary. Authority 5.
+
+## INV-1225 — nothing deposits on an underside, and the bound is one plate edge
+
+**What.** `SOIL_H_M` = 1.90 m — the dark end of a plate family is reachable only on courses
+whose foot is below it — plus the gate in `_selftest`: no up- or down-facing triangle carrying a
+family material may exceed `PLATE_L_M * (PLATE_PROUD_M + PLATE_DRAFT_M)` = 0.0586 m².
+
+**Why.** The finding's sharpest clause: *"the wear decals are position-independent — the same
+blob set appears on the UNDERSIDES of the rotunda collars ... where nothing would deposit."*
+
+**What constrained the numbers.** 1.90 m is the height at which `_dome_fittings` already stops
+putting lockers, so it is this module's existing reach line rather than a new one. The area bound
+is derived from the plate the family is allowed to be, so it cannot be tuned: a plate standing
+`PLATE_PROUD_M` proud has, by construction, an edge band of that thickness top and bottom, and
+one whole edge of one whole plate is the largest horizontal facet a correct wall can produce.
+
+**A negative result worth keeping.** The first form of this gate was a FRACTION — "under 6% of
+the plated area faces up or down" — and it failed at 13–15% on a correct wall, because
+0.051 / (0.26 + 0.051) is 14% and the statistic was measuring the plate's own thickness. Size
+distinguishes a plate edge from a collar underside; proportion does not. Same shape of error as
+this project's median-versus-distribution finding, one dimension down.
+
+**What would overturn it.** A plate module large enough that a legitimate edge exceeds 0.0586 m²
+— which would move the bound with it, since both come from `PLATE_L_M`.
+
+## INV-1226 — four authored devices, one written figure per banner
+
+**What.** `GLYPH_DEVICES`, four tuples of `(m, coefficient, phase)` terms of a polar curve
+`rho(th) = size * (1 + SUM c_m cos(m th + ph_m))`, and `_glyph()`, which samples one at 44 points
+and extrudes it into a closed relief with a counter-figure in the cloth's own material laid on
+top.
+
+**Why.** Round 1's finding was that the banner was blank. Round 2's is that what replaced it *"is
+a random scatter of quads"* and that `reference/05-sector-green/rotunda.webp` *"shows legible
+glyph devices"*. Both are right, and `before-rotunda-half.png` is the photograph of the second:
+the old `_sigil` was a six-armed star built of axis-aligned `_seg` boxes, and at the grazing angle
+a hanging cloth is seen from it read as a spray of pale rectangles.
+
+**What constrained the figures.** That frame, authority 1, read at the banners rather than at the
+room. Four cloths, four different devices, and none of them is radial: the near dark banner
+carries a pale device of two curved lobes with a gap, wider than tall; the far dark banner's is
+smaller, rounder and set higher; the near pale banner carries a DARK four-lobed blot with a notch
+bitten out of its lower left; the far pale banner's is the same family, taller and narrower. What
+they share is that each is ONE closed organic figure painted in the value opposite its cloth —
+which is why the built devices alternate `M_SIGIL` and `M_GRILLE` by banner index, and why each
+carries a counter-figure in its own cloth material so it reads as drawn rather than as a blob.
+
+**Why a curve rather than an outline.** `SUM |c_m| < 1` guarantees the curve is simple, which is
+what makes the extrusion a closed manifold solid; the assertion is in `_glyph` and is the reason
+the module's non-manifold count stayed at zero through the change. The coefficients are WRITTEN
+DOWN rather than seeded, so "the device on banner two" is a thing a later reader can look at and
+change, and so no two of the four are one figure rotated.
+
+**What would overturn it.** A higher-resolution frame of any of the four cloths, which would
+replace the fitted lobe counts with traced outlines. The devices are authority 5 as figures and
+authority 1 as a COUNT (four), a placement (lower third) and a contrast rule (opposite the
+cloth).
