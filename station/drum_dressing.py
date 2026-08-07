@@ -3594,6 +3594,16 @@ def _selftest():
     # bottom and wound inside out for four sessions (CLAUDE.md, 3x) at a
     # fraction of this instance count; a near stand is the object a player's
     # eye is 3 m from.
+    # THE GROUND'S NEAR RUNG AND THIS ONE ARE THE SAME REACH -- INV-764.
+    # `drum_ground.NEAR_GROUND_M` cannot import this module (this one imports
+    # it), so the value is written there and held in agreement here. Ground
+    # that carries full-detail standing cover on top of half-metre facets is
+    # the mismatch the frame shows, and two radii that drift apart is how it
+    # comes back.
+    check("the ground refines as far as the near cover reaches",
+          abs(dg.NEAR_GROUND_M - NEAR_FULL_M) / NEAR_FULL_M < 0.05,
+          f"ground {dg.NEAR_GROUND_M} m vs cover {NEAR_FULL_M:.3f} m")
+
     _crop_items = [f"crop{_c}{_t}" for _c in range(len(CROP_TYPES))
                    for _t in ("", "t")]
     for item in _crop_items + ["clod", "tussock", "scrub", "margin",

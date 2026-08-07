@@ -820,7 +820,182 @@ def _lerp3(p, q, t):
             p[2] + (q[2] - p[2]) * t)
 
 
-def ground_patch(pa, pz, stride=1, neighbours=None):
+# ---------------------------------------------------------------------------
+# THE GROUND UNDER THE PLAYER'S FEET IS A 3.90 m TRIANGLE -- INV-764
+# ---------------------------------------------------------------------------
+# lod0 is the finest rung this module has ever had, and lod0 is a 3.90 x 4.04 m
+# cell. `export_scene` writes the ground as an OBJ with no vertex normals, so
+# every one of those cells reaches the engine as TWO FLAT-SHADED FACETS, and at
+# the arm's-length distance `AAA-STANDARD`'s craft section names, two facets
+# fill the frame. `scratchpad/drum4t/before-near.png` is what that looks like:
+# a wash of soil crossed by long polygonal creases, C1 at the one distance the
+# rubric says to check after the normal one.
+#
+# The fix is tessellation and NOT a new lod rung, and the distinction is the
+# whole design. STRIDES subsamples the lattice, so a finer rung would need a
+# finer LATTICE -- 448 x 640 is what the collision shell, the streaming cell
+# manifest, the parcel map and `drum_walk` are all keyed to. What this does
+# instead is subdivide the CELL at draw time, near the eye only, leaving the
+# lattice, every existing level, `ground_patch`'s default and therefore
+# `drum_walk`'s collision surface bit-for-bit unchanged.
+#
+# TWO PROPERTIES MAKE IT SAFE, and both are asserted rather than argued:
+#
+#   1. NO CRACK, BY CONSTRUCTION. A refined cell's border vertices are LINEAR
+#      INTERPOLATIONS of the coarse cell's own corners, never fresh samples. So
+#      two refined cells sharing an edge compute the same points from the same
+#      two corners, and a refined cell meeting an unrefined one lands exactly on
+#      its edge. This is `clamp_edge`'s idea one level down, and it means the
+#      refinement can be applied per cell with no seam bookkeeping at all.
+#   2. BOUNDED DISAGREEMENT WITH COLLISION. Interior vertices are sampled from
+#      the true field, which is what breaks the facets -- but collision is still
+#      the coarse surface, so the two now differ. The displacement is therefore
+#      CLAMPED to NEAR_GROUND_TOL_M, which makes the render/collision tolerance
+#      a number this module states rather than a number nobody measured.
+#
+# THE TOLERANCE. 0.08 m, bounded at both ends and the upper bound is a gate
+# rather than a judgement. BELOW by what the terrain actually does: the finest
+# octave the field carries is 13.5 m at 0.1875 m amplitude, whose deviation
+# from a 3.9 m chord is A(pi c / L)^2 / 8 = 0.019 m, so on ordinary arable
+# ground the clamp never binds and the refinement is exact -- it only bites on
+# the sharp features, a hedge bank and a podium step. ABOVE by
+# `drum_walk.STEP_M`, which IS `rooms.TRIM_MAX_PROUD_M` = 0.10 m, "a step you
+# do not trip on": `drum_walk`'s own gate casts rays at the collision shell and
+# at the render ground and requires the two to agree inside exactly that
+# number, so this tolerance has to sit strictly under it with room for a cast
+# landing between two vertices rather than on one. `_selftest` asserts the
+# inequality against `drum_walk`'s own constant rather than against a second
+# copy of 0.10 written here. It is also under `drum_dressing.NEAR_SINK_M`
+# (0.18 m), so no refinement can lift the ground out from under a stand that is
+# buried in it. Overturned by a controller whose step tolerance drops under
+# 0.08 m.
+NEAR_GROUND_TOL_M = 0.08
+
+# HOW FAR, AND IT IS THE NEAR RUNG'S OWN REACH. `drum_dressing` derives
+# `NEAR_FULL_M` = 28.125 m and `NEAR_FINE_M` = 8.789 m for the cover that
+# STANDS on this ground, from its own gate's floor and its own LOD ratio.
+# Ground that carries full-detail standing cover on top of half-metre facets is
+# the mismatch the frame shows, so the two reaches are the same reach.
+#
+# NOT IMPORTED, because `drum_dressing` imports this module and the cycle would
+# be real. Two copies held in agreement by an assertion instead --
+# `drum_dressing._selftest` checks this value against its own to 5%, so the
+# pair cannot drift silently. That is the same answer this project already uses
+# for `lod.py`'s screen model, one direction reversed.
+#
+# ONE RUNG AND NOT TWO. The first version had a second, four-way rung inside
+# 9 m, and two refinement levels meeting along an edge is the same T-junction
+# a refined cell meeting an unrefined one is -- see `_mid_ok`. A single level
+# turns the question into a boolean, and a boolean is a thing two neighbouring
+# cells can agree about with no negotiation. -- INV-764
+NEAR_GROUND_M = 28.0
+
+
+def _vertex_f(fa, fz):
+    """`_vertex` at FRACTIONAL lattice coordinates. The sub-cell sampler."""
+    u = (fa % CELLS_A) / CELLS_A
+    w = fz / CELLS_Z
+    h, _kind = sample(u, w)
+    r = FLOOR_R - h
+    a = 2.0 * math.pi * u
+    return (r * math.cos(a), r * math.sin(a), Z0 + w * (Z1 - Z0))
+
+
+def _refines(centre, eye):
+    """Is this cell close enough to the eye to be subdivided?"""
+    return math.dist(centre, eye) < NEAR_GROUND_M
+
+
+def _clamped_radial(base, true_pt):
+    """`true_pt` pulled onto `base` until it is inside NEAR_GROUND_TOL_M.
+
+    Compared as RADII rather than as points: the two agree in z and in angle by
+    construction, so the only thing that can differ is the height, and a height
+    is what collision reads.
+    """
+    rb = math.hypot(base[0], base[1])
+    rt = math.hypot(true_pt[0], true_pt[1])
+    dr = max(-NEAR_GROUND_TOL_M, min(NEAR_GROUND_TOL_M, rt - rb))
+    s = (rb + dr) / max(rb, 1e-9)
+    return (base[0] * s, base[1] * s, base[2])
+
+
+def _mid_ok(ka, kz, dka, dkz, grid_sub, na, nz):
+    """Does the edge between cell (ka,kz) and its neighbour carry a midpoint?
+
+    ONLY WHERE BOTH CELLS AGREE, and that is the entire crack story. A midpoint
+    that one cell inserts and its neighbour does not is a T-junction: the coarse
+    side spans the edge with one triangle while the fine side spans it with two,
+    and even when the extra vertex lies exactly on the coarse edge the rasteriser
+    is entitled to leak a pixel down it. The first version of this refinement
+    laid a regular sub-grid in every near cell and `_selftest` found 261 open
+    interior edges, which is what that looks like.
+
+    Cells on the patch's own outer row never carry one, because the patch on the
+    other side may be at a coarser stride and its border has already been
+    clamped by `clamp_edge`. Both patches apply this rule, so a fine-fine patch
+    seam is consistent without either of them knowing about the other.
+    """
+    ja, jz = ka + dka, kz + dkz
+    if not (0 <= ja < na and 0 <= jz < nz):
+        return False
+    return grid_sub.get((ka, kz)) and grid_sub.get((ja, jz))
+
+
+def near_ground_cost(eye):
+    """Extra triangles the near refinement adds at this eye, without building.
+
+    In `visible_cost` because a budget gate that cannot see a cost is
+    `AAA-STANDARD` P1 -- "a gate exists and does not measure the thing it
+    names" -- and this project has shipped that twice.
+    """
+    cell_a = 2.0 * math.pi * FLOOR_R / CELLS_A
+    cell_z = (Z1 - Z0) / CELLS_Z
+    a_eye = math.degrees(math.atan2(eye[1], eye[0])) % 360.0
+    ia0 = int(round(a_eye / 360.0 * CELLS_A))
+    iz0 = int(round((eye[2] - Z0) / (Z1 - Z0) * CELLS_Z))
+    na = int(math.ceil(NEAR_GROUND_M / cell_a)) + 2
+    nz = int(math.ceil(NEAR_GROUND_M / cell_z)) + 2
+
+    def refines(ia, iz):
+        if not (0 <= iz < CELLS_Z):
+            return False
+        # THE SAME CENTRE `ground_patch` USES, vertex for vertex. A cost model
+        # that classifies a cell differently from the builder is a budget gate
+        # reporting a number nothing draws.
+        p0 = _vertex(ia, iz)[0]
+        p1 = _vertex(ia + 1, iz + 1)[0]
+        return _refines(tuple((p0[k] + p1[k]) * 0.5 for k in range(3)), eye)
+
+    memo = {}
+
+    def cached(ia, iz):
+        key = (ia % CELLS_A, iz)
+        if key not in memo:
+            memo[key] = refines(ia, iz)
+        return memo[key]
+
+    extra = 0
+    for dia in range(-na, na + 1):
+        for diz in range(-nz, nz + 1):
+            ia, iz = ia0 + dia, iz0 + diz
+            if not cached(ia, iz):
+                continue
+            # A refined cell is a fan from its own centre through its boundary
+            # ring: four corners always, plus a midpoint on each edge that
+            # `_mid_ok` allows. Triangles = ring length.
+            n = 4
+            for dka, dkz, border in ((0, -1, iz % PATCH_Z == 0),
+                                     (1, 0, ia % PATCH_A == PATCH_A - 1),
+                                     (0, 1, iz % PATCH_Z == PATCH_Z - 1),
+                                     (-1, 0, ia % PATCH_A == 0)):
+                if not border and cached(ia + dka, iz + dkz):
+                    n += 1
+            extra += n - 2
+    return extra
+
+
+def ground_patch(pa, pz, stride=1, neighbours=None, refine=None):
     """One ground patch at one LOD. Returns (verts, tris, groups, meta).
 
     `neighbours` is {"a-": stride, "a+": ..., "z-": ..., "z+": ...} giving the
@@ -872,12 +1047,63 @@ def ground_patch(pa, pz, stride=1, neighbours=None):
         index[key] = len(verts)
         verts.append(p)
 
+    # WHICH CELLS ARE REFINED, decided for the whole patch BEFORE any of it is
+    # built, because a cell has to know what its neighbours decided. Computed
+    # on the UNCLAMPED lattice centre so that two patches meeting at a seam
+    # classify their shared cells identically.
+    sub_of = {}
+    if refine is not None and stride == 1:
+        for ka in range(-1, na + 1):
+            for kz in range(-1, nz + 1):
+                if 0 <= ka < na and 0 <= kz < nz:
+                    c = tuple((grid[(ka, kz)][k] + grid[(ka + 1, kz + 1)][k])
+                              * 0.5 for k in range(3))
+                else:
+                    p0 = _vertex(ia0 + ka, iz0 + kz)[0]
+                    p1 = _vertex(ia0 + ka + 1, iz0 + kz + 1)[0]
+                    c = tuple((p0[k] + p1[k]) * 0.5 for k in range(3))
+                sub_of[(ka, kz)] = _refines(c, refine)
+
+    refined = 0
     for ka in range(na):
         for kz in range(nz):
             i00 = index[(ka, kz)]
             i10 = index[(ka + 1, kz)]
             i11 = index[(ka + 1, kz + 1)]
             i01 = index[(ka, kz + 1)]
+            g = _KIND_GROUP.get(kinds[(ka, kz)], "ground_arable")
+            if sub_of.get((ka, kz)):
+                # A FAN FROM THE CELL'S OWN CENTRE. The ring is traversed
+                # p00 -> p01 -> p11 -> p10, which is the order the two coarse
+                # triangles below already wind in, so the fan inherits the
+                # inward-facing normal without a second argument about it.
+                p00, p10 = grid[(ka, kz)], grid[(ka + 1, kz)]
+                p11, p01 = grid[(ka + 1, kz + 1)], grid[(ka, kz + 1)]
+                cen_base = tuple((p00[k] + p10[k] + p11[k] + p01[k]) * 0.25
+                                 for k in range(3))
+                ring = [_clamped_radial(
+                    cen_base, _vertex_f(ia0 + ka + 0.5, iz0 + kz + 0.5))]
+                # (corner, then the midpoint of the edge leaving it)
+                for (corner, dka, dkz, other, fa, fz, border) in (
+                        (p00, -1, 0, p01, ka, kz + 0.5, ka == 0),
+                        (p01, 0, 1, p11, ka + 0.5, kz + 1, kz == nz - 1),
+                        (p11, 1, 0, p10, ka + 1, kz + 0.5, ka == na - 1),
+                        (p10, 0, -1, p00, ka + 0.5, kz, kz == 0)):
+                    ring.append(corner)
+                    if border or not _mid_ok(ka, kz, dka, dkz, sub_of, na, nz):
+                        continue
+                    mid = tuple((corner[k] + other[k]) * 0.5 for k in range(3))
+                    ring.append(_clamped_radial(
+                        mid, _vertex_f(ia0 + fa, iz0 + fz)))
+                base = len(verts)
+                verts.extend(ring)
+                m = len(ring) - 1
+                for j in range(m):
+                    tris.append((base, base + 1 + j,
+                                 base + 1 + (j + 1) % m))
+                    groups.append(g)
+                refined += 1
+                continue
             # Wound so the normal points TOWARD the spin axis. Ascending angle
             # crossed with ascending z gives the outward radial, which is
             # backface-culled for a viewer standing inside the drum and renders
@@ -885,13 +1111,12 @@ def ground_patch(pa, pz, stride=1, neighbours=None):
             # the drum shell in session 2u.
             tris.append((i00, i01, i11))
             tris.append((i00, i11, i10))
-            g = _KIND_GROUP.get(kinds[(ka, kz)], "ground_arable")
             groups.extend([g, g])
 
     return verts, tris, groups, {
         "patch": (pa, pz), "stride": stride,
         "cells": (na, nz), "triangles": len(tris),
-        "vertices": len(verts),
+        "vertices": len(verts), "refined_cells": refined,
     }
 
 
@@ -1541,7 +1766,14 @@ def visible_set(eye, patches=None, table=None):
             "z-": STRIDES[chosen[(pa, pz - 1)]] if pz > 0 else None,
             "z+": STRIDES[chosen[(pa, pz + 1)]] if pz < PATCHES_Z - 1 else None,
         }
-        v, t, g, _m = ground_patch(pa, pz, stride, nb)
+        # THE REFINEMENT IS OFFERED TO EVERY lod0 PATCH AND TAKEN BY THE CELLS
+        # THAT ARE CLOSE. Handing it the whole patch list rather than the one
+        # the eye stands in is deliberate: a 125 m patch is bigger than the
+        # 28 m reach, so the eye is regularly inside one patch and 6 m from the
+        # next, and a per-patch test would leave the ground refined on one side
+        # of a seam and coarse on the other.
+        v, t, g, _m = ground_patch(pa, pz, stride, nb,
+                                   refine=eye if stride == 1 else None)
         o = len(verts)
         verts.extend(v)
         tris.extend((a + o, b + o, c + o) for a, b, c in t)
@@ -1580,7 +1812,7 @@ def visible_cost(eye, table=None):
             n = table[lvl]["patch_triangles"]
             total += n
             per[lvl] += 1
-    return total, per
+    return total + near_ground_cost(eye), per
 
 
 def worst_case_cost(samples=12, table=None):
@@ -2316,6 +2548,135 @@ def _selftest():
     check("clamping actually moves the border",
           on_angle(unclamped, seam_a) != lv,
           "the clamp is a no-op, so the crack test proves nothing")
+
+    # --- the near-field ground refinement -- INV-764 -------------------------
+    # `ground_patch`'s DEFAULT is what `drum_walk` builds collision from, so the
+    # first thing to prove is that the refinement is invisible to it. Not "we
+    # did not mean to change it": the same call, byte for byte, and the same
+    # call with an eye 2 km away, which is the branch a caller reaches when the
+    # player is somewhere else.
+    npa = int(20.0 / 360.0 * CELLS_A) // PATCH_A
+    npz = int((3900.0 - Z0) / (Z1 - Z0) * CELLS_Z) // PATCH_Z
+    plain = ground_patch(npa, npz, 1)
+    far_eye = (0.0, 0.0, Z1 + 2000.0)
+    check("an eye out of reach leaves the ground bit-for-bit unrefined",
+          ground_patch(npa, npz, 1, refine=far_eye)[:3] == plain[:3]
+          and plain[3]["refined_cells"] == 0,
+          f"{ground_patch(npa, npz, 1, refine=far_eye)[3]['refined_cells']} "
+          f"cells refined from 2 km away")
+
+    n_eye, _nu = stand_on_ground(schema, profile, sector, 20.0, 3900.0)
+    rv, rt, _rg, rm = ground_patch(npa, npz, 1, refine=n_eye)
+    check("standing on it refines it", rm["refined_cells"] > 0,
+          f"{rm['refined_cells']} cells")
+    check("the near cost model equals the triangles actually built",
+          len(rt) - len(plain[1]) == near_ground_cost(n_eye),
+          f"built +{len(rt) - len(plain[1])}, counted "
+          f"+{near_ground_cost(n_eye)}")
+
+    def _open_interior(verts, tris):
+        """Edges used by one triangle that are NOT on the patch's outer rim.
+
+        Welded on rounded coordinates, because the crack this is looking for is
+        a T-junction: a vertex that exists on one side of an edge and not on
+        the other. Rounding to a tenth of a millimetre is far below any
+        displacement here and far above float noise.
+        """
+        a0 = 2.0 * math.pi * (npa * PATCH_A) / CELLS_A
+        a1 = 2.0 * math.pi * ((npa + 1) * PATCH_A) / CELLS_A
+        z0 = Z0 + (npz * PATCH_Z) / CELLS_Z * (Z1 - Z0)
+        z1 = Z0 + ((npz + 1) * PATCH_Z) / CELLS_Z * (Z1 - Z0)
+
+        def rim(i):
+            x, y, z = verts[i]
+            a = math.atan2(y, x) % (2.0 * math.pi)
+            return (abs(a - a0) < 1e-9 or abs(a - a1) < 1e-9
+                    or abs(z - z0) < 1e-6 or abs(z - z1) < 1e-6)
+
+        key = [tuple(round(c, 4) for c in p) for p in verts]
+        weld, uses = {}, {}
+        for i, k in enumerate(key):
+            weld.setdefault(k, i)
+        for tri in tris:
+            w = [weld[key[i]] for i in tri]
+            for e in ((w[0], w[1]), (w[1], w[2]), (w[2], w[0])):
+                uses[tuple(sorted(e))] = uses.get(tuple(sorted(e)), 0) + 1
+        return [e for e, n in uses.items() if n == 1
+                and not (rim(e[0]) and rim(e[1]))]
+
+    check("the refined ground has no crack in it",
+          not _open_interior(rv, rt),
+          f"{len(_open_interior(rv, rt))} open interior edges")
+
+    # THE CONTROL, and without it the line above proves nothing: a midpoint
+    # inserted on an edge whose other side did not insert one is exactly the
+    # T-junction `_mid_ok` exists to prevent. The first version of this
+    # refinement laid a regular sub-grid in every near cell and this same check
+    # found 261 open interior edges -- it fires, and here it is fired
+    # deliberately.
+    _true_mid_ok = _mid_ok
+
+    def _always(ka, kz, dka, dkz, grid_sub, na_, nz_):
+        ja, jz = ka + dka, kz + dkz
+        return 0 <= ja < na_ and 0 <= jz < nz_ and grid_sub.get((ka, kz))
+
+    globals()["_mid_ok"] = _always
+    try:
+        cv, ct, _cg, _cm = ground_patch(npa, npz, 1, refine=n_eye)
+        bad = _open_interior(cv, ct)
+    finally:
+        globals()["_mid_ok"] = _true_mid_ok
+    check("a midpoint the neighbour does not share OPENS the ground",
+          len(bad) > 0, f"{len(bad)} open interior edges -- the control did "
+                        f"not fire, so the crack test proves nothing")
+
+    # AND THE DISAGREEMENT WITH COLLISION IS BOUNDED, which is the other half.
+    # Measured against the coarse cell's own surface -- the centre against the
+    # mean of its four corners, each edge midpoint against the mean of its two
+    # -- over every refined cell of a patch carrying arable, hedge bank and
+    # road.
+    worst_dev = 0.0
+    clamped = seen = 0
+    ia0, iz0 = npa * PATCH_A, npz * PATCH_Z
+    for ka in range(PATCH_A):
+        for kz in range(PATCH_Z):
+            cs = [_vertex(ia0 + a_, iz0 + b_)[0] for a_, b_ in
+                  ((ka, kz), (ka + 1, kz), (ka + 1, kz + 1), (ka, kz + 1))]
+            cen = tuple((cs[0][k] + cs[2][k]) * 0.5 for k in range(3))
+            if not _refines(cen, n_eye):
+                continue
+            probes = [(tuple(sum(c[k] for c in cs) * 0.25 for k in range(3)),
+                       (ka + 0.5, kz + 0.5))]
+            for (i, j, fa, fz) in ((0, 3, ka, kz + 0.5),
+                                   (3, 2, ka + 0.5, kz + 1),
+                                   (2, 1, ka + 1, kz + 0.5),
+                                   (1, 0, ka + 0.5, kz)):
+                probes.append((tuple((cs[i][k] + cs[j][k]) * 0.5
+                                     for k in range(3)), (fa, fz)))
+            for base, (fa, fz) in probes:
+                got = _clamped_radial(base, _vertex_f(ia0 + fa, iz0 + fz))
+                dev = abs(math.hypot(got[0], got[1])
+                          - math.hypot(base[0], base[1]))
+                worst_dev = max(worst_dev, dev)
+                seen += 1
+                if dev > NEAR_GROUND_TOL_M - 1e-9:
+                    clamped += 1
+    check("render and collision agree to the stated tolerance",
+          worst_dev <= NEAR_GROUND_TOL_M + 1e-9 and seen > 0,
+          f"{worst_dev:.4f} m over {seen} refined points, "
+          f"{clamped} clamped, tolerance {NEAR_GROUND_TOL_M} m")
+    # And the refinement has to actually MOVE the surface, or it is a thousand
+    # triangles of subdivision drawing the same flat facets it replaced.
+    check("the refinement displaces the surface it subdivides",
+          worst_dev > 0.005,
+          f"max displacement {worst_dev:.4f} m -- subdivision with no relief")
+    # THE UPPER BOUND IS THE WALK GATE'S OWN NUMBER, read rather than restated.
+    # Imported here rather than at module scope because `drum_walk` imports
+    # this module; inside a function the cycle never closes.
+    import drum_walk as _dw                                     # noqa: PLC0415
+    check("the tolerance is strictly inside the walk gate's step",
+          NEAR_GROUND_TOL_M < _dw.STEP_M,
+          f"{NEAR_GROUND_TOL_M} m against drum_walk.STEP_M {_dw.STEP_M} m")
 
     # --- budget -------------------------------------------------------------
     eye, _up = stand_on_ground(schema, profile, sector, 20.0,
