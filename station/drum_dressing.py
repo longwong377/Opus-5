@@ -1790,7 +1790,7 @@ def dressing_set(eye, scale=None, kinds=None):
         for x in near_field(eye):
             pv, pt, pg = _near_proto(x.item, x.group, x.index, x.lod)
             _append(V, T, G, pv, pt, pg, x.angle_deg, x.z_m, x.ground_r,
-                    x.yaw, 1.0 if x.item == "crop" else x.scale)
+                    x.yaw, 1.0 if x.item.startswith("crop") else x.scale)
             near_n += 1
             counts["near_" + x.item] = counts.get("near_" + x.item, 0) + 1
     return V, T, G, {
@@ -2144,6 +2144,7 @@ def _lattice_sample(ia, iz):
 def reset_near_cache():
     _NEAR_SAMPLE.clear()
     _NEAR_PROTO.clear()
+    _HEADLAND_CACHE.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -2166,9 +2167,112 @@ def reset_near_cache():
 # scrub follow `garden.TUSSOCK_R_M`/`SCRUB_R_M`, which the garden's own
 # near-field work derived in this session. -- INV-492
 CROP_H_M = 0.95
-CROP_ROW_PITCH_M = 0.92      # 34b: "a strong row-textured green"
-CROP_ROWS = 3                # per cell at full detail; 3 x 0.92 = 2.8 of 3.9 m
-CROP_W_FRAC = 0.62           # ridge width as a fraction of the row pitch
+CROP_ROWS = 3                # drills per lattice cell at full detail
+
+# THE DRILL PITCH IS THE CELL'S OWN, AND THE OLD ONE WAS NOT -- INV-760.
+# `CROP_ROW_PITCH_M` was 0.92 m with `CROP_ROWS = 3`, so three drills spanned
+# 2.41 m of a 3.90 m cell and left a 1.49 m strip of bare ground BETWEEN EVERY
+# PAIR OF CELLS. That is a 3.90 m period running the whole length of every
+# arable parcel, and `AAA-STANDARD` C5 is "nothing in frame repeats in a way the
+# eye can index" -- a stripe every 3.9 m is the most indexable thing a field can
+# do. `scratchpad/drum4t/before-vista.png` shows it as a row of separated
+# wedges rather than a crop.
+#
+# Deriving the pitch from the lattice instead closes it by construction: with
+# `pitch = cell_a / CROP_ROWS` the outermost drill of one cell sits exactly one
+# pitch from the innermost drill of the next, so the drills run continuously
+# down the field and the only thing the cell boundary does is change which
+# prototype is instanced. Nothing may restate 3.90 m here; it comes off
+# `drum_ground.FLOOR_R` and `CELLS_A`, which is where the lattice is decided.
+
+
+def crop_pitch_m():
+    """Circumferential spacing of one drill. One cell holds `CROP_ROWS`."""
+    return 2.0 * math.pi * dg.FLOOR_R / dg.CELLS_A / CROP_ROWS
+
+
+# WHAT IS GROWING IN THIS PARCEL, and it is FOUR ANSWERS rather than one.
+# `2-22_34b` is explicit and was not being followed: "ONE LARGE FIELD carries
+# visible parallel cultivation rows" -- one, among a patchwork of parcels that
+# do not. `drum_ground.sample()` already gives every arable parcel one of
+# `CROPS` tags and the ground's own material differs per tag; what stood on all
+# four was the same 0.95 m drill, so every parcel was rowed identically and the
+# tag bought colour and nothing else.
+#
+# Heights are bounded at both ends and the bounds are the reason for the
+# numbers rather than the numbers being the reason for the bounds. ABOVE by the
+# 0.95 m already derived in INV-492 -- a player must see OVER the field, or
+# 34b's readable patchwork is not readable from the floor. BELOW by 0.15 m,
+# under which a drill is thinner than `NEAR_SINK_M` and stops reading as
+# anything at the 8.79 m fine switch. Between those: a cereal at the top of the
+# range, a cut grass ley near the bottom, a root crop on wide-spaced ridges
+# with bare soil showing between them, and a harvested stubble. Overturned by
+# any frame that establishes what is actually farmed in the drum.
+# -- INV-760, authority 5
+#
+# (name, height_m, base width / pitch, crown width / base width, tramlines)
+CROP_TYPES = (
+    ("cereal",  0.95, 0.86, 0.58, True),
+    ("ley",     0.30, 0.98, 0.86, False),
+    ("roots",   0.52, 0.52, 0.26, True),
+    ("stubble", 0.20, 0.90, 0.62, False),
+)
+
+# How broken the top of a drill is, as a fraction of its height, and how far it
+# wanders across the row, in metres. Both are enveloped by `sin(pi f)` along the
+# cell so they vanish at the two ends -- which is what lets a per-cell
+# prototype tile into a continuous drill. The old `_ridge` jittered the END
+# rings too, so consecutive cells met at different heights and left a step
+# every 4.04 m.
+CROP_CROWN_BREAK = 0.16
+CROP_WANDER_M = 0.07
+
+# A TRAMLINE IS THE WHEELING A BOOM LEAVES, so its spacing is the boom's span
+# and not a look. `GANTRY_SPAN_M` is the irrigation boom this module already
+# places on these parcels (INV-452); one wheeling every span means the gantry
+# runs in its own tracks, which is what the pair of lines is FOR. Rounded to a
+# whole number of lattice cells so a tramline is a property of a cell index and
+# does not drift across the field. -- INV-761
+
+
+def tramline_cells():
+    cell_a = 2.0 * math.pi * dg.FLOOR_R / dg.CELLS_A
+    return max(2, int(round(GANTRY_SPAN_M / cell_a)))
+
+
+# THE HEADLAND -- the strip a machine turns on, inside the boundary. A field
+# whose crop runs into the hedge is a field nobody could work, and it is also
+# the near-field defect STATE.md 24.4b names: "the parcel boundary underfoot is
+# a hard straight edge". One lattice cell of bare, cloddy turning ground
+# between the last drill and the hedge bank gives the boundary a width. It is
+# one cell because that is 3.90 m and a headland is one machine width; more
+# than one would eat the parcel. -- INV-762
+
+# CLODS. Tilled ground at arm's length was BARE in
+# `scratchpad/drum4t/before-near.png` -- a flat wash of soil with a tiling
+# pebble pattern and nothing on it, which is C1 "reads as a placeholder from any
+# distance" at the one distance the rubric calls arm's length.
+#
+# The density is derived from what the clods are FOR rather than from the
+# garden's grass, which is a different surface: they must read as separate
+# lumps of turned soil and not as gravel. At 8.79 m a 0.14 m clod is
+# `_pixels(0.14, 8.79)` = 16 px, so a spacing under about a metre would merge
+# them into a texture the mesh cannot afford; 3.3 m spacing -- 9 per 100 m2 --
+# keeps them separable at the fine switch and still puts two or three in an
+# arm's-length frame. The headland carries three times that, because a headland
+# is bare turned ground and on the rest of the parcel the crop is the cover.
+#
+# THE RADIUS IS `NEAR_FULL_M` AND NOT `NEAR_FINE_M`, and that is an ASSERTION
+# talking rather than a preference. `_selftest`'s "the near rung is the same
+# field from two different eyes" compares two eyes 12 m apart over everything
+# inside `NEAR_FULL_M - 12`, so any item whose PRESENCE switches inside that
+# radius makes the two eyes disagree about the same cell. The full switch is
+# the one boundary that check is built to stay clear of, and a cheaper, closer
+# clod rung would have been a gate failure dressed as a saving. -- INV-763
+CLOD_H_M = 0.14
+CLOD_PER_100M2 = 9.0
+CLOD_HEADLAND_GAIN = 3.0
+
 TUSSOCK_H_M = 0.42
 SCRUB_H_M = 0.85
 REED_TUFT_H_M = 1.35
@@ -2275,22 +2379,49 @@ def _near_proto(item, group, index, lod):
         return got
     v, t, g = [], [], []
     seed = f"{SEED}/near/{item}/{index}"
-    if item == "crop":
-        # RIDGES ALONG THE AXIS, because that is the direction the furrows run:
+    if item.startswith("crop"):
+        # DRILLS ALONG THE AXIS, because that is the direction the furrows run:
         # `drum_ground` -- "you plough along the direction of travel", since a
         # furrow across the drum climbs a hill that never ends. Looking down the
         # axis, which is how the drum is framed, they converge on the vanishing
         # point and the parcel stops being a colour field.
+        #
+        # `item` is "crop<n>" for crop type n, with a trailing "t" where this
+        # cell carries the tramline. Encoding it in the item name rather than in
+        # a parameter is what keeps `_NEAR_PROTO` a correct cache: two cells
+        # that differ in what they grow must not share a prototype.
+        ci = int(item[4]) % len(CROP_TYPES)
+        tram = item.endswith("t")
+        _nm, ch, wfrac, cfrac, _tl = CROP_TYPES[ci]
         rows = 1 if lod >= 2 else CROP_ROWS
-        pitch = CROP_ROW_PITCH_M * (CROP_ROWS if lod >= 2 else 1)
-        halfw = pitch * CROP_W_FRAC * 0.5
+        pitch = crop_pitch_m() * (CROP_ROWS if lod >= 2 else 1)
+        halfw = pitch * wfrac * 0.5
         cz = (dg.Z1 - dg.Z0) / dg.CELLS_Z
-        segs = (1, 2, 1)[min(lod, 2)] if lod >= 1 else 4
+        # SEGMENTS PER CELL, and the count went DOWN at the middle rung while
+        # the section went from three points to four. A three-point section is a
+        # knife edge, and a knife-edged prism 0.95 m tall and 0.57 m wide in the
+        # ground's own soil material is a concrete barrier -- which is what
+        # `scratchpad/drum4t/before-vista.png` shows filling the foreground. The
+        # fourth point buys the crown that makes it a crop; paying for it out of
+        # the middle rung's section count keeps the whole change close to
+        # triangle-neutral, which matters because this module is at 114,910 of
+        # its own 120,000.
+        segs = (3, 1, 1)[min(lod, 2)]
         for r in range(rows):
+            if tram and rows == CROP_ROWS and r == CROP_ROWS // 2:
+                continue          # the wheeling: one drill left undrilled
             x0 = (r - (rows - 1) / 2.0) * pitch
-            hh = CROP_H_M * (0.82 + 0.36 * _unit(seed, "h", r))
-            _ridge(v, t, g, group, x0, halfw, -cz / 2.0, cz / 2.0,
-                   hh, segs, seed=f"{seed}/{r}")
+            hh = ch * (0.90 + 0.20 * _unit(seed, "h", r))
+            _drill(v, t, g, group, x0, halfw, halfw * cfrac,
+                   -cz / 2.0, cz / 2.0, hh, segs, seed=f"{seed}/{r}")
+    elif item == "clod":
+        # A turned clod. Four sides and one stack -- eight triangles -- because
+        # at 16 px it is a lump and not a shape, and because there are of order
+        # seventy of them inside the fine radius.
+        h = CLOD_H_M * (0.6 + 0.9 * _unit(seed, "h"))
+        r = h * (0.9 + 0.7 * _unit(seed, "r"))
+        _dome(v, t, g, group, 0.0, 0.0, 0.0, r, 4, 1, h / max(r, 1e-6))
+        _squash(v, 0.7 + 0.6 * _unit(seed, "sx"), 0.7 + 0.6 * _unit(seed, "sz"))
     elif item in ("boxhedge", "wall"):
         wall = item == "wall"
         h = (WALL_H_M if wall else BOXHEDGE_H_M) * (0.9 + 0.2 * _unit(seed, "h"))
@@ -2338,10 +2469,83 @@ def _near_proto(item, group, index, lod):
         seg = (6, 5, 4)[min(lod, 2)]
         stacks = 3 if lod == 0 else 2
         _dome(v, t, g, group, 0.0, 0.0, 0.0, r, seg, stacks, h / max(r, 1e-6))
+        # A FIELD STONE IS NOT A BALL. `before-near.png` and `before-vista.png`
+        # both show the arable surface carrying identical pale hemispheres at
+        # every scale -- one shape, instanced, which C5 names exactly ("nothing
+        # in frame repeats in a way the eye can index"). Squashing the finished
+        # prototype on two axes costs no triangles and no second prototype, and
+        # the plough that turned the stone up is also the reason it is not
+        # round. Tussocks and scrub take the same treatment for the same
+        # reason, at a gentler ratio, because grass IS roughly radial.
+        if item == "stone":
+            _squash(v, 0.62 + 0.85 * _unit(seed, "sx"),
+                    0.62 + 0.85 * _unit(seed, "sz"))
+        else:
+            _squash(v, 0.80 + 0.40 * _unit(seed, "sx"),
+                    0.80 + 0.40 * _unit(seed, "sz"))
     else:
         raise ValueError(f"no near prototype for {item!r}")
     _NEAR_PROTO[key] = (v, t, g)
     return _NEAR_PROTO[key]
+
+
+def _squash(v, sx, sz):
+    """Scale a finished prototype's x and z about its own origin, in place.
+
+    Applied AFTER the builder, so it cannot change the triangle count and
+    cannot make a closed solid open: an affine scale with positive factors
+    preserves both closure and winding. That is the whole argument for doing
+    variety this way rather than with a second prototype -- this module is
+    inside 5,000 triangles of its own allowance and a second prototype family
+    costs more than the variety is worth.
+    """
+    for i, (x, y, z) in enumerate(v):
+        v[i] = (x * sx, y, z * sz)
+
+
+def _drill(v, t, g, name, x0, halfw, crownw, z0, z1, h, segs, seed="d"):
+    """One drilled crop row: a trapezoidal section swept along the axis.
+
+    FOUR POINTS A RING RATHER THAN THREE, and that is the near field's whole
+    read. `_ridge` -- what this replaces -- swept a triangle, so a drill was a
+    knife edge; at 0.95 m tall and 0.57 m wide, in the ground's own soil
+    material, the result is a concrete Toblerone and it fills the bottom third
+    of every ground-level drum frame taken before this session.
+
+    EVERY PER-RING PERTURBATION IS ENVELOPED TO ZERO AT THE TWO ENDS. The
+    prototype spans exactly one lattice cell along z and is instanced in every
+    cell of the parcel, so ring 0 of one instance is coincident with ring n of
+    its neighbour. `_ridge` jittered those end rings, which put a step at every
+    4.04 m of every drill in the drum; `sin(pi f)` makes the ends the one place
+    the section is exactly nominal, so the drills run continuously and the
+    breaking-up happens where it cannot be indexed.
+    """
+    off = len(v)
+    t0 = len(t)
+    n = max(1, segs)
+    for k in range(n + 1):
+        f = k / n
+        z = z0 + (z1 - z0) * f
+        env = math.sin(math.pi * f)
+        hh = h * (1.0 + CROP_CROWN_BREAK * env
+                  * (_unit(seed, "k", k) - 0.5) * 2.0)
+        wx = CROP_WANDER_M * env * (_unit(seed, "w", k) - 0.5) * 2.0
+        v.append((x0 - halfw + wx, -NEAR_SINK_M, z))
+        v.append((x0 - crownw + wx, hh, z))
+        v.append((x0 + crownw + wx, hh, z))
+        v.append((x0 + halfw + wx, -NEAR_SINK_M, z))
+    for k in range(n):
+        a, b = off + 4 * k, off + 4 * (k + 1)
+        for p, q in ((0, 1), (1, 2), (2, 3), (3, 0)):
+            t.append((a + p, b + p, b + q))
+            t.append((a + p, b + q, a + q))
+    t.append((off, off + 1, off + 2))
+    t.append((off, off + 2, off + 3))
+    e = off + 4 * n
+    t.append((e, e + 2, e + 1))
+    t.append((e, e + 3, e + 2))
+    g.append((name, t0, len(t)))
+    _orient(v, t, t0)
 
 
 def _ridge(v, t, g, name, x0, halfw, z0, z1, h, segs, seed="r"):
@@ -2480,6 +2684,48 @@ def _frontage(ia, iz):
     return None
 
 
+def _crop_index(kind):
+    """Which of `CROP_TYPES` this parcel grows.
+
+    Read off `drum_ground.sample()`'s own tag rather than re-derived here, for
+    the reason the group is: the crop's SHAPE and the parcel's COLOUR have to
+    come from one decision or the near field and the far field disagree about
+    what is in the same parcel.
+    """
+    tail = kind[6:]
+    return int(tail) % len(CROP_TYPES) if tail.isdigit() else 0
+
+
+_HEADLAND_CACHE = {}
+
+
+def _is_headland(ia, iz):
+    """Is this cell the turning strip at the edge of its parcel?
+
+    True when any of the four neighbours is not croppable ground -- a hedge
+    bank, a road, a verge, the band beyond. `_ARABLE_KINDS` includes `hedge`,
+    so this is deliberately NOT that set: the headland is the strip INSIDE the
+    hedge, and a cell that neighbours the hedge is exactly the cell a machine
+    turns on. -- INV-762
+    """
+    key = (ia % dg.CELLS_A, iz)
+    got = _HEADLAND_CACHE.get(key)
+    if got is None:
+        got = False
+        for dia, diz in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            jz = iz + diz
+            if not (0 <= jz < dg.CELLS_Z):
+                got = True
+                break
+            k = _lattice_sample(ia + dia, jz)[1]
+            if not (k == "arable" or (k.startswith("arable")
+                                      and k[6:].isdigit())):
+                got = True
+                break
+        _HEADLAND_CACHE[key] = got
+    return got
+
+
 def near_field(eye, radius=None, full_m=None, gain=None):
     """Every stand of near cover within `radius` of `eye`. Eye-relative.
 
@@ -2541,9 +2787,39 @@ def near_field(eye, radius=None, full_m=None, gain=None):
                 if item == "crop":
                     if _in_keepout(keep, ang, z, gr):
                         continue
-                    out.append(NearItem(
-                        "crop", grp, ia * 7 + iz, ang, z, gr, 0.0, 1.0,
-                        CROP_H_M, cell_a * 0.72, lod, kind))
+                    ci = _crop_index(kind)
+                    _nm, ch, _wf, _cf, has_tram = CROP_TYPES[ci]
+                    head = _is_headland(ia, iz)
+                    if not head:
+                        tram = (has_tram
+                                and ia % tramline_cells() == 0)
+                        out.append(NearItem(
+                            f"crop{ci}{'t' if tram else ''}", grp,
+                            ia * 7 + iz, ang, z, gr, 0.0, 1.0,
+                            ch, cell_a * 0.72, lod, kind))
+                    # CLODS, on the tilled soil the drills stand in and on the
+                    # headland that has no drills at all. The whole full rung
+                    # rather than the fine one -- see INV-763 for the assertion
+                    # that decides that, and the coarse rung is excluded
+                    # because at 28 m a 0.14 m lump is five pixels.
+                    if not coarse:
+                        want = (CLOD_PER_100M2
+                                * (CLOD_HEADLAND_GAIN if head else 1.0)
+                                * cell_area / 100.0)
+                        cnt = int(want) + (
+                            1 if _unit(SEED, "cl", ia, iz) < want - int(want)
+                            else 0)
+                        for k in range(cnt):
+                            jx = (_unit(SEED, "cx", ia, iz, k) - 0.5) * cell_a
+                            jz = (_unit(SEED, "cz", ia, iz, k) - 0.5) * cell_z
+                            aa = ang + math.degrees(jx / gr)
+                            if _in_keepout(keep, aa, z + jz, gr):
+                                continue
+                            out.append(NearItem(
+                                "clod", grp, ia * 13 + iz * 3 + k, aa,
+                                z + jz, gr,
+                                math.tau * _unit(SEED, "cy", ia, iz, k), 1.0,
+                                CLOD_H_M, CLOD_H_M, 0, kind))
                     continue
                 if item == "wall":
                     yaw, dxm, dzm = front
@@ -3318,8 +3594,10 @@ def _selftest():
     # bottom and wound inside out for four sessions (CLAUDE.md, 3x) at a
     # fraction of this instance count; a near stand is the object a player's
     # eye is 3 m from.
-    for item in ("crop", "tussock", "scrub", "margin", "reedtuft", "stone",
-                 "boxhedge", "wall"):
+    _crop_items = [f"crop{_c}{_t}" for _c in range(len(CROP_TYPES))
+                   for _t in ("", "t")]
+    for item in _crop_items + ["clod", "tussock", "scrub", "margin",
+                               "reedtuft", "stone", "boxhedge", "wall"]:
         for lod in (0, 1, 2):
             v, t, g = _near_proto(item, "garden_hedge", 0, lod)
             open_e, nonman = _boundary_edges(t)
