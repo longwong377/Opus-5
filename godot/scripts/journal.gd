@@ -196,6 +196,9 @@ var _leg_h0: float = -1.0              # station hour it left
 var _leg_broken := 0                   # frames the body was PLACED, not walked
 var _legs := 0                         # route facts the feet earned
 var _placed := 0                       # discontinuities seen, all time
+## Set by `load_state`: the next `_watch` re-reads the world's counters
+## instead of reading their movement as something the player did.
+var _resync := false
 
 
 func _init() -> void:
@@ -501,6 +504,22 @@ func _watch(delta: float) -> void:
 func _watch_talk() -> void:
 	var dlg = _dlg()
 	if dlg == null:
+		return
+	# A RESTORE IS NOT A CONVERSATION, and this cost a whole gate run to find.
+	# `save.gd` restores the `dialogue` section too, which puts `_opened` back
+	# to what it was when the game was saved -- and to an observer watching a
+	# counter, a counter going up is a counter going up. The recall phase
+	# therefore minted a name for whoever was standing nearest at the moment
+	# of the load (David Nakamura, not the Bo Rossi the walk had talked to),
+	# and the acceptance then found "the name" present for the worst possible
+	# reason: it had just been written, in the process that was supposed to be
+	# only reading. Re-baselining on load is the fix, and `_resync` is set by
+	# `load_state` rather than by the gate, so it protects a player's own load
+	# and not just the test.
+	if _resync:
+		_resync = false
+		_seen_opened = int(dlg.opened())
+		_seen_said = int(dlg.said())
 		return
 	var n := int(dlg.opened())
 	if n > _seen_opened:
@@ -948,6 +967,12 @@ func load_state(d: Dictionary) -> void:
 	_cursor = float(d.get("cursor", -999.0))
 	_witnessed = int(d.get("witnessed", 0))
 	_lived_h = float(d.get("lived_h", 0.0))
+	# ...AND SO ARE THE OBSERVER'S BASELINES, for the same reason one level
+	# out: every other section of the save is being restored in the same
+	# frame, and a restored counter moving is not the world moving. See
+	# `_watch_talk`.
+	_resync = true
+	_have_pos = false
 
 
 # ===========================================================================
@@ -1163,12 +1188,21 @@ func _phase_learn(host) -> void:
 ## question that matters: is THIS fact, the one the station can name, in there.
 func _phase_recall(host) -> void:
 	await _settle(30)
+	# THE READING PROCESS MAY NOT WRITE. With minting live, this phase minted
+	# its own `name_given` on the frame the save came back -- see `_watch_talk`
+	# -- and then found "the name" present because it had just written it. A
+	# gate that can satisfy itself is the defect this repository names most
+	# often, so the minter is switched OFF for the whole phase and every fact
+	# reported below is therefore a fact that arrived in a FILE.
+	_minting = false
+	print("JOURNAL: MINTING OFF for the recall phase -- everything below "
+		+ "came out of the slot")
 	var before := facts.size()
 	if _args().has("no-restore"):
 		print("JOURNAL: RESTORE SKIPPED (control)")
 	else:
 		host.load_from("journal")
-	var want := await _expected_ids()
+	var want := _expected_ids()
 	var missing: Array[String] = []
 	var unsourced: Array[String] = []
 	for fid in want:
@@ -1203,15 +1237,14 @@ func _phase_recall(host) -> void:
 	# 3. THE LEDGER IS NON-ZERO. An all-zero ledger is what a fresh journal
 	#    has, so a `standing` that came back at its boot value is
 	#    indistinguishable from one that never loaded.
-	var named := (_name_fid != "" and facts.has(_name_fid)
-		and name_given(_name_who))
+	var named := _recall_a_name()
 	var ledger := _standing_line()
 	var moved := 0
 	for k in standing:
 		if absf(float(standing[k])) > 1e-9:
 			moved += 1
 	var ok: bool = (missing.is_empty() and unsourced.is_empty()
-		and not invented and want.size() >= 2 and named
+		and not invented and want.size() >= 1 and named
 		and people.size() >= 1 and standing.size() >= 1 and moved >= 1)
 	for e in entries():
 		print("JOURNAL entry | " + e)
@@ -1223,8 +1256,9 @@ func _phase_recall(host) -> void:
 		+ "unsourced=%s a_fact_never_learned_is_present=%s "
 		% [("none" if unsourced.is_empty() else ", ".join(
 			PackedStringArray(unsourced))), str(invented)]
-		+ "name_back=%s people=%d ledgers_moved=%d"
-		% [str(named), people.size(), moved])
+		+ "name_back=%s(%s) people=%d ledgers_moved=%d"
+		% [str(named), (_named_back if _named_back != "" else "nobody"),
+			people.size(), moved])
 	print("JOURNAL standing %s" % ledger)
 	get_tree().quit(0 if ok else 1)
 
@@ -1242,32 +1276,58 @@ func _phase_recall(host) -> void:
 ## So both phases ask the SAME question of the same deterministic scene -- stand
 ## here, who is offered -- and this one stops before `talk()`, so deriving the
 ## expected id cannot create the fact it is about to look for.
-## AND THE CONVERSATION MAY NOT SILENTLY DROP OUT OF IT. `_name_fid` is left
-## empty when the deck offers nobody, and `_phase_recall` FAILS on an empty one
-## rather than shortening its own expectation -- which is the clause round one
-## was missing.
-var _name_fid := ""
-var _name_who := ""
+## Who the restored journal says gave the player their name, or "".
+var _named_back := ""
+
+
+## IS THERE A NAME IN HERE, GIVEN BY SOMEBODY WHO IS REALLY ON THIS DECK?
+##
+## THIS REPLACED A DERIVED FACT ID, AND THE REASON IS A MEASUREMENT. The first
+## version re-scanned for the partner in this phase and looked for that exact
+## id -- and the two phases DISAGREED about who it was: the learn phase, which
+## reaches `customs_north` at 13.90 after a 221 m walk, is offered Bo Rossi;
+## the recall phase, which boots at 13.01 and stands in the same spot, is
+## offered David Nakamura. `dialogue.gd::scan` takes whoever is nearest and in
+## the cone, and the crowd is not the same crowd an hour later. Round one's own
+## header records the identical surprise about the identical function.
+##
+## So the question is asked the way it can be answered: a `name_given` fact,
+## about somebody in THIS deck's cast, whose CAST-05 memory slot also came back
+## saying the name was given. With minting switched off for the phase and
+## `had_before_load` printed beside it, all three of those had to arrive in a
+## file.
+func _recall_a_name() -> bool:
+	_named_back = ""
+	var cast := {}
+	for a in _actor_rows():
+		var who = a.get("who", {})
+		if typeof(who) == TYPE_DICTIONARY:
+			cast[String(who.get("id", ""))] = String(who.get("name", ""))
+	for fid in facts:
+		var f: Dictionary = facts[fid]
+		if String(f.get("kind", "")) != "name_given":
+			continue
+		var subj := String(f.get("subject", ""))
+		if not cast.has(subj) or not name_given(subj):
+			continue
+		_named_back = "%s / %s" % [String(f.get("value", "")), subj]
+		return true
+	return false
 
 
 func _expected_ids() -> Array[String]:
 	var out: Array[String] = []
-	_name_fid = ""
-	_name_who = ""
-	var p = await _scan_partner()
-	if p != null:
-		_name_who = String(p.id)
-		_name_fid = fact_id("name_given", _name_who, "dialogue", _name_who)
-		out.append(_name_fid)
-	else:
-		print("JOURNAL: NOBODY IS OFFERED ON THIS DECK -- the conversation "
-			+ "half of this acceptance cannot be tested and will not be "
-			+ "quietly dropped")
-	# THE LEG IS THE ONE THE FEET WALKED, derived the same way in both phases.
+	# THE LEG IS THE ONE THE FEET WALKED, derived the same way in both phases
+	# -- from the deck's own cast and `transit.py`'s own arcs, with nothing
+	# read out of the save. This one IS a named id, because unlike the
+	# conversation it does not depend on which of 83 people the crowd put
+	# nearest at the hour the phase happens to boot at.
 	var pair := _leg_pair()
 	if pair.size() == 2:
 		var k := "%s>%s" % [pair[0], pair[1]]
 		out.append(fact_id("route_time", k, "transit", k))
+	else:
+		print("JOURNAL: NO LEG IS DERIVABLE ON THIS DECK")
 	return out
 
 
