@@ -244,10 +244,21 @@ M_WALL_UP = "dress_furnace_panel"          # 0.215,0.198,0.190 r0.78
 M_PIER = "dress_post_rib"                  # 0.300,0.255,0.242 r0.52 met0.30
 #   column shafts and stair piers: bronze structure, part-metallic, so it takes
 #   a highlight where the flat shell material takes none.
-M_BRONZE = "zoc_table_edge_rib"            # 0.600,0.510,0.458 r0.30 met0.85
+M_BRONZE = "prop_deck_marking_rib"         # 0.405,0.299,0.308 r0.58 met0.00
 #   "a group of THREE narrow ring collars" and the capitals. In the frame the
 #   collars are distinctly LIGHTER than the shaft they ring, which is the whole
 #   reason the order reads at all against a bright window.
+#
+#   AND IT MAY NOT BE A SMOOTH METAL, which cost a render to learn and is the
+#   one real constraint on this whole palette. The first pick was
+#   `zoc_table_edge` -- 0.600,0.510,0.458 at metallic 0.85 and roughness 0.30 --
+#   and at arm's length the three collars rendered BLACK. `interior.tscn` sets
+#   `reflected_light_source = 1`, which is DISABLED, and a smooth metal with no
+#   environment to reflect integrates to nothing; `station/vista.py`'s header
+#   records the identical mechanism for the glazing. Rough metals survive it
+#   (`furn_shop_steel` at 0.58 does not go black); smooth ones do not. **Read a
+#   material's metallic AND its roughness before putting it on trim a player
+#   can get close to.**
 M_GOLD = "dress_kerb_rib"                  # 0.900,0.720,0.060 r0.62
 #   "a smooth warm gold-bronze dome with broad radial ribs". Already this
 #   file's choice; kept, and now it has a dome field to sit against.
@@ -259,7 +270,7 @@ M_STONE_D = "zoc_deck_chevron_deck_joint"  # 0.265,0.262,0.209 r0.34
 M_RECESS = "prop_planter_panel"            # 0.094,0.092,0.093 r0.24
 #   every shadow gap, coffer ground and reveal. A recess the same value as the
 #   thing it is cut into is not a recess.
-M_METAL = "dress_conduit"                  # 0.545,0.540,0.528 r0.42 met0.95
+M_METAL = "zoc_stall_post_conduit"         # 0.420,0.418,0.412 r0.75 met0.00
 #   service risers and cable runs -- CRAFT 4's "a fitting is where a fitting
 #   would be needed".
 M_GRILLE = "zoc_chair_frame_mullion"       # 0.075,0.074,0.074 r0.32
@@ -670,14 +681,22 @@ def _lattice_panel(v, t, g, r, a, half_a, y0, y1, bars=9, rungs=6):
     # INV-024's lesson at fitting scale -- glass in a bulkhead with no aperture
     # -- and it is why the back plate is now a PLATE.
     _seg(v, t, g, M_RECESS, r - 0.20, r - 0.15, a0, a1, y0 - 0.10, y1 + 0.10)
-    _seg(v, t, g, M_GLOW_B, r - 0.255, r - 0.215, a0 + 0.012, a1 - 0.012,
-         y0, y1)
-    # the grille: verticals and rungs, standing 60 mm proud of the glow
+    # THE LIGHT COMES THROUGH THE GAPS. A full emissive field behind an open
+    # grille is a light box: at `prop_shrine`'s emission energy 2.2 over a
+    # 2.3 x 3.0 m face it clipped, which is the same failure as the disc on the
+    # plot table one room over. Only the strips BETWEEN the grille bars glow --
+    # 38% of the aperture -- and the bars are wide enough to read as a lattice.
+    for k in range(bars + 1):
+        fc = k / bars
+        half = 0.20 / bars
+        _seg(v, t, g, M_GLOW_B, r - 0.255, r - 0.215,
+             a0 + (a1 - a0) * max(0.0, fc - half),
+             a0 + (a1 - a0) * min(1.0, fc + half), y0, y1)
     for k in range(bars):
         f = (k + 0.5) / bars
         ac = a0 + (a1 - a0) * f
         _seg(v, t, g, M_GRILLE, r - 0.315, r - 0.265,
-             ac - (a1 - a0) * 0.026, ac + (a1 - a0) * 0.026, y0 - 0.04,
+             ac - (a1 - a0) * 0.042, ac + (a1 - a0) * 0.042, y0 - 0.04,
              y1 + 0.04)
     for k in range(rungs):
         yy = y0 + (y1 - y0) * (k + 0.5) / rungs
@@ -713,29 +732,28 @@ def _sigil(v, t, g, r, a, y, size=0.30, name=None):
     """
     name = name or M_SIGIL
     rr = r - 0.352
-    da = size / max(0.2, r)
-    _seg(v, t, g, name, rr - 0.018, rr, a - da * 0.20, a + da * 0.20,
-         y - size * 0.20, y + size * 0.20)
+    _cyl(v, t, g, name, (rr - 0.03) * math.cos(a), (rr - 0.03) * math.sin(a),
+         y - size * 0.20, y + size * 0.20, size * 0.20, seg=10)
     for k in range(6):
         th = math.tau * k / 6.0
         long_arm = (k % 2 == 0)
-        L = size * (0.92 if long_arm else 0.54)
+        L = size * (0.98 if long_arm else 0.60)
         ac = a + math.cos(th) * (L * 0.5) / max(0.2, r)
         yc = y + math.sin(th) * L * 0.5
-        w = size * (0.085 if long_arm else 0.065)
-        _seg(v, t, g, name, rr - 0.014, rr,
+        w = size * (0.155 if long_arm else 0.115)
+        _seg(v, t, g, name, rr - 0.042, rr,
              ac - w / max(0.2, r), ac + w / max(0.2, r), yc - w, yc + w)
     for k in range(8):
         if k % 4 == 3:
             continue
-        th0 = math.tau * (k + 0.10) / 8.0
-        th1 = math.tau * (k + 0.90) / 8.0
+        th0 = math.tau * (k + 0.06) / 8.0
+        th1 = math.tau * (k + 0.94) / 8.0
         for th in (th0, th1):
-            ac = a + math.cos(th) * (size * 0.62) / max(0.2, r)
-            yc = y + math.sin(th) * size * 0.62
-            _seg(v, t, g, name, rr - 0.010, rr,
-                 ac - 0.030 / max(0.2, r), ac + 0.030 / max(0.2, r),
-                 yc - 0.030, yc + 0.030)
+            ac = a + math.cos(th) * (size * 0.68) / max(0.2, r)
+            yc = y + math.sin(th) * size * 0.68
+            _seg(v, t, g, name, rr - 0.034, rr,
+                 ac - 0.055 / max(0.2, r), ac + 0.055 / max(0.2, r),
+                 yc - 0.055, yc + 0.055)
     return v, t, g
 
 
@@ -1487,12 +1505,13 @@ def _dome_chamber(v, t, g, prog):
     # because this is the same glass C&C looks through.
     for i in range(mull):
         a = math.tau * i / mull + ea
-        _dome_rib(v, t, g, D_FRAME, r - 0.20, DOME_WALL_M, rise, a, 0.28, 0.13)
+        _dome_rib(v, t, g, D_FRAME, r - 0.20, DOME_WALL_M, rise, a, 0.42, 0.17)
     # AND THE BULKHEAD IS PANELLED, which is the other half of the same
     # sentence and the reason the dome read as smooth plastic. Same call the
     # rotunda's dome makes, in this room's own materials.
     _dome_coffers(v, t, g, r - 0.20, DOME_WALL_M, rise, mull, ea, seg=seg,
-                  minor=D_TRIM, band=D_PALE, bands=(0.30, 0.58, 0.80))
+                  minor=D_TRIM, band=D_PALE,
+                  bands=(0.12, 0.26, 0.42, 0.62, 0.82))
     band = 0.55
     _revolve(v, t, g, D_PALE,
              [((r - 0.20) * math.cos(band * math.pi / 2) - 0.02,
