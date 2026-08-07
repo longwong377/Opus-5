@@ -12562,6 +12562,13 @@ time — the crowd-library error is the near miss, and it is identical on both s
 `crowd_lod*.glb` has ever been generated. If one is, and the packager does not stage it, the
 differential will say so; that is the gate working, not a false positive.
 
+**And it caught one live, on content it was not written against.** While this was being verified
+on a fresh worktree, another agent baked `station/generated/scene/enforcement.json` --- read by
+`enforcement.gd:60` and staged by nothing. `--readers` went red within the minute:
+`on-disk NO station/generated/scene/enforcement.json`. Without it the next tarball would have
+shipped with `enforcement: no ... -- a refusal will be reported and nothing will follow it`, which
+is a station where the law does not act, and `MENUGATE verdict=PASS`.
+
 **The negative controls, all four run and all four fired:** deleting the `tools/export_scene.py`
 row from `DATA` → `--readers` exit 1, `--check` exit 1; deleting the launcher's `cd` → *"THE BUILD
 IS DIMINISHED -- no light sources"*, staged build destroyed, **while the same run printed

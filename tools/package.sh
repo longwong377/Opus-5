@@ -181,6 +181,7 @@ DATA=(
   "station/generated/audio|no|ambience.gd's 13 loops -- the station is silent"
   "station/generated/navgraph.json|no|navgraph.gd -- NPCs cannot route"
   "station/generated/economy.json|no|player.gd::has_purse is false, so tier stays at its sentinel"
+  "station/generated/scene/enforcement.json|no|enforcement.gd -- a refusal is reported and NOTHING follows it: no arrest, no fine, no brig"
   "station/generated/scene/npc|no|ragdoll.gd's 14 species bodies -- nobody falls over"
   "station/generated/scene/vista|no|vista.gd -- the three windowed rooms show background instead of the station"
   "station/generated/journal.json|no|journal.gd -- nothing is learned or remembered"
