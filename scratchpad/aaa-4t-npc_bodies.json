@@ -1,0 +1,37 @@
+{
+  "subsystem": "npc_bodies",
+  "round": 3,
+  "reviewer": "build agent, session 4t -- ROUND ZERO IS THE BUILD, so this is the builder's own scoring and is NOT a review round under docs/AAA-STANDARD.md",
+  "date": "2026-08-07",
+  "scores": { "craft": 3, "fidelity": 3, "performance": 3, "robustness": 4 },
+  "evidence": {
+    "robustness": "station/npc/costume.py --construct builds 64 figures through populace._posed -- the same call deck.build_deck reaches -- and asserts every construction piece resolves to its own material through animation._groups_for_parts and that animation.rig does not raise. 64/64 after; the control --construct --legacy is 0/64. costume.py self-test 93/93, body.py 1438/1438."
+  },
+  "broke_assertions": true,
+  "_frames": "scratchpad/blind/npc_bodies/r1/{left,right}-{normal,half,far}.png, 1280x720, Vulkan 1.4.318 Forward+ llvmpipe, greppd in every render log. Cameras: NORMAL 1.245 m level at the figure's mid-height, HALF 0.621 m level at 1.45 m, FAR the shipped player camera down the ring at 43.1 m. Identical eye/target before and after.",
+  "_measured": "corridor bake level 4: 624 -> 780 triangles a person (+25%), 12 -> 14 primitives; on a 40-walker Blue deck +5,760 triangles (0.66% of 869,924) and +80 draw calls. Clothing is 412 of 7,304 triangles at LOD0 (5.6%) and 140 of 1,236 at lod3 (11.3%).",
+  "what_is_good": [
+    "The wardrobe's measurements are real and authority-1: 32 of 55 reachable materials read off named show frames with a region and a percentile recorded beside each.",
+    "The yoke's placement and fabric were already measured; only what carries them changed.",
+    "The LOD chain, the impostor and the crowd cost model are derived from a stated pixel budget rather than chosen.",
+    "The bind-pose figure has a face, ears, a nose, eyes, brows, four fingers and a thumb at LOD0-2."
+  ],
+  "findings": [
+    { "severity": "major", "dimension": "craft", "descriptor": "C3",
+      "where": "station/populace.py::corridor_lod, station/npc/body.py::lod_chain",
+      "text": "THE PERSON A PLAYER STANDS NEXT TO IS 780 TRIANGLES. populace.corridor_lod bakes the corridor crowd at chain level 4 because the crowd is INSTANCED against a shared library and level 0 would cost 510,720 resident triangles -- populace says so in its own note and calls it a stated compromise. The consequence is visible in right-half.png at 0.62 m: an octagonal skull, no eyes, no nose, no ears, no fingers, because level 4 carries features='no_detail' and 8 radial segments. Garment construction now reads at that level; the FACE does not, and no amount of work inside costume.py can fix it. What would raise it is runtime LOD -- npc.gd already holds each person's parts and could swap them." },
+    { "severity": "major", "dimension": "fidelity", "descriptor": "F3",
+      "where": "station/npc/costume.py CONSTRUCTION",
+      "text": "Three of the five construction pieces are authority-5 extrapolations (placket, hem, boot top) and one is authority 2 already written down in this file and never built (the cuff, off Sheridan.jpg, corroborated in Zach Allan in security uniform.jpg). No frame in reference/ resolves a civilian wrist or hem on this station, so the appearance has not been compared side by side against an authority-1 or -2 frame at matched camera, which is what FIDELITY 5 asks. INV-814 records what would overturn each." },
+    { "severity": "major", "dimension": "performance", "descriptor": "P3",
+      "where": "station/npc/costume.py, station/budget.py",
+      "text": "The cost is measured and bounded -- +25% triangles and +2 primitives a figure, both gated, both with a control -- but NPCs still have no allowance of their own; they are folded into a frame total whose structure component is over budget. Carried from round 2 and not addressed here." },
+    { "severity": "minor", "dimension": "craft", "descriptor": "C4",
+      "where": "station/npc/costume.py Costume.value_jitter",
+      "text": "value_jitter is drawn per individual and still reaches nothing. Reaching it needs a per-instance shader parameter this pipeline does not have -- one material per fabric, drawn as instances of a shared library. Recorded in INV-815 rather than left to be rediscovered." },
+    { "severity": "resolved", "dimension": "craft", "descriptor": "C2",
+      "text": "Round 2: 'each garment reads as one flat value ... no variation within a garment'. The cause was structural: the yoke was a SPAN inside the torso part and animation.rig resolves one material per PART, so 0 of 40 corridor walkers on the built blue/0/0 deck carried any npc_cloth_trim group. Closed by building construction as parts; measured 0/96 -> 96/96 by station/npc/costume.py --construct against its own --legacy control." },
+    { "severity": "resolved", "dimension": "robustness", "descriptor": "R2",
+      "text": "Round 2: 'the assertions exist and do not execute'. --construct is a seconds-long gate with no build and no GPU, it runs the shipped path rather than this module's own mesh, and it has been shown failing." }
+  ]
+}
