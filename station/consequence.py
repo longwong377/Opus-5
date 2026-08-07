@@ -2116,6 +2116,34 @@ def _selftest(out=print):
     check(len(admitted_places(DETAINED)) == 1,
           "a detained person is admitted to exactly one place",
           str(admitted_places(DETAINED)))
+    # -- VRB-05's other direction. `economy.py --trade` is the full run; these
+    #    are the three facts THIS module owns, and they are what makes the
+    #    fence a mechanic instead of a second shopfront.
+    shop = "shops_kiosks"
+    fences = [k for k in EC.fence_places() if k != shop]
+    n += 1
+    check(not buys_from(shop, NO_STATUS)[0] and bool(fences)
+          and buys_from(fences[0], NO_STATUS)[0],
+          "a card the reader rejects cannot SELL to a shop and can sell to a "
+          "fence",
+          f"{shop}: {buys_from(shop, NO_STATUS)[1]}; "
+          f"{fences[0]}: {buys_from(fences[0], NO_STATUS)[1]}")
+    n += 1
+    check(not buys_from(shop, DETAINED)[0]
+          and not buys_from(fences[0], DETAINED)[0]
+          and len(fences_for(DETAINED)) == 0,
+          "and NOBODY buys from a person in custody, fence included",
+          f"{len(fences_for(DETAINED))} counter(s) for DETAINED against "
+          f"{len(fences_for(CITIZEN))} for CITIZEN")
+    n += 1
+    check(would_book(shop, "Dust") == "contraband"
+          and would_book(fences[0], "Dust") == ""
+          and would_book(shop, "drum greens") == "",
+          "a licensed counter would file a docket rather than pay for a "
+          "customs-sealed line, and a fence would not",
+          f"{shop}/Dust -> {would_book(shop, 'Dust')!r}, "
+          f"{fences[0]}/Dust -> {would_book(fences[0], 'Dust')!r}, "
+          f"{shop}/drum greens -> {would_book(shop, 'drum greens')!r}")
     out(f"{n - len(_FAILED)}/{n} passed")
     for f in _FAILED:
         out(f"  FAIL {f}")

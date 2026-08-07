@@ -1068,7 +1068,55 @@ def goods_list(place_key, seed="b5"):
     ranked = sorted(cand, key=lambda g: -(_species_weight(g, place_key)
                                           * (0.5 + _u("line", g.name,
                                                       place_key, seed))))
-    return tuple(g.name for g in ranked[:n])
+    return tuple(g.name for g in ranked[:n]) + _coverage(seed).get(place_key, ())
+
+
+# ---------------------------------------------------------------------------
+# COVERAGE -- the clause the ranking cannot satisfy on its own
+# ---------------------------------------------------------------------------
+# GDS-01: *"every one placed behind at least one named counter and one supply
+# source"*. The ranking above cannot promise that and never could: it truncates
+# at `MAX_LINES` and ranks by species weight, so a ware sold only into a small
+# species can lose every counter it is eligible for. Before the 4t widening
+# that cost THREE wares; widening the vocabulary from 34 to 65 against the same
+# fourteen slots took it to NINETEEN, which is the coverage hole `gds.py`
+# already names and separates from the "declares no selling function" one.
+#
+# THE FIX IS NOT A BIGGER `MAX_LINES`. That number is derived -- one line per
+# 12 m2 of counter, INV-271 -- and raising it would inflate every counter's
+# `opening_stock`, every till, and the fourteen-day supply balance, to repair a
+# clause about COVERAGE with a change to DEPTH.
+#
+# So: after the ranking, any ware with a selling function that reached no
+# counter is APPENDED to the eligible counter carrying the fewest lines, ties
+# broken by key. Deterministic in the seed and in nothing else, computed once,
+# and it only ever ADDS -- no existing list loses a line, so every price, till
+# and consignment already measured against this file is unchanged.
+_COVERAGE = {}
+
+
+def _coverage(seed="b5"):
+    """{place: extra lines} making every sellable ware reach some counter."""
+    if seed in _COVERAGE:
+        return _COVERAGE[seed]
+    _COVERAGE[seed] = {}                     # break the recursion in goods_list
+    base = {v: set(goods_list(v, seed)) for v in vendors()}
+    placed = set()
+    for s in base.values():
+        placed |= s
+    extra = {}
+    for g in GOODS:
+        if g.name in placed or not g.sold_by:
+            continue
+        elig = [v for v in vendors()
+                if set(g.sold_by) & set(dr.by_key(v)["functions"])]
+        if not elig:
+            continue                          # its functions are on no place
+        v = min(elig, key=lambda k: (len(base[k]) + len(extra.get(k, ())), k))
+        extra.setdefault(v, []).append(g.name)
+        base[v].add(g.name)
+    _COVERAGE[seed] = {k: tuple(sorted(v)) for k, v in extra.items()}
+    return _COVERAGE[seed]
 
 
 def stock_list(place_key, seed="b5"):
