@@ -2335,6 +2335,11 @@
   }
  ],
  "stale_after_days": 7,
+ "stance_favour": {
+  "ask": 0.5,
+  "let_go": 1.0,
+  "press": -1.0
+ },
  "standing_blocks": {
   "centauri": "the Centauri Republic's mission",
   "civil_admin": "FAC-01 -- EarthGov's civil departments: housing, maintenance, traffic control, hospitality licensing. ONE block for four counterparties because they are one employer; split it when a place can play them off",
@@ -2349,6 +2354,29 @@
   "narn": "the Narn regime's mission and the refugee committee",
   "nightwatch": "FAC-24's informer standing, distinct from both",
   "psi_corps": "FAC-05 -- earnable only with LICENSED PSI on the card, which is why it is a ledger and not a reputation"
+ },
+ "standing_for": {
+  "*/*": "civil_admin",
+  "*/cleric": "medical",
+  "*/customs": "ea_lawful",
+  "*/dockworker": "dockers_guild",
+  "*/financier": "merchants",
+  "*/lurker": "downbelow",
+  "*/merchant": "merchants",
+  "*/refugee": "downbelow",
+  "*/security": "ea_lawful",
+  "abbai/*": "league",
+  "brakiri/*": "league",
+  "centauri/*": "centauri",
+  "drazi/*": "league",
+  "gaim/*": "league",
+  "grome/*": "league",
+  "hyach/*": "league",
+  "llort/*": "league",
+  "minbari/*": "minbari",
+  "narn/*": "narn",
+  "pakmara/*": "league",
+  "vree/*": "league"
  },
  "standing_range": [
   -100.0,

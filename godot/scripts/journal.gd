@@ -93,6 +93,33 @@ const DEFAULT_COMPRESS := 240.0
 ## INV-765.
 const WITNESS_FLOOR := 4
 
+## How near a body must be to one of the deck's cast before it is standing in
+## that person's PLACE rather than in the corridor between two of them.
+##
+## DERIVED OFF THE BOOT DECK'S OWN ACTOR ROWS, not chosen. Its three named
+## rooms hold 27-28 bodies each, spread 33 m along the axis and 4-10 m across
+## the arc, so a body anywhere inside a room is within a few metres of
+## somebody; the nearest body of the NEXT room is 44 m of arc away and the one
+## after that 620 m. Any value between roughly 10 m and 40 m reads the same,
+## which is what makes this a threshold rather than a tuning knob. INV-1120.
+const PLACE_R_M := 12.0
+
+## How much further than one frame of walking a body may move and still count
+## as WALKING rather than having been PLACED, in metres.
+##
+## `player.gd::sprint_m_s` is 8.0 m/s and a physics frame is 1/60 s, so the
+## fastest honest frame is 0.133 m. Four of those is the same stutter
+## allowance `JUMP_TOL` gives the clock, applied to space -- and the teleport
+## the control below performs is 44 m, which is 330x it. INV-1121.
+const STEP_TOL_M := 0.55
+
+## What fraction of `transit.py`'s own derived arc for a pair of places the
+## player's feet must have actually covered before a route time may be written
+## down. `PLACE_R_M` is eaten off each end of a leg, so a fully walked 44.3 m
+## leg registers about 20 m of travel between the two place readings; a third
+## is the honest floor and a teleport registers zero. INV-1122.
+const LEG_FRACTION := 0.35
+
 # --- what the station decided ---------------------------------------------
 var kinds: Array = []
 var mutable_kinds: Array = []
@@ -102,6 +129,11 @@ var routes: Array = []
 var marks: Dictionary = {}
 var calls: Array = []                  # broadcast.py's timed day
 var deck_rooms: Array = []             # which of them are audible here
+## "species/role" -> which CAST-05 ledger that person sits on. The station's
+## decision, read rather than restated -- `station/journal.py::standing_for`.
+var standing_for: Dictionary = {}
+## dialogue.py's stance names -> what taking that line is worth on the ledger.
+var stance_favour: Dictionary = {}
 
 # --- what the player knows -------------------------------------------------
 var facts: Dictionary = {}             # fid -> fact dictionary
@@ -127,6 +159,43 @@ var _lived_h: float = 0.0
 var _minting := true
 ## What the clock ran at before compression, so a rate can be put back.
 var _boot_rate: float = -1.0
+
+# --- THE SHIPPED OBSERVER --------------------------------------------------
+#
+# ROUND ONE'S DEFECT, NAMED BY ITS OWN REVIEWER AND CORRECT: `given_name`,
+# `note_talk` and the route minter *"have no caller anywhere except
+# `journal.gd::_phase_learn` -- the gate itself"*. That is this repository's
+# ninth-instance defect arriving at the level of a MINTER rather than a
+# loader: a player who walked up to somebody and talked recorded nothing,
+# because the only thing that ever called the minter was the test, and the
+# test called it directly so it could never notice.
+#
+# THE CURE IS NOT TO CALL THE MINTERS FROM `dialogue.gd`. It is to make the
+# journal WATCH -- in `_process`, which every build runs, because
+# `main.gd::_start_journal` is unconditional in `_ready`. That keeps the two
+# files' ownership disjoint (`dialogue.gd` decides what a conversation IS,
+# this file decides what is worth writing down) and it means the caller is
+# the same one on every path into a conversation: the T key, `interact.gd`,
+# or a harness. `dialogue.gd` is not edited at all.
+#
+# So a player presses T, `dialogue.gd::_unhandled_input` calls `talk()`,
+# `_opened` goes up, and one frame later the journal has a name in it. The
+# gate below PRESSES THE KEY through the viewport rather than calling
+# `talk()`, so what it exercises is the path a player is on.
+var _seen_opened: int = 0              # dialogue.gd::opened() last seen
+var _seen_said: int = 0                # dialogue.gd::said() last seen
+var _talking := ""                     # npc id of the open conversation
+var _talk_place := ""
+# --- the odometer: what the player's own feet did --------------------------
+var _last_pos := Vector3.ZERO
+var _have_pos := false
+var _here_place := ""                  # place the body is standing in NOW
+var _leg_from := ""                    # place it was last standing in
+var _leg_m: float = 0.0                # metres walked since leaving it
+var _leg_h0: float = -1.0              # station hour it left
+var _leg_broken := 0                   # frames the body was PLACED, not walked
+var _legs := 0                         # route facts the feet earned
+var _placed := 0                       # discontinuities seen, all time
 
 
 func _init() -> void:
@@ -249,6 +318,8 @@ func _read_manifest(path: String) -> bool:
 	standing_blocks = d.get("standing_blocks", {})
 	routes = d.get("routes", [])
 	marks = d.get("marks", {})
+	standing_for = d.get("standing_for", {})
+	stance_favour = d.get("stance_favour", {})
 	for k in standing_blocks.keys():
 		standing[k] = 0.0
 	_hash_why = "vector not in the manifest"
@@ -343,6 +414,11 @@ func _apply_compression() -> void:
 #  The witness -- what makes a compressed hour different from a skipped one
 # ===========================================================================
 func _process(delta: float) -> void:
+	# THE OBSERVER RUNS FIRST AND RUNS WITHOUT A CLOCK. A build with no
+	# Director still has a player who can walk up to somebody and talk, and a
+	# journal that recorded nothing in that build would be exactly the "no
+	# caller on the shipped path" defect with a different excuse.
+	_watch(delta)
 	if _clock == null:
 		return
 	var now: float = float(_clock.hours_abs())
@@ -405,6 +481,191 @@ func _first_room_of(c: Dictionary) -> String:
 		if places.has(r):
 			return String(r)
 	return "this deck"
+
+
+# ===========================================================================
+#  THE SHIPPED OBSERVER -- see the header block beside `_seen_opened`
+# ===========================================================================
+func _watch(delta: float) -> void:
+	_watch_talk()
+	_watch_feet(delta)
+
+
+## A CONVERSATION THE PLAYER ACTUALLY OPENED, minted one frame after it opened.
+##
+## `dialogue.gd::opened()` is a counter it already keeps and already exposes;
+## nothing is reached into and nothing there is edited. While a conversation is
+## open `refresh()` is frozen to the person you are talking to -- that file's
+## own rule, *"turning your head mid-sentence must not hand the conversation to
+## the person behind you"* -- so this reads the partner rather than a scan.
+func _watch_talk() -> void:
+	var dlg = _dlg()
+	if dlg == null:
+		return
+	var n := int(dlg.opened())
+	if n > _seen_opened:
+		_seen_opened = n
+		var p = dlg.refresh()
+		if p != null:
+			_note_opened(p)
+	_watch_stance(dlg)
+
+
+func _note_opened(p) -> void:
+	var day := _day()
+	var hour := (float(_clock.hour()) if _clock != null else 13.0)
+	var who := String(p.id)
+	_talking = who
+	_talk_place = String(p.place)
+	var fid := given_name(who, String(p.name), String(p.place), day, hour)
+	# The introduction itself moves nothing. What a stance is worth is decided
+	# below, when the player has actually said one -- a favour granted for
+	# walking up would make the three stances decorative, which is the same
+	# argument `dialogue.gd::talk` makes about its own menu.
+	note_talk(who, String(p.topic), "you were introduced", 0.0, "")
+	print("journal: %s gave you their name at %s (topic %s) -- %s"
+		% [String(p.name), String(p.place), String(p.topic),
+			("fact " + fid.substr(0, 8)) if fid != "" else "REFUSED"])
+
+
+## WHAT THE PLAYER SAID, AND WHAT IT COST. `dialogue.gd::said()` counts player
+## utterances and `picked()` names the stance; both are its own accessors.
+##
+## THE LEDGER IS NOT NAMED HERE. Which of CAST-05's thirteen blocks a Centauri
+## dock inspector belongs on is `station/journal.py::standing_for`'s decision
+## and arrives in the manifest, for the reason this file's header gives: a
+## second copy of a decision is the defect this repository has paid for three
+## times.
+func _watch_stance(dlg) -> void:
+	var n := int(dlg.said())
+	if n <= _seen_said:
+		return
+	_seen_said = n
+	if _talking == "":
+		return
+	var stance := String(dlg.picked())
+	var w: float = float(stance_favour.get(stance, 0.0))
+	if w == 0.0 and not stance_favour.has(stance):
+		_refuse("%s is not one of dialogue.py's stances" % stance)
+		return
+	var block := _block_for(_talking)
+	note_talk(_talking, _talk_place, "you were %s with them" % stance, w,
+		"you took the %s line at %s" % [stance, _talk_place])
+	var after := 0.0
+	if block != "":
+		after = move_standing(block, w, "you took the %s line with %s at %s"
+			% [stance, _talking, _talk_place])
+	print("journal: stance=%s favour%+.2f standing %s=%+.3f"
+		% [stance, w, (block if block != "" else "-"), after])
+
+
+## Which ledger the person you are talking to sits on. The rule is the
+## manifest's; this is the JOIN, on the actor row's own `who` record.
+func _block_for(npc_id: String) -> String:
+	for a in _actor_rows():
+		var who = a.get("who", {})
+		if typeof(who) != TYPE_DICTIONARY or String(who.get("id", "")) != npc_id:
+			continue
+		var sp := String(who.get("species", ""))
+		var role := String(who.get("role", ""))
+		if standing_for.has(sp + "/" + role):
+			return String(standing_for[sp + "/" + role])
+		if standing_for.has(sp + "/*"):
+			return String(standing_for[sp + "/*"])
+		if standing_for.has("*/" + role):
+			return String(standing_for["*/" + role])
+		return String(standing_for.get("*/*", ""))
+	return ""
+
+
+## THE ODOMETER. Metres the body covered UNDER ITS OWN POWER, and the place it
+## is standing in, both read off the world every frame.
+##
+## THIS IS WHAT MAKES A ROUTE TIME A THING THE PLAYER LEARNED. Round one minted
+## `routes[0]` out of the manifest the moment the gate asked, and its reviewer
+## was right that the world was never consulted. A leg is now a fact about the
+## player's feet: it may only be written down when the body has left one of the
+## deck's places, covered at least `LEG_FRACTION` of the arc `transit.py`
+## derives for that pair, and arrived in the other -- WITHOUT being placed.
+## `--teleport` is the control and it is 44 m in one frame.
+func _watch_feet(delta: float) -> void:
+	var body = (_host._player() if _host != null
+		and _host.has_method("_player") else null)
+	if body == null or not is_instance_valid(body):
+		return
+	var pos: Vector3 = body.global_position
+	if not _have_pos:
+		_have_pos = true
+		_last_pos = pos
+		_here_place = _place_at(pos)
+		_leg_from = _here_place
+		_leg_h0 = (float(_clock.hours_abs()) if _clock != null else -1.0)
+		return
+	var step := pos.distance_to(_last_pos)
+	_last_pos = pos
+	# A STEP NO LEG COULD HAVE TAKEN IS A PLACEMENT, and you cannot claim to
+	# have walked what you were carried over. The leg is not merely paused --
+	# it is POISONED, so that a teleport followed by a short honest stroll
+	# cannot buy the fact the teleport skipped.
+	if step > maxf(STEP_TOL_M, 8.0 * maxf(delta, 0.0)):
+		_leg_broken += 1
+		_placed += 1
+		_leg_m = 0.0
+	else:
+		_leg_m += step
+	var was := _here_place
+	_here_place = _place_at(pos)
+	if _here_place == was:
+		return
+	# ARRIVING somewhere named closes the leg out of the place last stood in;
+	# LEAVING one starts a new one. A body that wanders out of a room and back
+	# in earns nothing, because `_leg_from` is the room it left.
+	if _here_place != "" and _leg_from != "" and _leg_from != _here_place:
+		_close_leg(_leg_from, _here_place)
+	if was != "":
+		_leg_from = was
+	_leg_m = 0.0
+	_leg_broken = 0
+	_leg_h0 = (float(_clock.hours_abs()) if _clock != null else -1.0)
+
+
+## Which of the deck's places a point is standing in, or "" for the corridor
+## between them. Nearest body of the deck's own cast, inside `PLACE_R_M`.
+func _place_at(pos: Vector3) -> String:
+	var best := ""
+	var best_d := PLACE_R_M * PLACE_R_M
+	for a in _actor_rows():
+		var d := pos.distance_squared_to(Vector3(
+			float(a.get("x", 0.0)), float(a.get("y", 0.0)),
+			float(a.get("z", 0.0))))
+		if d < best_d:
+			best_d = d
+			best = String(a.get("place", ""))
+	return best
+
+
+func _close_leg(a: String, b: String) -> void:
+	if a == b or a == "" or b == "":
+		return
+	var h1: float = (float(_clock.hours_abs()) if _clock != null else -1.0)
+	var mins: float = (maxf(h1 - _leg_h0, 0.0) * 60.0 if _leg_h0 >= 0.0
+		else -1.0)
+	var fid := walked_leg(a, b, _leg_m, mins, _day(),
+		(float(_clock.hour()) if _clock != null else 13.0))
+	if fid != "":
+		_legs += 1
+	print("journal: feet %s -> %s, %.1f m walked, %d placement(s) -- %s"
+		% [a, b, _leg_m, _leg_broken,
+			("fact " + fid.substr(0, 8)) if fid != "" else "no route fact"])
+
+
+## How many route facts the feet earned, and how many placements were seen.
+func legs_walked() -> int:
+	return _legs
+
+
+func placements() -> int:
+	return _placed
 
 
 # ===========================================================================
@@ -540,6 +801,53 @@ func learn_route(i: int, day: int, hour: float) -> String:
 		"transit", "%s>%s" % [r["a"], r["b"]], day, hour)
 
 
+## THE SAME ROUTE TIME, EARNED. `learn_route` above takes the station's word
+## for a leg; this one takes the player's feet as the evidence that they are
+## entitled to it, and REFUSES otherwise.
+##
+## THREE REFUSALS, AND EACH ONE ANSWERS A DIFFERENT WAY OF NOT HAVING WALKED:
+##   * a pair `transit.py` never derived -- you cannot time a leg the station
+##     has no arc for, and the subject would be a fact about nothing;
+##   * a leg the body was PLACED across -- `_watch_feet` poisons `_leg_m` on
+##     any step no leg could take, so a teleport arrives with 0.0 m;
+##   * a leg the body only dipped into -- fewer than `LEG_FRACTION` of the
+##     derived arc under its own feet.
+##
+## THE VALUE IS STILL `transit.py`'s NUMBER and that is deliberate. What the
+## player learns is the station's real leg time, which is the thing a porter
+## knows; what the walk buys is the RIGHT to know it. The source line carries
+## both, so a reader can see the measurement beside the derivation.
+func walked_leg(a: String, b: String, metres: float, minutes: float,
+		day: int, hour: float) -> String:
+	var r: Dictionary = {}
+	for row in routes:
+		if String(row.get("a", "")) == a and String(row.get("b", "")) == b:
+			r = row
+			break
+		if String(row.get("a", "")) == b and String(row.get("b", "")) == a:
+			r = row
+			break
+	if r.is_empty():
+		_refuse("transit.py derives no arc for %s -> %s -- nothing to time"
+			% [a, b])
+		return ""
+	var want: float = float(r["metres"]) * LEG_FRACTION
+	if metres < want:
+		_refuse("%s -> %s: %.1f m under your own feet, and %.1f m of "
+			% [a, b, metres, float(r["metres"])]
+			+ "transit.py's arc needs at least %.1f -- not walked" % want)
+		return ""
+	return learn("route_time", "%s>%s" % [a, b],
+		"%.2f min" % float(r["minutes"]),
+		"you walked %s -> %s yourself -- %.1f m of its %.1f m under your feet "
+			% [a, b, metres, float(r["metres"])]
+			+ "in %.2f station-minutes, day %d, %05.2f "
+			% [minutes, day, hour]
+			+ "(transit.py derives %.2f min: %s)"
+			% [float(r["minutes"]), String(r.get("detail", ""))],
+		"transit", "%s>%s" % [a, b], day, hour)
+
+
 ## FAC-28's brooch and its siblings, off `npc/faction.py`'s own mark table.
 func learn_tell(faction: String, place: String, day: int,
 		hour: float) -> String:
@@ -673,47 +981,139 @@ func _settle(n: int) -> void:
 		await get_tree().physics_frame
 
 
-## Learn three facts from three DIFFERENT real in-world sources, then quit.
+## WALK A LEG, TALK TO SOMEBODY, TAKE A LINE -- then quit.
+##
+## NOT ONE FACT IS MINTED IN THIS FUNCTION, and that is round two's whole
+## change. Round one called `given_name`, `learn_route` and `learn_tell`
+## directly, so the acceptance exercised a path no player is on and its
+## reviewer said so in one sentence: *"the gate cannot see this because it
+## calls the minters directly."* Everything below drives the WORLD -- the
+## player's own `step()`, the T key through the viewport, the stance key --
+## and every fact that appears is minted by `_watch()` off what the world
+## did. If the observer is unwired, this phase learns NOTHING and the gate
+## fails, which is the property round one did not have.
 func _phase_learn(host) -> void:
 	await _settle(30)
-	var day := _day()
-	var hour := (float(_clock.hour()) if _clock != null else 13.0)
-	var got: Array[String] = []
-
-	# 1. A NAME, FROM AN ACTUAL CONVERSATION. The body is one `dialogue.gd`
-	#    itself bound and offered -- `refresh()` is asked and its answer is
-	#    what the fact is minted from, so a fact cannot be written about
-	#    somebody the dialogue system does not have.
-	var who = await _scan_partner()
-	if who != null:
-		# THE CONVERSATION IS ACTUALLY OPENED HERE. `_scan_partner` stops at the
-		# prompt so that the recall phase can NAME the fact without minting it;
-		# the learn phase is the one that talks, and `dialogue.gd::talk` prints
-		# the `TALK open ...` line saying who was spoken to and about what.
-		_dlg().talk()
-		got.append(given_name(String(who.id), String(who.name),
-			String(who.place), day, hour))
-		note_talk(String(who.id), String(who.topic), "you were introduced",
-			1.0, "you heard them out at %s" % String(who.place))
-		print("JOURNAL talked to %s (%s) at %s about %s"
-			% [String(who.name), String(who.id), String(who.place),
-				String(who.topic)])
+	var pair := _leg_pair()
+	var body = (host._player() if host != null and host.has_method("_player")
+		else null)
+	if body == null or pair.size() != 2:
+		print("JOURNAL gate=FAIL no player body (%s) or no derivable leg (%s)"
+			% [str(body != null), str(pair)])
+		get_tree().quit(2)
+		return
+	# ONE DRIVER. `player.gd::drive_externally` exists for exactly this and its
+	# own docstring says why: with no window there is no input, so leaving
+	# `_physics_process` on would step the body a second time every frame with
+	# a zero wish and rebuild its basis from a yaw nothing set.
+	if body.has_method("drive_externally"):
+		body.drive_externally()
+	var to_pos := _partner_pos()
+	if to_pos == Vector3.ZERO:
+		to_pos = _place_pos(pair[1])
+	# START WHERE A BODY ALREADY STANDS, on the side of the room facing the
+	# destination. A room's CENTROID is a point nothing occupies and can be
+	# inside a counter; every actor row is a spot the station itself put
+	# somebody, so it is floor by construction.
+	var from_pos := _nearest_body_in(pair[0], to_pos)
+	# THE START IS A PLACEMENT AND THE JOURNEY IS NOT. Standing the body in
+	# `pair[0]` costs nothing -- no leg is open yet -- and `_watch_feet` starts
+	# counting the moment it leaves.
+	body.global_position = from_pos + (to_pos - from_pos).normalized() * -1.0
+	await _settle(6)
+	var walked := 0.0
+	var frames := 0
+	if _args().has("teleport"):
+		# THE CONTROL PLY-05 AND PLY-07 BOTH NEED: the same two endpoints and
+		# the same clock, with the ground never crossed. `_watch_feet` sees a
+		# step no leg could take, poisons the leg, and the route fact is
+		# refused -- so a fast-travel that pretended to be a walk cannot buy
+		# the porter's knowledge.
+		print("JOURNAL: TELEPORTED (control) -- the ground was never covered")
+		body.global_position = to_pos
+		await _settle(10)
 	else:
+		var d: float = body.get_physics_process_delta_time()
+		var last: Vector3 = body.global_position
+		# ALONG THE RING, NOT THROUGH IT. Both places sit on the same 211.5 m
+		# radius at different ring angles, so the straight line between them
+		# cuts a chord THROUGH the deck's inboard wall. Steering along the
+		# tangent is the direction a corridor actually runs -- and it is
+		# derived from the two positions rather than written down, so it holds
+		# for any pair on any ring.
+		var probe := 0.0
+		var stuck := 0
+		var side := 1.0
+		while frames < 4000 and _here_place != pair[1]:
+			var pos: Vector3 = body.global_position
+			var dir: Vector3 = to_pos - pos
+			if dir.length() < 1.5:
+				break
+			var up := Vector3(pos.x, pos.y, 0.0).normalized()
+			var tan := Vector3(-up.y, up.x, 0.0)
+			if tan.dot(dir) < 0.0:
+				tan = -tan
+			# Axial error is corrected directly; the ring is walked round.
+			var steer := (tan + Vector3(0, 0, dir.z * 0.05)).normalized()
+			# A BODY THAT HAS STOPPED IS AGAINST SOMETHING, and a corridor has
+			# two sides. Fifteen frames of no progress is a quarter of a
+			# second at a walk, which no open floor produces.
+			if stuck > 15:
+				steer = (steer + up.cross(Vector3(0, 0, 1)) * 0.0
+					+ Vector3(0, 0, side)).normalized()
+				if stuck > 90:
+					side = -side
+					stuck = 16
+			body.step(d, Vector2(0, 1), false, false, steer)
+			await get_tree().physics_frame
+			var moved: float = body.global_position.distance_to(last)
+			walked += moved
+			stuck = (0 if moved > 0.02 else stuck + 1)
+			last = body.global_position
+			frames += 1
+			if frames % 400 == 0:
+				print("JOURNAL: ...%d frames, %.1f m, %.1f m to go, in %s"
+					% [frames, walked, dir.length(),
+						(_here_place if _here_place != "" else "the corridor")])
+				probe = walked
+		print("JOURNAL: WALKED %s -> %s, %.1f m under its own feet in %d "
+			% [pair[0], pair[1], walked, frames]
+			+ "frames, standing in %s" % (_here_place if _here_place != ""
+				else "the corridor"))
+	# THE CONVERSATION, THROUGH THE KEY A PLAYER PRESSES. `dialogue.gd` binds
+	# KEY_T in `_unhandled_input` and calls `talk()`; pushing the event into
+	# the viewport runs that binding rather than going round it, so what this
+	# proves is that the shipped keypress reaches the notebook.
+	var who = await _scan_partner(false)
+	if _args().has("mute"):
+		# THE CONTROL FOR THE OTHER HALF: everything else identical, and the
+		# key never pressed. No conversation, therefore no name, therefore no
+		# pass -- which is what makes the name clause in `_phase_recall` a
+		# requirement rather than a decoration.
+		print("JOURNAL: MUTE (control) -- the T key was never pressed")
+	elif who == null:
 		print("JOURNAL no conversation was offered -- nobody to be introduced")
+	else:
+		_press(KEY_T)
+		await _settle(4)
+		# ...and then keep pressing until the menu is armed, because the
+		# stance is where a conversation costs something. `talk()` refuses to
+		# walk past an unanswered question, which is the state we want.
+		for _i in 24:
+			if int(_dlg().said()) > 0 or _dlg().picked() != "":
+				break
+			_press(KEY_1)
+			await _settle(1)
+			_press(KEY_T)
+			await _settle(1)
+		await _settle(4)
 
-	# 2. A ROUTE TIME, derived by `transit.py` and carried in the manifest.
-	got.append(learn_route(0, day, hour))
-	# 3. A TELL, off `npc/faction.py`'s own mark table.
-	if not marks.is_empty():
-		var k: String = marks.keys()[0]
-		got.append(learn_tell(k, _here(), day, hour))
-
-	var kept := 0
-	for f in got:
-		if f != "":
-			kept += 1
-	print("JOURNAL learned=%d ids=%s" % [kept, ", ".join(
-		PackedStringArray(got))])
+	var got: Array[String] = []
+	for k in facts:
+		got.append(String(k))
+	print("JOURNAL learned=%d ids=%s legs=%d placements=%d"
+		% [got.size(), ", ".join(PackedStringArray(got)), _legs, _placed])
+	print("JOURNAL standing %s" % _standing_line())
 	for e in entries():
 		print("JOURNAL entry | " + e)
 	print("JOURNAL " + journal_report())
@@ -754,8 +1154,34 @@ func _phase_recall(host) -> void:
 	var never := fact_id("name_given", "res:nobody:who:was:never:met",
 		"dialogue", "res:nobody:who:was:never:met")
 	var invented := facts.has(never)
+	# --- THE THREE CLAUSES ROUND ONE DID NOT HAVE -------------------------
+	#
+	# Its reviewer's finding was exact: `want.size() >= 2` let the whole
+	# conversation half of the acceptance DISAPPEAR whenever `_scan_partner`
+	# returned null, so *"learn and recall agree BY CONSTRUCTION when the
+	# dialogue system is entirely absent"* -- which is the state that
+	# container was in. A gate whose subject can vanish is a gate that passes
+	# on a station with nobody on it.
+	#
+	# 1. THE NAME IS NAMED. Not "at least two facts": THIS fact, about the
+	#    person the deck actually offered, or FAIL.
+	# 2. `people` AND `standing` ARE CHECKED. `save_state` returns three
+	#    dictionaries and round one read only the first, so a restore could
+	#    hand back `{"people": {}, "standing": {}}` and still print PASS with
+	#    the loss visible on the adjacent line.
+	# 3. THE LEDGER IS NON-ZERO. An all-zero ledger is what a fresh journal
+	#    has, so a `standing` that came back at its boot value is
+	#    indistinguishable from one that never loaded.
+	var named := (_name_fid != "" and facts.has(_name_fid)
+		and name_given(_name_who))
+	var ledger := _standing_line()
+	var moved := 0
+	for k in standing:
+		if absf(float(standing[k])) > 1e-9:
+			moved += 1
 	var ok: bool = (missing.is_empty() and unsourced.is_empty()
-		and not invented and want.size() >= 2)
+		and not invented and want.size() >= 2 and named
+		and people.size() >= 1 and standing.size() >= 1 and moved >= 1)
 	for e in entries():
 		print("JOURNAL entry | " + e)
 	print("JOURNAL " + journal_report())
@@ -763,9 +1189,12 @@ func _phase_recall(host) -> void:
 		% ["PASS" if ok else "FAIL", want.size(), before,
 			("none" if missing.is_empty() else ", ".join(
 				PackedStringArray(missing)))]
-		+ "unsourced=%s a_fact_never_learned_is_present=%s"
+		+ "unsourced=%s a_fact_never_learned_is_present=%s "
 		% [("none" if unsourced.is_empty() else ", ".join(
-			PackedStringArray(unsourced))), str(invented)])
+			PackedStringArray(unsourced))), str(invented)]
+		+ "name_back=%s people=%d ledgers_moved=%d"
+		% [str(named), people.size(), moved])
+	print("JOURNAL standing %s" % ledger)
 	get_tree().quit(0 if ok else 1)
 
 
@@ -782,19 +1211,32 @@ func _phase_recall(host) -> void:
 ## So both phases ask the SAME question of the same deterministic scene -- stand
 ## here, who is offered -- and this one stops before `talk()`, so deriving the
 ## expected id cannot create the fact it is about to look for.
+## AND THE CONVERSATION MAY NOT SILENTLY DROP OUT OF IT. `_name_fid` is left
+## empty when the deck offers nobody, and `_phase_recall` FAILS on an empty one
+## rather than shortening its own expectation -- which is the clause round one
+## was missing.
+var _name_fid := ""
+var _name_who := ""
+
+
 func _expected_ids() -> Array[String]:
 	var out: Array[String] = []
+	_name_fid = ""
+	_name_who = ""
 	var p = await _scan_partner()
 	if p != null:
-		var who := String(p.id)
-		out.append(fact_id("name_given", who, "dialogue", who))
-	if not routes.is_empty():
-		var r: Dictionary = routes[0]
-		var k := "%s>%s" % [r["a"], r["b"]]
+		_name_who = String(p.id)
+		_name_fid = fact_id("name_given", _name_who, "dialogue", _name_who)
+		out.append(_name_fid)
+	else:
+		print("JOURNAL: NOBODY IS OFFERED ON THIS DECK -- the conversation "
+			+ "half of this acceptance cannot be tested and will not be "
+			+ "quietly dropped")
+	# THE LEG IS THE ONE THE FEET WALKED, derived the same way in both phases.
+	var pair := _leg_pair()
+	if pair.size() == 2:
+		var k := "%s>%s" % [pair[0], pair[1]]
 		out.append(fact_id("route_time", k, "transit", k))
-	if not marks.is_empty():
-		var m: String = marks.keys()[0]
-		out.append(fact_id("tell_learned", m, "costume", m))
 	return out
 
 
@@ -871,21 +1313,32 @@ func _phase_compress(host) -> void:
 	var advanced: float = float(_clock.hours_abs()) - h0
 	var crowd1: int = (int(_life.visible_count()) if _life != null else -1)
 	var minted: int = facts.size() - facts0
-	# THE THREE CLAUSES, AND EACH ONE FAILS A DIFFERENT CONTROL:
+	# THE FOUR CLAUSES, AND EACH ONE FAILS A DIFFERENT CONTROL:
 	#   advanced   fails `--compress=1`, where the same wall clock buys ~0 h
 	#   _witnessed fails `--jump`, where the hours arrive without being lived
 	#   minted     is the consequence in the world the player can carry away
+	#   world      fails an EMPTY SCENE -- added in round two because its
+	#              reviewer was right that `witnessed`/`minted` are one
+	#              counter and neither reads the simulation. `_life` is
+	#              `life.gd`'s Director, `deck_rooms` is what
+	#              `broadcast.audible_at` says this deck can hear, and a run
+	#              through a station with neither is a run through nothing.
+	#              With `crowd 0->0` on the line, as it was in round one's own
+	#              output, this verdict is now FAIL.
+	var world := (_life != null and not deck_rooms.is_empty() and crowd1 > 0)
 	var ok: bool = (advanced >= SLEEP_H * 0.9
-		and _witnessed >= WITNESS_FLOOR and minted >= WITNESS_FLOOR)
+		and _witnessed >= WITNESS_FLOOR and minted >= WITNESS_FLOOR and world)
 	print("COMPRESS gate=%s advanced=%.3f h in %d frames (wanted %.2f), "
 		% ["PASS" if ok else "FAIL", advanced, frames, SLEEP_H]
 		+ "lived=%.3f jumped=%.3f witnessed=%d (floor %d) facts %d->%d "
 		% [_lived_h, _jumped_h, _witnessed, WITNESS_FLOOR, facts0,
 			facts.size()]
-		+ "crowd %d->%d says_differently=%d/%d rate=%.4f h/s"
+		+ "crowd %d->%d says_differently=%d/%d rate=%.4f h/s "
 		% [crowd0, crowd1, _hour_moves(moved0, float(_clock.hour())),
 			(int(_dlg().count()) if _dlg() != null else 0),
-			float(_clock.rate)])
+			float(_clock.rate)]
+		+ "world=%s (life=%s rooms=%d)"
+		% [str(world), str(_life != null), deck_rooms.size()])
 	for e in entries():
 		print("COMPRESS heard | " + e)
 	get_tree().quit(0 if ok else 1)
@@ -927,6 +1380,111 @@ func _day() -> int:
 
 func _here() -> String:
 	return (String(deck_rooms[0]) if not deck_rooms.is_empty() else "this deck")
+
+
+## THE KEY A PLAYER PRESSES, pushed through the viewport so it reaches
+## `dialogue.gd::_unhandled_input` exactly as a keyboard would. Calling `talk()`
+## would test the function; this tests the BINDING, which is the half round one
+## skipped and the half a player is on.
+func _press(code: Key) -> void:
+	var ev := InputEventKey.new()
+	ev.keycode = code
+	ev.physical_keycode = code
+	ev.pressed = true
+	get_viewport().push_input(ev)
+	var up := InputEventKey.new()
+	up.keycode = code
+	up.physical_keycode = code
+	up.pressed = false
+	get_viewport().push_input(up)
+
+
+## The leg the feet are asked to walk, DERIVED and identical in both phases:
+## the place the deck's first talkable body stands in, and the other end of the
+## SHORTEST arc `transit.py` derived that touches it.
+##
+## Shortest because it has to be walkable in a test: this deck's three rooms
+## are 44 m, 620 m and 665 m apart, and a gate that asked for the 665 m leg
+## would be a gate nobody ever ran twice.
+func _leg_pair() -> Array:
+	var b := ""
+	var want := _first_talkable()
+	for a in _actor_rows():
+		var who = a.get("who", {})
+		if typeof(who) == TYPE_DICTIONARY and String(who.get("id", "")) == want:
+			b = String(a.get("place", ""))
+			break
+	if b == "" or routes.is_empty():
+		return []
+	var best := ""
+	var best_m := INF
+	for r in routes:
+		var ra := String(r.get("a", ""))
+		var rb := String(r.get("b", ""))
+		var other := ("" if (ra != b and rb != b) else (rb if ra == b else ra))
+		if other == "" or other == b:
+			continue
+		if float(r.get("metres", INF)) < best_m:
+			best_m = float(r.get("metres", INF))
+			best = other
+	return ([best, b] if best != "" else [])
+
+
+## Where a place IS, taken as the centroid of the bodies standing in it. The
+## actors file is the only thing on this deck that says where a named room is
+## in world space; the boot manifest carries the room NAMES and no coordinates.
+func _place_pos(place: String) -> Vector3:
+	var sum := Vector3.ZERO
+	var n := 0
+	for a in _actor_rows():
+		if String(a.get("place", "")) != place:
+			continue
+		sum += Vector3(float(a.get("x", 0.0)), float(a.get("y", 0.0)),
+			float(a.get("z", 0.0)))
+		n += 1
+	return (sum / float(n) if n > 0 else Vector3.ZERO)
+
+
+## Where the deck's first talkable body stands. The destination of the walk,
+## so the leg ends where the conversation can start.
+func _partner_pos() -> Vector3:
+	var want := _first_talkable()
+	for a in _actor_rows():
+		var who = a.get("who", {})
+		if typeof(who) == TYPE_DICTIONARY and String(who.get("id", "")) == want:
+			return Vector3(float(a.get("x", 0.0)), float(a.get("y", 0.0)),
+				float(a.get("z", 0.0)))
+	return Vector3.ZERO
+
+
+## The body of `place` standing closest to `toward` -- floor by construction,
+## and on the side of the room the walk is leaving by.
+func _nearest_body_in(place: String, toward: Vector3) -> Vector3:
+	var best := Vector3.ZERO
+	var best_d := INF
+	for a in _actor_rows():
+		if String(a.get("place", "")) != place:
+			continue
+		var p := Vector3(float(a.get("x", 0.0)), float(a.get("y", 0.0)),
+			float(a.get("z", 0.0)))
+		var d := p.distance_squared_to(toward)
+		if d < best_d:
+			best_d = d
+			best = p
+	return best
+
+
+## Every ledger that has moved, printed so the two PROCESSES can be compared
+## against each other by `station/journal.py` rather than each against itself.
+func _standing_line() -> String:
+	var parts: Array[String] = []
+	var keys: Array = standing.keys()
+	keys.sort()
+	for k in keys:
+		if absf(float(standing[k])) > 1e-9:
+			parts.append("%s:%+.4f" % [String(k), float(standing[k])])
+	return ("none" if parts.is_empty() else " ".join(
+		PackedStringArray(parts)))
 
 
 ## The cast row this gate holds its conversation with, chosen by a rule both
@@ -1002,7 +1560,11 @@ func _dlg():
 	return _dialogue
 
 
-func _scan_partner():
+## `move = false` AIMS WITHOUT PLACING, which is what the learn phase needs
+## once it has WALKED there: standing the body at the partner would be the
+## teleport its own control exists to reject, and the leg would be poisoned by
+## the act of finding somebody to talk to.
+func _scan_partner(move: bool = true):
 	var dlg = _dlg()
 	if dlg == null:
 		return null
@@ -1029,7 +1591,8 @@ func _scan_partner():
 	if absf(toward.dot(up)) > 0.9:
 		toward = Vector3(1, 0, 0)
 	toward = (toward - up * toward.dot(up)).normalized()
-	body.global_position = pos + toward * 1.2
+	if move:
+		body.global_position = pos + toward * 1.2
 	var cam := body.get_node_or_null("Camera3D") as Camera3D
 	var head: Vector3 = pos + up * 1.55
 	# AIMED BY `dialogue.gd`'s OWN `_aim`, not by a copy of it here. Session 4q

@@ -182,6 +182,82 @@ STANDING_MIN, STANDING_MAX = -100.0, 100.0
 #: How many CAUSES a standing block remembers. INV-1056.
 STANDING_CAUSES = 8
 
+# ---------------------------------------------------------------------------
+# WHICH LEDGER THE PERSON IN FRONT OF YOU SITS ON
+# ---------------------------------------------------------------------------
+#
+# ADDED IN SESSION 4t ROUND TWO, BECAUSE THE ENGINE HAD NOWHERE TO PUT A
+# CONSEQUENCE. `journal.gd` now watches `dialogue.gd` and mints a name the
+# moment a player opens a conversation -- and CAST-05 asks for standing to
+# MOVE, which means something has to say that a Narn refugee's goodwill is the
+# `narn` ledger and a customs officer's is `ea_lawful`. That decision may not
+# live in GDScript: this file's contract with `journal.gd` is that the engine
+# decides nothing, and a ledger name written down twice is the second-copy
+# defect this repository has paid for three times.
+#
+# EVERY ROW IS READ OFF `STANDING_BLOCKS`' OWN DESCRIPTIONS ABOVE, not invented
+# here -- "EarthForce, customs, the Ombuds" takes security and customs;
+# "medlab and the free clinic" takes the clerics of the free clinic; "FAC-06 --
+# the Guild's own count" takes the dockworkers; "the Zocalo traders'
+# association" takes the merchants; "standing among the underclass" takes the
+# lurkers and the refugees; and civil_admin's row says in its own words
+# "housing, maintenance, traffic control, hospitality licensing. ONE block for
+# four counterparties", which is where service, engineering, hydroponics,
+# industry and waste land.
+#
+# SPECIES BEATS ROLE FOR THE THREE THAT HAVE A GOVERNMENT ABOARD, because those
+# blocks are named for the governments: a Narn dockworker's goodwill is the
+# Narn regime's, which is the entire reason `narn` and `dockers_guild` are two
+# ledgers rather than one reputation. Everyone from a League world lands on
+# `league`, which is what that block says it is. INV-1123.
+#
+# The key is "species/role" with "*" as the wildcard on either side, resolved
+# most-specific-first by `journal.gd::_block_for`.
+STANDING_FOR = {
+    "narn/*": "narn",
+    "centauri/*": "centauri",
+    "minbari/*": "minbari",
+    # The League of Non-Aligned Worlds, by `docs/spec/PEOPLE.md`'s own roll.
+    "drazi/*": "league", "brakiri/*": "league", "abbai/*": "league",
+    "vree/*": "league", "hyach/*": "league", "pakmara/*": "league",
+    "gaim/*": "league", "llort/*": "league", "grome/*": "league",
+    "*/security": "ea_lawful",
+    "*/customs": "ea_lawful",
+    "*/dockworker": "dockers_guild",
+    "*/merchant": "merchants",
+    "*/financier": "merchants",
+    "*/lurker": "downbelow",
+    "*/refugee": "downbelow",
+    "*/cleric": "medical",
+    # The catch-all is EarthGov's civil departments and is named as such in
+    # that block's own row: a visitor, a diplomat's aide or an engineer is
+    # dealing with the administration that licensed them to be here.
+    "*/*": "civil_admin",
+}
+
+#: What taking each of `dialogue.py::STANCES` costs the person you took it
+#: with, on the CAST-05 ledger. INV-1124.
+#:
+#: THE ORDER IS THE STANCE TABLE'S OWN AND THE SCALE IS THE LEDGER'S.
+#: `dialogue.py`'s own header says `ask` is "always answered", `press` "CAN BE
+#: REFUSED" because it demands the number that decided the topic's salience,
+#: and `let_go` is "nothing, and the farewell -- you do not learn the number".
+#: So letting somebody off costs you the fact and buys their goodwill;
+#: pressing buys the fact and spends it; asking is the courtesy in between.
+#: The ORDERING is therefore read rather than chosen.
+#:
+#: What IS chosen is the scale, and it is taken from the ledger instead of
+#: from taste: `STANDING_MAX / 100`, so a hundred pressed conversations move a
+#: block from neutral to hostile and one conversation is legible without being
+#: decisive. WHAT WOULD OVERTURN IT: a scene in which a single exchange
+#: visibly changes a faction's posture toward the player -- then the scale is
+#: wrong by an order of magnitude, and the ordering still is not.
+STANCE_FAVOUR = {
+    "let_go": +STANDING_MAX / 100.0,
+    "ask": +STANDING_MAX / 200.0,
+    "press": -STANDING_MAX / 100.0,
+}
+
 
 class Refused(ValueError):
     """A fact that did not come from a real event. Always names why."""
@@ -638,6 +714,8 @@ def manifest() -> dict:
         "stale_after_days": STALE_AFTER_DAYS,
         "standing_blocks": dict(STANDING_BLOCKS),
         "standing_range": [STANDING_MIN, STANDING_MAX],
+        "standing_for": dict(STANDING_FOR),
+        "stance_favour": dict(STANCE_FAVOUR),
         "hash_vector": vec,
         "route_tol_min": ROUTE_TOL_MIN,
         "marks": faction_marks(),
@@ -808,6 +886,38 @@ def _run(godot, flags, timeout=600):
     return (r.stdout or "") + (r.stderr or ""), r.returncode
 
 
+LEDGER_PRINT = re.compile(r"^JOURNAL standing (.+)$", re.M)
+
+
+def _ledger(out) -> dict:
+    """`{block: value}` off the `JOURNAL standing ...` line an engine printed.
+
+    The LAST such line, because a phase prints one when it has finished
+    moving things. `none` is an empty dict and not a missing measurement --
+    a run that moved nothing really did move nothing.
+    """
+    ms = LEDGER_PRINT.findall(out)
+    if not ms:
+        return {}
+    tail = ms[-1].strip()
+    if tail == "none":
+        return {}
+    got = {}
+    for tok in tail.split():
+        if ":" not in tok:
+            continue
+        k, _, v = tok.partition(":")
+        try:
+            got[k] = float(v)
+        except ValueError:
+            return {}
+    return got
+
+
+def _fmt_ledger(d) -> str:
+    return " ".join("%s:%+.4f" % (k, d[k]) for k in sorted(d)) or "none"
+
+
 def _verdict(out, tag):
     m = re.search(r"^%s gate=(\w+)(.*)$" % tag, out, re.M)
     if not m:
@@ -855,15 +965,19 @@ def _boot_ready(build=True):
     is not mistaken for a hang.
     """
     p = os.path.join(ROOT, "station/generated/scene/boot.json")
-    if os.path.exists(p):
+    if os.path.exists(p) and _has_cast(p):
         return True, ""
     if not build:
-        return False, ("no station/generated/scene/boot.json and --no-build "
-                       "was passed -- run `python3 station/journal.py --gate` "
-                       "without it, or build the deck by hand")
-    print("JOURNAL: no deck in this container -- station/generated/ is "
-          "gitignored, so building one. Four steps, about four minutes.")
+        return False, ("no station/generated/scene/boot.json with a dialogue "
+                       "sidecar, and --no-build was passed -- run `python3 "
+                       "station/journal.py --gate` without it")
+    print("JOURNAL: this container has no deck a conversation can happen on "
+          "-- station/generated/ is gitignored. Building one; four steps, "
+          "about four minutes.")
     for cmd, why in _BUILD_STEPS:
+        if cmd[1] == "station/arrival.py" and os.path.exists(p):
+            print("  ... (deck already assembled, skipping the 2.5 min build)")
+            continue
         print("  ... %s" % why)
         r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
                            timeout=2400)
@@ -873,7 +987,36 @@ def _boot_ready(build=True):
                               (r.stderr or r.stdout).strip()[-300:]))
     if not os.path.exists(p):
         return False, "the build ran and wrote no boot.json"
+    if not _has_cast(p):
+        return False, ("the build ran and boot.json still names no dialogue "
+                       "sidecar -- this deck's 83 people cannot speak, so the "
+                       "conversation half of this acceptance cannot be run")
     return True, ""
+
+
+def _has_cast(boot_path) -> bool:
+    """Can anybody on this deck SPEAK? Read off the manifest, not assumed.
+
+    THIS IS THE SHORT-CIRCUIT THAT COST ROUND ONE ITS VERDICT, and its
+    reviewer found it exactly: `_boot_ready` returned `True, ""` on the mere
+    EXISTENCE of `boot.json`, so a deck assembled at 05:07 -- before anything
+    baked `<deck>_dialogue.json` -- answered a 07:00 acceptance test with
+    `dialogue: ""`. `_scan_partner()` returned null, the conversation half of
+    the gate silently dropped out of its own expectation, and the run printed
+    PASS on two facts copied out of a JSON manifest.
+
+    A gate that reads a committed artefact must be able to REBUILD it; this
+    repository's own rule. The narrower form is that a gate must check the
+    artefact is the one it needs, and not merely that a file of that name is
+    on the disk.
+    """
+    try:
+        with open(boot_path, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except Exception:                                         # noqa: BLE001
+        return False
+    side = str(d.get("dialogue", "") or "")
+    return bool(side) and os.path.exists(side)
 
 
 LEDGER_LINE = re.compile(r"^journal: (\d+) kinds, (\d+) ledgers", re.M)
@@ -945,15 +1088,29 @@ def gate(verbose=False, build=True) -> bool:                     # noqa: C901
     ok = True
 
     print("JOURNAL ACCEPTANCE -- two processes, not one: learn, QUIT, reload")
+    ledgers = {}
     for extra, want, why in (
             ((), True, "the shipped build"),
             (("--no-restore",), False,
              "phase 2 skips the load -> the notebook is blank"),
             (("--no-journal",), False,
              "phase 1 refuses to mint -> nothing to come back to"),
+            # --- ROUND TWO'S TWO CONTROLS, AND THEY ARE THE ONES THAT MAKE
+            # --- THE ACCEPTANCE ABOUT THE WORLD ----------------------------
+            # `--mute` never presses T, so no conversation happens: the name
+            # clause in `_phase_recall` must FAIL. It is the control that
+            # proves the conversation half cannot silently drop out of its
+            # own expectation, which is precisely what round one did.
+            (("--mute",), False,
+             "the T key is never pressed -> no name was ever given"),
+            # `--teleport` puts the body at the far end instead of walking it.
+            # Same two places, same clock, ground never crossed -- so
+            # `walked_leg` refuses and the route fact is missing.
+            (("--teleport",), False,
+             "the body is PLACED across the leg -> no route was walked"),
     ):
         learn_flags = ["--journal-gate", "--phase=learn"] + [
-            f for f in extra if f == "--no-journal"]
+            f for f in extra if f in ("--no-journal", "--mute", "--teleport")]
         recall_flags = ["--journal-gate", "--phase=recall"] + [
             f for f in extra if f == "--no-restore"]
         a, rca = _run(godot, learn_flags)
@@ -978,9 +1135,24 @@ def gate(verbose=False, build=True) -> bool:                     # noqa: C901
               % ("ok  " if good else "FAIL", " ".join(extra) or "(subject)",
                  why, note))
         if not extra:
+            ledgers = {"learn": _ledger(a), "recall": _ledger(b)}
             for line in (a + b).splitlines():
                 if line.startswith("JOURNAL "):
                     print("    | " + line.strip())
+
+    # THE CROSS-PROCESS COMPARISON ONLY PYTHON CAN MAKE. `_phase_recall` can
+    # assert that a ledger came back non-zero; it cannot know what the OTHER
+    # process wrote, because it booted from nothing -- which is the whole
+    # point of the two-process shape. So the values both engines printed are
+    # compared here, and a restore that produced a plausible-but-different
+    # ledger fails even though each half is internally consistent.
+    lhs, rhs = ledgers.get("learn", {}), ledgers.get("recall", {})
+    same = bool(lhs) and lhs == rhs
+    ok = ok and same
+    print("  %s %-14s %-52s -- learned %s, recalled %s"
+          % ("ok  " if same else "FAIL", "(ledger)",
+             "CAST-05 standing survives the process boundary, value for value",
+             (_fmt_ledger(lhs) or "NOTHING MOVED"), _fmt_ledger(rhs)))
 
     print("JOURNAL TIME COMPRESSION -- the world MOVES, it does not jump")
     for extra, want, why in (
