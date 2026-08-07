@@ -279,6 +279,23 @@ class Face extends Control:
 				(Color(0.62, 0.66, 0.70) if on else RED))
 			y += 44
 
+		# THE PREMISE. `docs/THE-GAME.md` §1, on the title screen rather than in
+		# a manual, because it is the only thing that tells a player why a card
+		# is worth caring about -- and because a menu with four words on it and
+		# two thirds of the frame empty is a menu that has not been designed.
+		# Split by hand rather than word-wrapped: two lines that break on the
+		# clause are legible; a wrap that breaks mid-phrase is not.
+		y += 26
+		for line in [
+			"You are nobody, on a station of 250,000, and the only thing standing",
+			"between you and being put back on a transport is a card that says who",
+			"you are.",
+		]:
+			draw_string(fnt, Vector2(w * 0.10, y), line,
+				HORIZONTAL_ALIGNMENT_LEFT, w * 0.8, 16,
+				Color(0.50, 0.55, 0.60))
+			y += 24
+
 		# THE FOOTER. What the keys are, and -- when there is no world -- the one
 		# command that builds one, spelled out where a person can read it.
 		draw_line(Vector2(w * 0.10, h - 78), Vector2(w * 0.90, h - 78),

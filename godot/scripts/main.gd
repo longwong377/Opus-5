@@ -290,7 +290,7 @@ var _in_menu_gate := false
 func _front_door(args: Dictionary) -> bool:
 	if args.has("no-menu"):
 		return false
-	var forced := args.has("menu-gate")
+	var forced := args.has("menu-gate") or args.has("menu-shot")
 	if not forced:
 		if _headless():
 			return false
@@ -318,10 +318,12 @@ func _front_door(args: Dictionary) -> bool:
 		else "No saved station.")
 	_menu.chosen.connect(_on_menu_chosen)
 	add_child(_menu)
-	if forced:
+	if args.has("menu-gate"):
 		# Deferred so the menu's own `_ready` has run and its rows exist. A gate
 		# that drove a half-constructed menu would be measuring nothing.
 		call_deferred("_menu_gate")
+	elif args.has("menu-shot"):
+		call_deferred("_menu_shot")
 	return true
 
 
@@ -344,6 +346,26 @@ func _on_menu_chosen(id: String) -> void:
 ## gated is the path a player's ENTER key takes. Asserting `_build_station()`
 ## works would prove the world builds and say nothing about whether anything
 ## reaches it -- the exact shape of the nine no-caller defects CLAUDE.md counts.
+## A PICTURE OF THE FRONT DOOR, because `--menu-gate` proves the button works
+## and says nothing about whether anybody would want to press it.
+## `docs/AAA-STANDARD.md` scores craft off a frame; this is how the title screen
+## gets one. Needs a real viewport, so it runs under `xvfb-run` with lavapipe --
+## and, per CLAUDE.md's render-fallback rule, the line it prints names the
+## rendering driver it actually got, so a frame taken through OpenGL 3
+## Compatibility cannot be mistaken for a Forward+ one.
+func _menu_shot() -> void:
+	var path := String(_args().get("menu-shot", ""))
+	for _i in 4:
+		await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	var err := img.save_png(path)
+	print("MENUSHOT %s %dx%d driver=%s adapter=%s err=%d"
+		% [path, img.get_width(), img.get_height(),
+			RenderingServer.get_video_adapter_api_version(),
+			RenderingServer.get_video_adapter_name(), err])
+	get_tree().quit(0 if err == OK else 2)
+
+
 func _menu_gate() -> void:
 	var rows: Array = _menu.items()
 	var listed := []
