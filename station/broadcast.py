@@ -241,7 +241,7 @@ def civic_calls() -> list:
 # 5 bulletins x 3 rotation variants, and the three are written as a REAL
 # rotation rather than three paraphrases: the lead, the follow-up with the
 # detail a bulletin adds an hour later, and the official reaction. Which one is
-# on screen is `(hour + day)` -- see `isn_bulletins`. INV-680.
+# on screen is `(hour + day)` -- see `isn_bulletins`. INV-690.
 ISN_ROTATION = {
     "markab_extinct": (
         "ISN. Earth Alliance medical authorities confirm no surviving Markab "
@@ -353,7 +353,7 @@ MINIPAX_NOTICES = tuple(v[0] for v in MINIPAX_ROTATION)
 # `traffic.MANIFEST`'s and the selftest asserts the two agree, so a class added
 # to the manifest cannot leave a hole here. Authority 5 throughout; the
 # register is the customs board's (authority 1) as everywhere else in this
-# file. INV-681.
+# file. INV-691.
 SHIP_CALLS = {
     "freighter_bay": (
         "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to "
@@ -463,7 +463,7 @@ LINER_ADVISORY = ("CUSTOMS ADVISORY. {what} arriving in fifteen minutes with "
 # The eight are ordered as the scene plays: the approach, the demand, the
 # denouncer, the accusation, the defence, the crowd, the disposal, the aftermath.
 # `speaker` says who says it, so the runtime can put the line in the right
-# mouth instead of on the tannoy. Authority 5. INV-682.
+# mouth instead of on the tannoy. Authority 5. INV-692.
 DENUNCIATION = (
     ("nightwatch", "A word. Station business. You needn't stop what you are "
                    "doing -- just answer where you are."),
@@ -497,7 +497,7 @@ DENUNCIATION = (
 #
 # Every row is era-locked through `costume.ERA_EVENTS` -- the SAME clock as the
 # armband and the ISN screen (INV-240), so a rumour cannot circulate before its
-# event. Authority 5. INV-683.
+# event. Authority 5. INV-693.
 RUMOUR_SPEAKERS = ("official", "trader", "downbelow", "alien")
 
 ERA_RUMOUR = {

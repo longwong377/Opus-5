@@ -1367,7 +1367,7 @@ SAY = {
     # could not answer -- a silence with no reply key. DLG-05's arithmetic is
     # 11 x 3 and it was 10 x 3. The three stances still mean what they mean:
     # ask gets nothing back (they said nothing), press gets the deflection,
-    # let-go ends it. INV-687.
+    # let-go ends it. INV-697.
     "refusal": ("That was not an answer. I would still like one.",
                 "You can look at me while you refuse me.",
                 "Understood. I will not push it."),
@@ -1433,7 +1433,7 @@ SAY = {
 # `broadcast.py`'s tannoy lines are. The player has ONE register -- no role
 # row, no species row -- for the reason `SAY` already gives: nothing in this
 # repository describes how the player speaks, and banding them would be
-# inventing a person the simulation does not have. INV-684.
+# inventing a person the simulation does not have. INV-694.
 
 # The twelve. Keys are this module's; `_selftest` asserts they are exactly the
 # ROLE-01..12 headings in the annex, so the list cannot quietly drift from the
@@ -1754,7 +1754,7 @@ def work_line(role: str, verb: str) -> str:
 # a CASTE ADDRESS -- `MINBARI_CASTE` maps each role to the caste that holds it,
 # and the greeting names it. The Brakiri daypart inversion was already built in
 # `daypart()` and is untouched. Authority 5 for every phrasing; the register is
-# the customs board's, as everywhere else in this module. INV-688.
+# the customs board's, as everywhere else in this module. INV-698.
 
 # THE CASTE A ROLE BELONGS TO. Minbari society is three castes and the annex
 # asks for the address forms inside the Minbari cells; the mapping is the one
@@ -2352,7 +2352,7 @@ def cell_lines(species: str, role: str) -> tuple:
 # topic function fills -- `{ship}`, `{souls}`, `{min:.0f}` -- so Milo's port
 # line names today's actual liner and Ruth's names the same liner in her own
 # words. The person's facts are baked in; the station's are not. Authority 5
-# for the phrasings, the annex for every fact in them. INV-689.
+# for the phrasings, the annex for every fact in them. INV-699.
 
 _CAST_ROW = None
 
@@ -2792,7 +2792,7 @@ def lines_before_repeat(species: str, role: str, npc_id: str,
 # TWELVE, AND WHY TWELVE: the annex's ceiling, and it is the same twelve as the
 # two public hours in the role register's own note -- one utterance an hour of
 # audience, six days of public hours before a player could exhaust the pool.
-# Nothing here answers a question. INV-685.
+# Nothing here answers a question. INV-695.
 KOSH_LINES = (
     "You are not ready.",
     "The avalanche has already begun. It is too late for the pebbles to vote.",
@@ -2817,7 +2817,7 @@ KOSH_LINES = (
 #
 # Twenty, the annex's ceiling. The split is 10 alone / 10 with an audience,
 # because a broker who says the same thing in both rooms is not a broker.
-# INV-686.
+# INV-696.
 BROKER_LINES = (
     # audience present -- the public price, the public manner
     (True, "The desk is open to anyone standing at it. That includes you and "
@@ -3166,7 +3166,7 @@ def speak(resident, place_key: str, world: World = None,
         # HOW a person avoids you is their role's business; THAT they avoid
         # you is the gazetteer's. The sourced behaviour stays in the source
         # string, so the provenance of the refusal is unchanged and only the
-        # staging is the cell's (authority 5, INV-688).
+        # staging is the cell's (authority 5, INV-698).
         act = cell_clause(sp.role, "refusal") or pick["action"]
         lines.append(Line("npc", "action", act,
                           f"{pick['source']} -- behaviour "
@@ -3404,7 +3404,7 @@ def behind_counter(place_key: str, world: World = None, species: str = "human",
 # DLG-03 cites `interact.py:120-126` for its figures and a place has been
 # added to the register since. Neither side may be edited to make the other
 # pass (MASTER-PLAN R1), so this table covers what the register ACTUALLY has
-# and the harness reports the two numbers side by side. INV-690.
+# and the harness reports the two numbers side by side. INV-700.
 _W = lambda sells, short, never, source: dict(                   # noqa: E731
     sells=sells, short=short, never=never, source=source)
 

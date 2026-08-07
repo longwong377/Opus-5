@@ -11156,3 +11156,224 @@ an extrapolation is the honest form; the alternative is inventing a severity ord
 this list entirely rather than validate it.
 
 **Authority 5.**
+
+## INV-690 — The ISN rotation: three phrasings per story, not one
+
+**What.** `broadcast.ISN_ROTATION` gives each of the five era-locked ISN stories three
+phrasings — the lead, the follow-up that adds the detail, and the official reaction — and
+which one is on screen is the day number (`isn_bulletins(datum, rotation)`), threaded from
+`day(day_n)`. `ISN_BULLETINS` is DERIVED from it so there is no second copy of a string.
+
+**Why.** DLG-04's arithmetic is "ISN 5 bulletins × 3 rotation variants = 15". A concourse
+screen is on for a whole watch and a player stands under it for minutes; one string per
+story is the textual form of a tiling seam the eye can index.
+
+**What constrained it.** FACTIONS.md 11.5's build note — the propaganda layer must read
+"official and reasonable … do not make them look like villain posters" — and the customs
+board's own register at authority 1 (`reference/01-station-exterior/welcome to babylon
+5.webp`). The three variants therefore get drier and more official as they go, never
+shriller. Era lock through `costume.ERA_EVENTS`, the same clock as the armband (INV-240).
+
+**What would overturn it.** An authority-1 or -2 ISN screen readable in frame, or a
+production script page giving ISN's actual bulletin cadence. Authority 5.
+
+## INV-691 — Three call types per hull class
+
+**What.** `broadcast.SHIP_CALLS` gives each of `traffic.MANIFEST`'s ten classes an
+arrival, a departure and a boarding call, written in that class's own terms — a bay hull
+names its tier, a standoff hull names the lighterage that has to go out to her, a warship
+names her moorage. `CALL_TYPES` names the three. 10 × 3 = 30, DLG-04's PA figure.
+
+**Why.** The module announced every hull with one arrival string and one departure string
+with the class name substituted in. `traffic.arrivals` at the datum berths ~51 hulls a
+station-day, so a player in the concourse heard two phrasings fifty-one times.
+
+**What constrained it.** The class list is `traffic.MANIFEST`'s and `_selftest` asserts
+every manifest class has all three (and that no two classes share a line), so a class added
+to the manifest cannot leave a hole. "Achilles-type freighter" and "United Spaceways
+transport" are authority 4 and unchanged; the rest are descriptive, as the register's other
+alien and utility hulls already were.
+
+**What would overturn it.** An authority-1 port announcement in frame. Authority 5.
+
+## INV-692 — The denunciation scene as content
+
+**What.** `broadcast.DENUNCIATION`, eight lines in scene order — approach, demand,
+denouncer, accusation, defence, crowd, disposal, aftermath — each carrying the speaker who
+says it, so a runtime can put the line in the right mouth rather than on the tannoy.
+Era-locked to `nightwatch_visible`; `denunciation_scene()` returns nothing before it.
+
+**Why.** DLG-04 asks for "the denunciation/questioning scene set 8" as content. FACTIONS.md
+5 is that dissent is relabelled treason, and the show stages it in public corridors where
+the crowd's job is to not be involved — which is why two of the eight are bystanders.
+
+**What constrained it.** FACTIONS.md 5.1: *"Any armband before The Fall of Night is an
+error."* The scene is the armband speaking and takes the same era gate.
+
+**What would overturn it.** A transcript of an on-screen Nightwatch questioning. Authority 5.
+
+## INV-693 — The era-rumour matrix: four speaker classes, not fifteen species
+
+**What.** `broadcast.ERA_RUMOUR`, 8 `costume.ERA_EVENTS` × 4 speaker classes (official,
+trader, downbelow, alien) = 32 lines, era-locked through the one clock.
+
+**Why.** DLG-04's "8 ERA_EVENTS × 4 speaker classes = 32". What changes when the news is
+the same and the mouth is different is not the species, it is what the speaker stands to
+lose: the office that must administer it, the trade that must price it, the people below
+who find out last and pay first, and the non-human resident for whom an Earth Alliance
+emergency is somebody else's emergency happening to them.
+
+**What constrained it.** Doing it per species would be a second application of
+`dialogue._SPECIES_VOICE`, which already modulates register — two descriptions of one fact.
+
+**What would overturn it.** Evidence that the show's aliens react to Earth politics along
+species lines rather than interest lines. Authority 5.
+
+## INV-694 — The player's 152 lines, and the 96 that are two lists multiplied
+
+**What.** `dialogue.WORK_LINE` is `PLAYER_ROLES` (the annex's ROLE-01..12) × `SHIFT_VERBS`
+(`interact.VERBS`, in order) = 96 lines, plus `PLAYER_OPEN`/`PLAYER_CLOSE` (8),
+`PAPERS`/`BUY_SELL`/`PLAYER_REFUSAL` (15) and `SAY`'s 11 × 3 (33). 152, `player_lines()`
+counts it.
+
+**Why.** DLG-05's arithmetic, and every multiplicand is a list this repository already
+holds rather than a figure chosen to make a total come out.
+
+**What constrained it.** The player has ONE register — no role row, no species row —
+because nothing in this repository describes how the player speaks and banding them would
+invent a person the simulation does not have. `_selftest` asserts the verb tuple IS
+`interact.VERBS` and the role count IS the annex's `### ROLE-` heading count, so a
+thirteenth role or a ninth verb shows as a hole rather than as a silent gap.
+
+**What would overturn it.** A design decision that the player has a species and a role.
+Authority 5.
+
+## INV-695 — Kosh's twelve, and silence when they are gone
+
+**What.** `dialogue.KOSH_LINES`, twelve utterances, drawn as a session-keyed permutation
+indexed by `World.turn`; turn 12 and after produce an ACTION ("the encounter suit does not
+move") rather than a repeat.
+
+**Why.** DLG-06 spec's a CEILING, not a floor: *"≤12 lines, each unique, never twice in one
+session"*. A Vorlon with fifty lines is not a better Vorlon, he is a different character.
+
+**What constrained it.** FACTIONS.md 12's *"almost never seen"*, and
+`_ROLE_REGISTER["envoy"]`'s own note — two public hours a day, and almost nothing said in
+them. Twelve is one utterance per hour of audience. `schedule.ROLE_WEIGHTS["vorlon"]` has
+exactly one occupied cell, which is why the interception is on the ROLE (`envoy`) rather
+than on an npc_id: the ceiling holds for the office.
+
+**What would overturn it.** A count of Kosh's actual utterances per episode at the datum
+that is materially different from one an hour of screen presence. Authority 5.
+
+## INV-696 — The Broker is gated on the room, not the clock
+
+**What.** `dialogue.BROKER_LINES`, twenty lines split ten with an audience and ten alone;
+`broker_lines(alone)` selects, and `alone` comes from `World.audience`, which `sidecar()`
+COUNTS off the baked actor list for that place.
+
+**Why.** DLG-06: *"The Broker: audience-gated, ≤20."* The other shape of scarcity is not
+silence, it is who is listening — and a broker who says the same thing in both rooms is not
+a broker.
+
+**What constrained it.** CAST-02 row 36's night broker works 18:30–02:30 because
+`schedule.species_work_shift` does that to a Brakiri, whose day starts at 16:00. The
+audience is derived from the crowd that is already placed rather than from a new parameter,
+so it cannot disagree with the bodies in the room.
+
+**What would overturn it.** A scene establishing that the show's fixers price by hour
+rather than by audience. Authority 5.
+
+## INV-697 — `SAY["refusal"]`: the eleventh player row
+
+**What.** Three player lines for an exchange whose NPC has refused to speak, and a menu
+built in `speak()`'s refusal branch: ask gets nothing back, press gets the band's own
+`DEFLECT`, let-go ends it.
+
+**Why.** `TOPICS` has eleven entries and `SAY` had ten, so DLG-05's 11 × 3 was 10 × 3 —
+and the missing one was the single exchange in the module a player could not answer.
+
+**What constrained it.** No new NPC content: `DEFLECT` already exists for a person who will
+not give up a number, and FACTIONS.md 12's avoidance is allowed to stand when the player
+lets it go. Authority 5 for the three phrasings.
+
+**What would overturn it.** Nothing about the show; a design decision that a refusal should
+end the exchange without a player turn. Authority 5.
+
+## INV-698 — The tier-2 voice matrix is composed, and its distinctness is structural
+
+**What.** `dialogue.ROLE_CLAUSE` (19 roles × 11 topics = 209 clauses, carrying the topic's
+own braces) × `SPECIES_FRAME` (15 species × 2 frames) gives every occupied
+(species × role) cell 22 topic lines; a species greeting stem plus a role tag gives 4
+greetings and 4 farewells. 30 per cell, 79 cells, **2,370 distinct**. `MINBARI_CASTE` and
+`CASTE_ADDRESS` carry the annex's caste-address requirement; pak'ma'ra speak through a
+translator and Gaim through an interpreter in every frame.
+
+**Why.** `_ROLE_REGISTER` and `_SPECIES_VOICE` MODULATE a shared phrasing — they choose one
+of three bands — so 19 × 15 selects, it does not multiply. Every speaker aboard drew from
+39 strings.
+
+**What constrained it.** Distinctness is by construction, not by discipline: every line
+contains a string only that role owns and a string only that species owns, so two cells
+cannot collide — and the assertion over all 79 found two real collisions anyway (`other`
+sharing `human`'s greeting stem; the envoy's `meal` and `worship` clauses being the same
+string), which is why the check is an identity test and not an argument. Hand-writing 2,370
+lines would be 2,370 strings nobody re-reads and a table that drifts.
+
+**What would overturn it.** Attested species speech patterns that contradict a frame — a
+Brakiri who does not reckon by a night clock, a pak'ma'ra who speaks without a translator.
+Authority 5 for every phrasing; the register is the customs board's at authority 1.
+
+## INV-699 — The CAST-02 fifty speak from the annex, 75 lines each, none shared
+
+**What.** `dialogue.cast_roster()` PARSES the CAST-02 table in `docs/spec/PEOPLE.md` — name,
+species, office, home, schedule anchor, links — and `cast_lines(row)` renders 75 lines for
+that person: 33 topic (11 × 3 salience variants), 8 greetings (4 dayparts × 2 acquaintance
+bands), 4 farewells, 12 biography/office/links, 9 player-memory, 9 work. 50 × 75 = **3,750
+distinct strings, none appearing in two people's sets**. Wired ahead of the tier-2 matrix
+in `phrase()`, with the greeting's acquaintance band derived from `World.turn`.
+
+**Why.** DLG-01's rule is not the count, it is *"No string may appear in two NPCs' sets"* —
+and with 69 shared templates it was violated by construction.
+
+**What constrained it.** The roster is parsed rather than copied, because a copy of the
+fifty would drift from the annex and no gate could see it. Uniqueness is carried by the two
+columns that are 50/50 unique — `who` and `anchor`; `office` is only 49/50 (rows 11 and 12
+are both "Ombudsman (retained canon office)"), which is exactly why 49 templates had to be
+rewritten to name the person after the assertion found 231 collisions. The office column is
+spoken as its head clause (`office`) because "publican, `bar_unnamed` — owner-operator
+evenings" is correct in a table and unsayable in a bar; `office_full` is kept for the one
+biography line entitled to the whole entry.
+
+**What would overturn it.** A CAST-02 revision that gives two rows the same name, or a
+ruling that the fifty should be authored by hand rather than generated from their own facts.
+Authority 5 for the phrasings; every fact in them is the annex's.
+
+## INV-700 — What is behind each of the thirty counters
+
+**What.** `dialogue.COUNTER_WARES`, one row per `(place, serve token)` in the register,
+each naming what it `sells` (GDS-01 names), what it is `short` of at the datum, and what it
+will `never` stock. Six shapes over that row — pitch, price, provenance, shortage, refusal,
+haggle — give 6 place-specific trade lines per counter, **180 distinct**, appended to the
+exchange by `serve_response()`.
+
+**Why.** DLG-03: *"a counter that trades in 'goods' fails the T1 specificity rule"*, and
+*"the Quartermaster does not sell spices"* — both now assertions. `serve_response` returned
+`speak()`, whose trade line came from a shared pool of three.
+
+**What constrained it.** The ware names are `docs/spec/PLACES.md` §0.3's GDS-01 vocabulary
+(spoo, brivari, flarn, G'Quan Eth, Jovian Sunspot, treel, jala, bagna cauda, salvage lots,
+breather cartridges, identicard blanks, Dust, aid-ration packs, water containers, pitch-fee
+scrip, Nightwatch pamphlets, drum staples, Vree optics, Drazi hardware grades, dock-grade
+tools). `short` and `never` are what make a counter a place rather than an inventory: a
+person who tells you what they have not got has told you where you are.
+
+**NOTE — AN OPEN DRIFT, DELIBERATELY NOT CLOSED.** DLG-03 says "29 counters across 27
+places", citing `interact.py:120–126`. The register today has **30 across 28**. Neither side
+may be edited to make the other pass (MASTER-PLAN R1), so this table covers what the
+register has, the harness reports both figures, and **DLG-03 remains RED on the drift alone**
+— it carries no content complaint any more. The decision is the owner's: adopt a SPEC-CHANGE
+moving 29→30 and 27→28 (which recomputes DLG-03's total 174→180 and the grand floor
+6,544→6,550), or remove the counter that was added.
+
+**What would overturn it.** A gazetteer entry naming a counter's actual stock. Authority 5.
