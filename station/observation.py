@@ -130,6 +130,7 @@ derived from something already fixed in this project -- the register's own
 footprint, `rooms.PROPS['viewport']`, `rooms.WALK_M`, INV-010's 3.6 m deck
 pitch -- rather than picked.
 """
+import hashlib
 import math
 import os
 import sys
@@ -235,9 +236,21 @@ VEST_H_M = kit.PROVISIONAL["door_height_m"] + 0.80
 # resolves to. Nothing here invents a colour: every value was measured into
 # `materials.py` by another session, and the choice is which measured value the
 # reference asks for.
-M_WALL = "zoc_rail_wall"                   # 0.290,0.145,0.084 r0.42 met0.15
+M_WALL = "zoc_rail_dado"                   # 0.290,0.145,0.084 r0.42 met0.15
 #   "the wall below the window band is dark warm brown" -- the one warm brown
 #   in the library, measured off the Zocalo's own handrail.
+#
+#   ITS SUFFIX IS `_dado` AND NOT `_wall`, AND THAT IS NOT COSMETIC. Round 2's
+#   gate (5) keys on the group NAME to decide which triangles belong to the
+#   varied plate family, and `zoc_rail_wall` is a member of `PLATE_WARM` -- so
+#   while this constant carried that exact name, the ring wall's own 0.235 m2
+#   horizontal top face was scored as a plate edge and the gate failed at four
+#   times its bound. Resolution is unchanged: `zoc_rail` is the bind fragment
+#   and `_dado` is in `rooms._SHELL_SUFFIXES` exactly as `_wall` is. The dome's
+#   panel field moved from `transit_wall` to `transit_panel` for the identical
+#   reason and resolves to the identical `shell_wall_panel`.
+#   **A gate that keys on a name needs the names to be disjoint, and this gate
+#   is what found that they were not.**
 M_WALL_UP = "dress_furnace_panel"          # 0.215,0.198,0.190 r0.78
 #   the darker storey above the entablature. The scorched roughness is what
 #   stops the upper wall reading as the same paint as the lower one.
@@ -319,6 +332,134 @@ LAP_M = 0.02
 # The angular half-gap between two ring segments. At the rotunda's r = 7.00 m,
 # 0.010 rad is 70 mm -- a reveal a person sees, not a tolerance.
 GAP_A = 0.010
+
+# ---------------------------------------------------------------------------
+# THE PLATE, AND IT IS THE STATION'S OWN PLATE -- INV-1220
+# ---------------------------------------------------------------------------
+# Round 2's finding on this module, verbatim: *"At arm's length the dominant
+# surface -- the window-band wall plate and its mullions -- has no second
+# detail tier and no varying wear ... a smooth lambert gradient: no panel-line
+# micro-detail, no edge chipping, no gasket, bolt line or blast-shutter track
+# on a pressure-hull window."* `scratchpad/frames2/before-dome1-arm.png` is
+# that frame and it is exactly what the finding says: one plate, one joint,
+# one value, filling the left half of a 1,280 px frame taken 0.7 m from a wall.
+#
+# NOTHING BELOW IS A NEW NUMBER, AND THAT IS THE POINT. The corridor kit has
+# carried a wall-plate standard since it was written and this module never used
+# it -- which is the cause rather than an oversight about detail.
+# `interior_kit.plated()` lays a SUBSTRATE and then a grid of PROUD DRAFTED
+# PLATES on it: `wall_plate_l_m` long, `wall_plate_courses` high, inset
+# `wall_seam_m` on every side, standing `wall_plate_proud_m` off the substrate
+# with a `PLATE_DRAFT_M` arris -- and its own comment says the square arris
+# *"is what made these read as rectangles printed on a wall at the rubric's
+# half distance"*. The observation rooms are on the same station and their
+# plate is the same plate, so every figure here is READ from `kit.PROVISIONAL`
+# and this module cannot drift from the corridor a player walks in from. Hard
+# rule 4, applied at fitting scale.
+PLATE_L_M = kit.PROVISIONAL["wall_plate_l_m"]           # 1.15
+PLATE_COURSES = kit.PROVISIONAL["wall_plate_courses"]   # 3
+PLATE_SEAM_M = kit.PROVISIONAL["wall_seam_m"]           # 0.038
+PLATE_PROUD_M = kit.PROVISIONAL["wall_plate_proud_m"]   # 0.045
+PLATE_DRAFT_M = kit.PLATE_DRAFT_M                       # 0.006
+
+# THE BOLT PITCH IS THE PLATE MODULE QUARTERED -- INV-1221. A gasketed frame in
+# a pressure hull is fixed at a pitch fine enough to keep the bead compressed
+# between fixings, and the coarsest pattern that still lands a fixing either
+# side of every plate seam is four to a plate length. Derived from `PLATE_L_M`
+# rather than picked, so the bolts stay on the seams if the kit's plate ever
+# changes size. The head radius is `kit.PROVISIONAL["wall_seam_m"] * 0.42`,
+# which is a head that sits inside its own seam.
+BOLT_PITCH_M = PLATE_L_M / 4.0                          # 0.2875
+BOLT_R_M = PLATE_SEAM_M * 0.42                          # 0.0160
+# The gasket bead's section. `wall_reveal_m` is the kit's own shadow gap and a
+# bead fills it: 60 mm wide, standing PLATE_DRAFT_M proud so it catches a
+# raking light along its length instead of disappearing into the reveal.
+GASKET_W_M = kit.PROVISIONAL["wall_reveal_m"]           # 0.060
+
+# ---------------------------------------------------------------------------
+# THE PLATE FAMILIES -- INV-1222, and this is the honest form of the fix asked
+# for
+# ---------------------------------------------------------------------------
+# The finding asks to *"seed a per-plate roughness/albedo jitter from a
+# blake2b of the plate's angular index so materials.py is not binding one flat
+# value to every plate on the ring"*. `materials.py` is not this session's file
+# and a per-instance material override does not exist in this pipeline: a group
+# name resolves to one library material, full stop. So the jitter is applied
+# one level up -- WHICH measured material each plate takes -- and the visible
+# result is the same, because the members of each family differ in albedo, in
+# roughness, in metallic AND in which procedural texture they carry.
+#
+# Every value is measured and already in the library; the choice here is which
+# measured surface the reference asks for, exactly as INV-950 did for the
+# palette. Neither family contains a `prop_*` name: `interact.resolve` and
+# `collision.prop_boxes` both key off that prefix, and a wall plate that
+# registers as a lab bench is a wall plate a player can be told to operate.
+#
+#   name                  material                albedo  rough  met  texture
+#
+# AND NO MEMBER MAY BE A NAME THE MODULE ALSO USES FOR A BULK SOLID, because
+# gate (5) decides membership by NAME. `transit_wall` was the obvious first
+# choice for `shell_wall_panel` and it is wrong: `_vestibule` builds its walls
+# as `f"{pre}_wall"`, so the name is never a literal in this file, a grep for
+# it returns only the family entry, and the vestibule's own 0.333 m2 horizontal
+# top face was being scored as a plate edge. That is session 4f's lesson --
+# *"a name built by string interpolation is invisible to a regex over source"*
+# -- arriving by a new route, and the gate is what caught it. `cc_panel`
+# resolves to the identical `shell_wall_panel` and is used nowhere else.
+PLATE_COOL = (
+    "cc_panel",         # shell_wall_panel         0.455   0.56  0.00  wall_plate
+    "bulkhead_wall",    # kit_wall_plate           0.460   0.56  0.10  wall_plate
+    "industrial_wall",  # shell_wall_industrial    0.420   0.70  0.00  hull_plate
+    "skirt_wall",       # kit_skirt                0.340   0.68  0.10  wall_plate
+    "deck_plate_wall",  # kit_deck_plate           0.360   0.62  0.20  deck_plate
+    "pilaster_wall",    # kit_pilaster             0.469   0.42  0.12  paint_chip
+)
+PLATE_WARM = (
+    "zoc_rail_wall",         # zoc_rail            0.290/0.145/0.084 0.42 0.15 metal_grain
+    "industrial_rib_wall",   # shell_rib_oxide     0.379/0.315/0.265 0.45 0.00 truss_steel
+    "dress_post_wall",       # steel_gantry_oxide  0.300/0.255/0.242 0.52 0.30 truss_steel
+    "dress_furnace_wall",    # steel_furnace_scorched 0.215/0.198/0.190 0.78 0.00 truss_steel
+    "fix_dais_wall",         # furn_worship_stone  0.468/0.462/0.432 0.66 0.00 stone_agg
+    "zoc_deck_chevron_wall",  # zoc_deck_chevron   0.265/0.262/0.209 0.34 0.00 deck_plate
+)
+# The gasket. Dark, matte, non-metallic -- the one measured surface in the
+# library that reads as a compressed elastomer rather than as paint, and the
+# same one on both programs because a pressure seal is not a decorating choice.
+M_GASKET = "dress_furnace_rib"              # steel_furnace_scorched r0.78
+M_BOLT = "dress_metal_rib"                  # plant_valve_metal 0.545 r0.42 met0.95
+
+# THE SOIL LINE -- INV-1223, and it is the clause of the finding that is a RULE
+# rather than a fitting. *"the wear decals are position-independent -- the same
+# blob set appears on the UNDERSIDES of the rotunda collars ... where nothing
+# would deposit."* Nothing deposits on a downward-facing surface and nothing
+# deposits above the height a hand or a trolley reaches, so the varied family
+# is emitted ONLY on vertical plate faces, and the DARK end of each family is
+# reachable only below this height. `rooms.WALK_M` is the station's own stride
+# and a person's reach is a little over one of them; 1.90 m is the height at
+# which `_dome_fittings` already stops putting lockers.
+SOIL_H_M = 1.90
+# Set by `_selftest`'s control only. A variation that cannot be withdrawn is a
+# variation whose gate cannot fail.
+_VARY_OFF = False
+
+
+def _vary(key, element, i, options):
+    """Which measured material this instance takes -- deterministic, not random.
+
+    AAA-STANDARD ROBUSTNESS 0 forbids the `random` module and `str.__hash__`
+    in generation ("salted per process ... would have produced a different
+    hull every run"), so the index is a keyed blake2b digest of
+    (place, element, instance) and the same commit produces the same wall on
+    every machine and every `PYTHONHASHSEED`.
+
+    It is keyed on the PLACE as well as the element, which is what stops dome 1
+    and dome 2 receiving the same sequence of plates and becoming the same room
+    at two radii -- `deck.py --degeneracy`'s question, asked of material.
+    """
+    if _VARY_OFF:
+        return options[0]
+    h = hashlib.blake2b(f"{key}|{element}|{i}".encode(), digest_size=8)
+    return options[int.from_bytes(h.digest(), "big") % len(options)]
 
 
 def _dome_mullions():
@@ -627,8 +768,200 @@ def _seg(v, t, g, name, r0, r1, a0, a1, y0, y1):
     return _prism(v, t, g, name, _ring_quad(r0, r1, a0, a1), y0, y1)
 
 
+def _plated_ring(v, t, g, r_face, a0, a1, y0, y1, family, key, element,
+                 courses=None, proud=None):
+    """The kit's plate build-up, on an annular sector. The missing second tier.
+
+    `r_face` is the SUBSTRATE's room-facing radius. The room is inboard of the
+    wall, so a proud plate stands at a SMALLER radius -- getting that sign
+    wrong buries the whole build-up in the bulkhead, which is INV-024's defect
+    and this module has already paid for it once on the glazing.
+
+    Three things happen here that the flat field could not do, and each answers
+    a clause of the finding:
+
+    * **A grid, at the station's own module.** `round(arc / PLATE_L_M)` plates
+      across the bay by `PLATE_COURSES` up it, each inset `PLATE_SEAM_M` on
+      all four sides. At the dome's 3.30 m bay that is three plates across --
+      so the surface a player stands 0.7 m from has vertical AND horizontal
+      joints in it at 1.15 m and ~0.26 m, which is the "panel-line micro-detail
+      at 1 m" the finding says is absent.
+    * **An arris on every plate.** `kit._drafted_slab` exists because a square
+      edge *"made these read as rectangles printed on a wall"*. `_prism`
+      extrudes ONE quad along y and cannot make a true draft, so the arris is
+      a `PLATE_DRAFT_M` step inset by `PLATE_DRAFT_M` -- the same twelve
+      triangles, and under a raking light it reads as the same chamfer. Stated
+      rather than claimed as a draft, because it is not one.
+    * **The plate is not the same plate twice.** `_vary` picks each one's
+      material out of `family`, so albedo, roughness, metallic and the
+      procedural texture all change plate to plate. That is CRAFT 4's *"wear,
+      grime and lighting response vary ACROSS the surface rather than being
+      uniform"*, which the builder's own round-1 finding said this module had
+      not delivered: *"the variation is that there are now twenty-one values
+      instead of three"*.
+
+    THE DARK END OF THE FAMILY IS REACHABLE ONLY BELOW `SOIL_H_M` (INV-1223).
+    A plate two decks up is not scuffed, and a family sampled uniformly over
+    the whole storey is position-independent wear, which is the defect the
+    finding names on the rotunda collars.
+    """
+    courses = PLATE_COURSES if courses is None else courses
+    proud = PLATE_PROUD_M if proud is None else proud
+    span = a1 - a0
+    if span <= 0.0 or y1 - y0 <= 0.0:
+        return v, t, g
+    n = max(1, int(round(span * r_face / PLATE_L_M)))
+    da = span / n
+    rr = max(0.2, r_face)
+    sa = PLATE_SEAM_M / rr                      # the seam, as an angle
+    dra = PLATE_DRAFT_M / rr
+    for c in range(courses):
+        cy0 = y0 + (y1 - y0) * c / courses
+        cy1 = y0 + (y1 - y0) * (c + 1) / courses
+        if cy1 - cy0 < 2.4 * PLATE_SEAM_M:
+            continue
+        # A course whose whole height is above reach cannot take the scuffed
+        # end of the family. Two members are held back rather than one so the
+        # rule is visible in the render as a band, not as a single swap.
+        pool = family if cy0 < SOIL_H_M else family[:max(2, len(family) - 2)]
+        for i in range(n):
+            b0 = a0 + da * i + sa
+            b1 = a0 + da * (i + 1) - sa
+            if b1 - b0 < 2.0 * dra + 1e-4:
+                continue
+            nm = _vary(key, element, c * 97 + i, pool)
+            _seg(v, t, g, nm, r_face - proud, r_face + LAP_M, b0, b1,
+                 cy0 + PLATE_SEAM_M, cy1 - PLATE_SEAM_M)
+            _seg(v, t, g, nm, r_face - proud - PLATE_DRAFT_M,
+                 r_face - proud + LAP_M, b0 + dra, b1 - dra,
+                 cy0 + PLATE_SEAM_M + PLATE_DRAFT_M,
+                 cy1 - PLATE_SEAM_M - PLATE_DRAFT_M)
+    return v, t, g
+
+
+def _bolt_row(v, t, g, name, r_face, a, y0, y1, depth=0.020, axis="y"):
+    """A line of fixing heads at `BOLT_PITCH_M`, standing proud of the face.
+
+    Built with `_strut`, because a bolt head on a VERTICAL surface points along
+    the radius and `_cyl` only makes cylinders along y -- a y-axis cylinder
+    used as a bolt head is a peg standing on the wall, which is the shape of
+    error this module made once already with a light strip.
+    """
+    span = (y1 - y0) if axis == "y" else (a[1] - a[0]) * r_face
+    n = max(2, int(round(span / BOLT_PITCH_M)))
+    for k in range(n + 1):
+        f = k / n
+        if axis == "y":
+            aa, yy = a, y0 + (y1 - y0) * f
+        else:
+            aa, yy = a[0] + (a[1] - a[0]) * f, y0
+        c, s = math.cos(aa), math.sin(aa)
+        _strut(v, t, g, name,
+               ((r_face + 0.004) * c, yy, (r_face + 0.004) * s),
+               ((r_face - depth) * c, yy, (r_face - depth) * s),
+               BOLT_R_M, seg=5)
+    return v, t, g
+
+
+def _glazing_gasket(v, t, g, r_face, a0, a1, y0, y1, bead=None, bolt=None):
+    """The bead and the bolt line where a frame meets glazing -- the finding's
+    third change, and the one it says lands under the arm's-length camera.
+
+    *"model a gasket bead and bolt line on the mullion faces that meet the
+    glazing -- that face is where the arm's-length camera lands in
+    left-dome1-arm.png and it is currently the least plausible surface in the
+    frame."* It is: `before-dome1-arm.png` shows a flat plate meeting black
+    glass on a square edge, with nothing between them.
+
+    Four sides, continuous, because a pressure seal that stops at the corners
+    is not a seal. The bead stands `PLATE_DRAFT_M` proud of the reveal so its
+    length catches a raking light; the bolts run the two jambs and the sill,
+    and not the head, because the head of this frame carries the reveal the
+    blast shutter tracks into and a fixing there would foul it.
+    """
+    bead = bead or M_GASKET
+    bolt = bolt or M_BOLT
+    ga = GASKET_W_M / max(0.2, r_face)
+    # the two jambs
+    for aa in (a0, a1):
+        lo, hi = min(aa, aa + ga), max(aa, aa + ga)
+        if aa == a1:
+            lo, hi = a1 - ga, a1
+        _seg(v, t, g, bead, r_face - PLATE_DRAFT_M, r_face + GASKET_W_M,
+             lo, hi, y0 - GASKET_W_M, y1 + GASKET_W_M)
+    # the head and the sill
+    for yy in (y0, y1):
+        lo = yy - GASKET_W_M if yy == y1 else yy
+        _seg(v, t, g, bead, r_face - PLATE_DRAFT_M, r_face + GASKET_W_M,
+             a0, a1, lo, lo + GASKET_W_M)
+    for aa in (a0 - ga * 1.6, a1 + ga * 1.6):
+        _bolt_row(v, t, g, bolt, r_face, aa, y0 + 0.06, y1 - 0.06)
+    _bolt_row(v, t, g, bolt, r_face, (a0, a1), y0 - GASKET_W_M * 1.7, None,
+              axis="a")
+    return v, t, g
+
+
+def _glyph(v, t, g, name, r_face, depth, a_c, y_c, size, lobes, seg=44):
+    """One AUTHORED device, as a closed lobed relief. Round 2's C3 on the
+    rotunda.
+
+    The finding: *"the banner device is a random scatter of quads
+    (left-rotunda-half.png); reference/05-sector-green/rotunda.webp shows
+    legible glyph devices."* Both halves are true --
+    `before-rotunda-half.png` shows a loose spray of pale rectangles, and the
+    reference shows, on each of its four cloths, ONE closed organic device with
+    lobes and a notch, painted in the value OPPOSITE its cloth: pale on the two
+    blue-violet banners, dark blue-teal on the two pale ones.
+
+    The old `_sigil` was six radial arms and a broken ring -- a star. A star is
+    not what that frame shows and, built out of `_seg` boxes at a banner's
+    grazing angle, it read as the scatter the finding names.
+
+    This is a closed polar curve instead:
+
+        rho(th) = size * (1 + SUM_m c_m cos(m th + ph_m))
+
+    sampled at `seg` points and extruded `depth` toward the room. `lobes` is
+    the authored part -- a tuple of (m, c_m, ph_m) written down per device --
+    so a device is a written figure rather than a seed, and the four banners
+    carry four different written figures. SUM |c_m| < 1 keeps the curve simple,
+    which is what makes the solid closed and manifold; it is asserted below.
+    """
+    amp = sum(abs(c) for _m, c, _p in lobes)
+    assert amp < 0.95, (
+        f"glyph lobes sum to {amp:.3f}; a polar curve with sum |c| >= 1 "
+        f"self-intersects and the relief stops being a closed solid")
+    rr = max(0.2, r_face)
+    base = len(v)
+    t0 = len(t)
+    for k in range(seg):
+        th = math.tau * k / seg
+        rho = size * (1.0 + sum(c * math.cos(m * th + p) for m, c, p in lobes))
+        u = rho * math.cos(th)
+        w = rho * math.sin(th)
+        aa = a_c + u / rr
+        yy = y_c + w
+        for rd in (r_face, r_face - depth):
+            v.append((rd * math.cos(aa), yy, rd * math.sin(aa)))
+    for k in range(seg):
+        a = base + 2 * k
+        b = base + 2 * ((k + 1) % seg)
+        t += [(a, b, b + 1), (a, b + 1, a + 1)]
+    for rd, flip in ((r_face, False), (r_face - depth, True)):
+        c0 = len(v)
+        v.append((rd * math.cos(a_c), y_c, rd * math.sin(a_c)))
+        off = 0 if not flip else 1
+        for k in range(seg):
+            i0 = base + 2 * k + off
+            i1 = base + 2 * ((k + 1) % seg) + off
+            t.append((c0, i0, i1) if flip else (c0, i1, i0))
+    g.append((name, t0, len(t)))
+    return v, t, g
+
+
 def _recessed_panel(v, t, g, r, ro, a0, a1, y0, y1,
-                    frame=None, field=None, bead=None, depth=0.075):
+                    frame=None, field=None, bead=None, depth=0.075,
+                    plate=None):
     """A framed panel with its field SET BACK, not a flat rectangle.
 
     THE RULE, NOT THE INSTANCE. Round 1 said of the domes *"roughly 80% of the
@@ -649,6 +982,13 @@ def _recessed_panel(v, t, g, r, ro, a0, a1, y0, y1,
     # the field, set back, and OVERLAPPING the frame rather than abutting it
     _seg(v, t, g, field, r + depth, ro + 0.004, a0 + da * 0.5, a1 - da * 0.5,
          y0 + dy * 0.5, y1 - dy * 0.5)
+    # ...AND THE FIELD IS THE SUBSTRATE, NOT THE SURFACE. See `_plated_ring`:
+    # a framed rectangle of one material at one depth is still one flat value
+    # at 1 m, which is exactly what the round-2 finding measured.
+    if plate:
+        family, key, element = plate
+        _plated_ring(v, t, g, r + depth, a0 + da * 0.5, a1 - da * 0.5,
+                     y0 + dy * 0.5, y1 - dy * 0.5, family, key, element)
     # the frame: two stiles and two rails, each a separate closed solid
     _seg(v, t, g, frame, r, ro, a0, a0 + da, y0, y1)
     _seg(v, t, g, frame, r, ro, a1 - da, a1, y0, y1)
@@ -716,44 +1056,68 @@ def _lattice_panel(v, t, g, r, a, half_a, y0, y1, bars=9, rungs=6):
     return v, t, g
 
 
-def _sigil(v, t, g, r, a, y, size=0.30, name=None):
-    """The banner sigil, IN RELIEF -- the object round 1 said was missing.
+# THE FOUR DEVICES -- INV-1224, AUTHORED, one written figure per banner.
+#
+# `reference/05-sector-green/rotunda.webp`, authority 1, read again for round 2
+# at the banners rather than at the room. Four cloths, four DIFFERENT devices,
+# and none of them is a star:
+#
+#   * the near dark banner carries a pale device of two curved lobes with a
+#     gap between them, wider than it is tall, reading as a stylised head;
+#   * the far dark banner's device is smaller, rounder and set higher;
+#   * the near pale banner carries a DARK device -- a rounded four-lobed blot
+#     with a notch bitten out of its lower left;
+#   * the far pale banner's is the same family, taller and narrower.
+#
+# What every one of them has in common, and what the old `_sigil` got wrong,
+# is that it is ONE CLOSED ORGANIC FIGURE painted in the value opposite its
+# cloth. A six-armed star built of axis-aligned boxes at a banner's grazing
+# angle is the *"random scatter of quads"* the round-2 finding names, and
+# `before-rotunda-half.png` is the photograph of it.
+#
+# Each entry is (m, coefficient, phase) terms of a polar curve -- see `_glyph`.
+# They are written down here rather than seeded, so that "the device on banner
+# two" is a thing a later reader can look at and change, and so that no two of
+# the four are the same figure rotated.
+GLYPH_DEVICES = (
+    # two lobes and a gap: m = 2 dominant, a small m = 3 to break the symmetry
+    ((2, 0.42, 0.00), (3, 0.14, 1.20), (5, 0.06, 2.40)),
+    # rounder and higher: m = 3 dominant, squashed by a weak m = 1
+    ((3, 0.30, 0.55), (1, 0.12, 2.10), (6, 0.07, 0.80)),
+    # the four-lobed blot with a notch: m = 4 plus an m = 1 offset
+    ((4, 0.34, 0.35), (1, 0.18, 3.60), (7, 0.05, 1.10)),
+    # taller and narrower: a strong m = 2 turned onto its end
+    ((2, 0.46, 1.5708), (5, 0.12, 0.40), (3, 0.08, 2.70)),
+)
 
-    Round 1's C1 finding, verbatim: *"the two blue signage panels are the most
-    eye-catching objects in the shot and are BLANK -- a lit rectangle standing
-    in for a named object"*. The frame shows a figure painted in the lower
-    third of each cloth. This builds one: a boss, six radial arms of two
-    lengths, and a broken outer ring -- the same radial-about-a-centre idiom
-    the floor mosaic and the dome ribs already use, so the room has ONE motif
-    rather than a decal.
 
-    It is geometry rather than a texture for the reason the mosaic is: at the
-    grazing angles a banner is seen from, relief is the only thing that reads.
+def _sigil(v, t, g, r, a, y, size=0.30, name=None, device=0, counter=None):
+    """The banner device, IN RELIEF -- and it is now an AUTHORED figure.
+
+    Round 1's C1 finding was that the banner was blank. Round 2's is that what
+    replaced it *"is a random scatter of quads"*, and that
+    `reference/05-sector-green/rotunda.webp` *"shows legible glyph devices"*.
+    Both are right, and the second is the harder one: the fix for a blank
+    banner was not a motif, it was THIS motif, read off that frame.
+
+    The figure is a closed lobed relief (`_glyph`) from one of
+    `GLYPH_DEVICES`, plus a COUNTER-FIGURE in the cloth's own material laid on
+    top of it -- which is what makes the reference's devices read as drawn
+    rather than as blobs: every one of them has an interior line. Relief and
+    not texture for the same reason the floor mosaic is: at the grazing angle a
+    hanging cloth is seen from, relief is the only thing that reads.
     """
     name = name or M_SIGIL
     rr = r - 0.352
-    _cyl(v, t, g, name, (rr - 0.03) * math.cos(a), (rr - 0.03) * math.sin(a),
-         y - size * 0.20, y + size * 0.20, size * 0.20, seg=10)
-    for k in range(6):
-        th = math.tau * k / 6.0
-        long_arm = (k % 2 == 0)
-        L = size * (0.98 if long_arm else 0.60)
-        ac = a + math.cos(th) * (L * 0.5) / max(0.2, r)
-        yc = y + math.sin(th) * L * 0.5
-        w = size * (0.155 if long_arm else 0.115)
-        _seg(v, t, g, name, rr - 0.042, rr,
-             ac - w / max(0.2, r), ac + w / max(0.2, r), yc - w, yc + w)
-    for k in range(8):
-        if k % 4 == 3:
-            continue
-        th0 = math.tau * (k + 0.06) / 8.0
-        th1 = math.tau * (k + 0.94) / 8.0
-        for th in (th0, th1):
-            ac = a + math.cos(th) * (size * 0.68) / max(0.2, r)
-            yc = y + math.sin(th) * size * 0.68
-            _seg(v, t, g, name, rr - 0.034, rr,
-                 ac - 0.055 / max(0.2, r), ac + 0.055 / max(0.2, r),
-                 yc - 0.055, yc + 0.055)
+    lobes = GLYPH_DEVICES[device % len(GLYPH_DEVICES)]
+    _glyph(v, t, g, name, rr, 0.036, a, y, size * 0.62, lobes)
+    if counter:
+        # the interior line: the same figure at a third of the size, in the
+        # cloth, standing proud of the device and offset off its centre so it
+        # reads as drawn on it rather than concentric with it
+        _glyph(v, t, g, counter, rr - 0.034, 0.020,
+               a + (size * 0.10) / max(0.2, r), y - size * 0.12,
+               size * 0.26, GLYPH_DEVICES[(device + 2) % len(GLYPH_DEVICES)])
     return v, t, g
 
 
@@ -863,6 +1227,16 @@ def _rotunda_chamber(v, t, g, prog):
         # is a hole in something, and the something has to be built with the
         # hole already in it.**
         _seg(v, t, g, M_WALL, r, ro, b0, b1, 0.0, ROT_SILL_M)
+        # ...AND THE DADO IS PLATED, which is the round-2 finding applied to
+        # the rotunda's own dominant surface. This band and the storey above
+        # it are the two largest things in `before-rotunda-half.png` and both
+        # were one prism of one value, which is why the whole room read as the
+        # finding's *"dusty rose"* -- one warm albedo over half the frame.
+        # `PLATE_WARM` spans albedo 0.215 to 0.468 and roughness 0.34 to 0.78
+        # across six MEASURED surfaces, so the band is now variegated bronze
+        # in the reference's own register rather than one pink.
+        _plated_ring(v, t, g, r, b0 + 0.02, b1 - 0.02, 0.20, ROT_SILL_M - 0.11,
+                     PLATE_WARM, prog["key"], f"dado{i}", courses=2)
         # THE SKIRTING, and it is where the wear goes. CRAFT 4 wants lighting
         # response to VARY across the surface; the bottom 160 mm of a wall in a
         # room people queue in is scuffed part-metallic bronze and the field
@@ -928,7 +1302,14 @@ def _rotunda_chamber(v, t, g, prog):
         # than a slab. This is the surface round 1 called "flat panelled wall".
         _recessed_panel(v, t, g, r, ro, b0, b1, ROT_HEAD_M - LAP_M,
                         ROT_ENTAB_M, frame=M_PIER, field=M_WALL_UP,
-                        bead=M_GOLD, depth=0.070)
+                        bead=M_GOLD, depth=0.070,
+                        plate=(PLATE_WARM, prog["key"], f"attic{i}"))
+        # THE BEAD AND THE BOLT LINE round this room's glazing too. The fix
+        # goes on the RULE and not on the instance -- session 4h's lesson
+        # about the registry table, which this module has already been caught
+        # by once (the glazing bars, found on the rotunda and applied to both).
+        _glazing_gasket(v, t, g, r - 0.04, b0 + 0.035, b1 - 0.035,
+                        ROT_SILL_M, ROT_HEAD_M)
         # A SERVICE RISER every third bay -- the physical plant a station of
         # 250,000 needs, where it would actually be needed: in the pier between
         # two windows, running from the skirting to the entablature.
@@ -973,8 +1354,19 @@ def _rotunda_chamber(v, t, g, prog):
         for i in range(m):
             a0 = math.tau * (i + 0.14) / m + ea
             a1 = math.tau * (i + 0.86) / m + ea
+            # THE BLOCKS ARE NOT ONE BLOCK THIRTY-TWO TIMES. The reference's
+            # corbel course is stepped blocks of visibly UNEQUAL projection --
+            # read the frame's upper left, where three deep blocks sit beside
+            # two shallow ones. Ours were one prism at one radius, m times per
+            # tier, which is the indexable-period clause again on the surface
+            # directly above the eye line at the half distance.
+            proj = _vary(prog["key"], f"corbel{tier}", i, (0.0, 0.055, 0.105))
             _seg(v, t, g, M_STONE if tier % 2 == 0 else M_WALL_UP,
-                 rr, ro, a0, a1, y0, y0 + 0.30 + LAP_M)
+                 rr - proj, ro, a0, a1, y0, y0 + 0.30 + LAP_M)
+            if proj > 0.0:
+                # the shadow the deeper blocks throw needs something under it
+                _seg(v, t, g, M_RECESS, rr - proj - 0.012, rr + 0.02,
+                     a0 + 0.006, a1 - 0.006, y0 - 0.026, y0 + 0.012)
             if tier == ROT_CORBEL_TIERS - 1:
                 _seg(v, t, g, M_GOLD, rr - 0.030, rr + 0.02, a0 + 0.004,
                      a1 - 0.004, y0 + 0.245, y0 + 0.285)
@@ -1172,8 +1564,15 @@ def _rotunda_fittings(v, t, g, prog, r, n, ea):
         drop = 0.0 if i % 2 == 0 else 0.14
         _seg(v, t, g, cloth, r - 0.34, r - 0.30, a0, a1,
              1.48 + drop, ROT_HEAD_M + 0.10)
-        # THE SIGIL, IN THE LOWER THIRD AND IN RELIEF. Round 1's C1 finding.
-        _sigil(v, t, g, r, a, 1.94 + drop, size=0.50)
+        # THE DEVICE, IN THE LOWER THIRD AND IN RELIEF. Round 1's C1 finding
+        # said the banner was blank; round 2's said what replaced it was a
+        # scatter. FOUR BANNERS, FOUR WRITTEN FIGURES, each in the value
+        # opposite its own cloth -- pale on the dark cloths, dark on the pale
+        # ones, which is what the reference shows and is also the only thing
+        # that makes a device legible at the half distance.
+        _sigil(v, t, g, r, a, 1.94 + drop, size=0.50, device=i,
+               name=M_SIGIL if i % 2 == 0 else M_GRILLE,
+               counter=cloth)
         # the hanging rail, and a boss at each end of it
         _seg(v, t, g, M_BRONZE, r - 0.365, r - 0.275, a0 - 0.014, a1 + 0.014,
              ROT_HEAD_M + 0.08, ROT_HEAD_M + 0.155)
@@ -1404,10 +1803,12 @@ def _dome_chamber(v, t, g, prog):
         # panelled wall"*, and it was one prism per storey per bay. See
         # `_recessed_panel`, which both programs now call.
         _recessed_panel(v, t, g, r, ro, b0, b1, 0.155 - LAP_M, 0.95,
-                        frame=D_FRAME, field="transit_wall", depth=0.065)
+                        frame=D_FRAME, field="transit_panel", depth=0.065,
+                        plate=(PLATE_COOL, prog["key"], f"dado{i}"))
         _recessed_panel(v, t, g, r, ro, b0, b1, 0.95 + VIEWPORT_H_M,
-                        DOME_WALL_M, frame=D_FRAME, field="transit_wall",
-                        depth=0.065)
+                        DOME_WALL_M, frame=D_FRAME, field="transit_panel",
+                        depth=0.065,
+                        plate=(PLATE_COOL, prog["key"], f"head{i}"))
         # THE SKIRTING, where the wear is. A cool dark tread metal against the
         # grey panel: a difference in metallic as well as in value, so it
         # survives a change of lighting rather than vanishing under one.
@@ -1451,6 +1852,30 @@ def _dome_chamber(v, t, g, prog):
              am - half + 0.01, 0.95, 0.95 + VIEWPORT_H_M)
         _seg(v, t, g, D_TRIM, r - 0.06, r + 0.02, am + half - 0.01,
              am + half + 0.03, 0.95, 0.95 + VIEWPORT_H_M)
+        # THE GASKET BEAD AND THE BOLT LINE. Round 2's third change, on the
+        # surface it says the arm's-length camera lands on. See
+        # `_glazing_gasket`.
+        _glazing_gasket(v, t, g, r - 0.045, am - half, am + half, 0.95,
+                        0.95 + VIEWPORT_H_M)
+        # THE BLAST-SHUTTER TRACK. The finding lists it beside the gasket, and
+        # it is the one item of the three that is FUNCTIONAL rather than
+        # decorative: PLC-001 gives this dome blast shutters and
+        # `_dome_fittings` builds their stowed leaves at the springing, so the
+        # leaves have to descend past the glazing on something. This is that
+        # something -- a channel either side of the aperture, with a stop at
+        # the sill, running from the springing to the head. Built on BOTH
+        # programs and not only on the one with `shutters`, because a shutter
+        # that is not fitted still leaves its track: dome 2's leaves were
+        # removed from the ring, its tracks were not.
+        for s in (-1, 1):
+            at = am + s * (half + 0.052)
+            _seg(v, t, g, M_RECESS, r - 0.098, r - 0.040,
+                 at - 0.019, at + 0.019, 0.88, DOME_WALL_M - 0.06)
+            for tk in (-0.021, 0.021):
+                _seg(v, t, g, D_TRIM, r - 0.104, r - 0.052,
+                     at + tk - 0.010, at + tk + 0.010, 0.86, DOME_WALL_M - 0.04)
+            _seg(v, t, g, M_BOLT, r - 0.110, r - 0.044, at - 0.030,
+                 at + 0.030, 0.84, 0.90)
         # THE BLUE WALL COURSE. `light_wall_course` is in
         # `export_scene.FIXTURE_LIGHTING` -- omni, 22000 K, energy_rel 0.44,
         # range 3.5 m, measured off the C&C frame -- so this one throws.
@@ -1476,6 +1901,26 @@ def _dome_chamber(v, t, g, prog):
              a1 + GAP_A * 1.6, 0.0, DOME_WALL_M)
         _seg(v, t, g, D_FRAME, r - 0.075, r + 0.03, a1 - GAP_A * 1.1,
              a1 + GAP_A * 1.1, 0.0, DOME_WALL_M)
+        # ...AND THE PIERS ARE NOT ONE PIER TWELVE TIMES. Round 2: *"the
+        # mullion piers repeat identically"*, which is CRAFT 5's *"nothing in
+        # frame repeats in a way the eye can index"* and it was true -- the
+        # loop above emitted the same three solids at twelve even angles.
+        # Each pier now takes a course count of 3, 4 or 5 and a capital height
+        # off `_vary`, so the eye finds no period; the SPACING stays exact,
+        # because a structural bay pitch that wandered would be a lie about
+        # what holds the dome up.
+        pcourses = 3 + _vary(prog["key"], "piercourse", i, (0, 1, 2))
+        pcap = _vary(prog["key"], "piercap", i, (0.10, 0.14, 0.19))
+        for k in range(pcourses):
+            py0 = 0.30 + (DOME_WALL_M - 0.90) * k / pcourses
+            py1 = 0.30 + (DOME_WALL_M - 0.90) * (k + 1) / pcourses - 0.05
+            _seg(v, t, g, _vary(prog["key"], f"pierplate{i}", k, PLATE_COOL),
+                 r - 0.108, r - 0.070, a1 - GAP_A * 0.85, a1 + GAP_A * 0.85,
+                 py0, py1)
+        _seg(v, t, g, D_TRIM, r - 0.120, r - 0.060, a1 - GAP_A * 1.5,
+             a1 + GAP_A * 1.5, DOME_WALL_M - 0.34 - pcap,
+             DOME_WALL_M - 0.34)
+        _bolt_row(v, t, g, M_BOLT, r - 0.108, a1, 0.36, DOME_WALL_M - 0.52)
 
     # THE CORNICE the dome springs from.
     _revolve(v, t, g, D_PALE,
@@ -1540,17 +1985,58 @@ def _dome_fittings(v, t, g, prog, r, n, ea):
     # is a plate on a carrier with a stow rail, because a shutter that is one
     # slab is a slab.
     if prog.get("shutters"):
+        # THE LEAVES ARE NOT ONE LEAF TWELVE TIMES. Round 2, and it is the
+        # clause the critic could actually index: *"the nine perforated panels
+        # above the light cove ... are one panel at even angular spacing"*.
+        # `before-dome1-normal.png` shows exactly that -- the same slab, the
+        # same two clips, at n even angles.
+        #
+        # THE PITCH STAYS EVEN AND THE LEAF CHANGES. A shutter ring whose
+        # leaves were unevenly spaced would not close, so what varies is what
+        # a maintainer would actually vary: how many drive clips a leaf
+        # carries, where they sit, how far it is stowed off the ring, and
+        # whether it is a plain leaf or the ONE INSPECTION LEAF per dome --
+        # the leaf with a hinged access panel and a handle in it, which every
+        # shutter ring on a pressure hull has exactly one of.
+        insp = _vary(prog["key"], "inspectleaf", 0, tuple(range(n)))
         for i in range(n):
             a0 = math.tau * (i + 0.10) / n + ea
             a1 = math.tau * (i + 0.90) / n + ea
-            _seg(v, t, g, "prop_blast_door", r - 0.62, r - 0.28, a0, a1,
-                 DOME_WALL_M - 0.06, DOME_WALL_M + 0.60)
-            _seg(v, t, g, D_TRIM, r - 0.66, r - 0.60, a0 - 0.01, a1 + 0.01,
+            stow = _vary(prog["key"], "leafstow", i, (0.0, 0.018, 0.036))
+            _seg(v, t, g, "prop_blast_door", r - 0.62 - stow, r - 0.28 - stow,
+                 a0, a1, DOME_WALL_M - 0.06, DOME_WALL_M + 0.60)
+            _seg(v, t, g, D_TRIM, r - 0.66 - stow, r - 0.60 - stow,
+                 a0 - 0.01, a1 + 0.01,
                  DOME_WALL_M - 0.10, DOME_WALL_M + 0.64)
-            for f in (0.22, 0.78):
-                ac = a0 + (a1 - a0) * f
-                _seg(v, t, g, M_METAL, r - 0.70, r - 0.63, ac - 0.014,
-                     ac + 0.014, DOME_WALL_M - 0.02, DOME_WALL_M + 0.56)
+            clips = _vary(prog["key"], "leafclips", i, (2, 3, 4))
+            for k in range(clips):
+                ac = a0 + (a1 - a0) * (k + 0.5) / clips
+                _seg(v, t, g, M_METAL, r - 0.70 - stow, r - 0.63 - stow,
+                     ac - 0.014, ac + 0.014,
+                     DOME_WALL_M - 0.02, DOME_WALL_M + 0.56)
+            # the stiffener rib, at a height that is not the same height twice
+            ry = DOME_WALL_M + 0.60 * _vary(prog["key"], "leafrib", i,
+                                            (0.24, 0.40, 0.56))
+            _seg(v, t, g, D_TRIM, r - 0.655 - stow, r - 0.615 - stow,
+                 a0 + 0.012, a1 - 0.012, ry - 0.024, ry + 0.024)
+            if i == insp:
+                am2 = (a0 + a1) / 2.0
+                _seg(v, t, g, M_RECESS, r - 0.645 - stow, r - 0.600 - stow,
+                     am2 - 0.052, am2 + 0.052,
+                     DOME_WALL_M + 0.10, DOME_WALL_M + 0.40)
+                _seg(v, t, g, "prop_blast_door", r - 0.672 - stow,
+                     r - 0.640 - stow, am2 - 0.046, am2 + 0.046,
+                     DOME_WALL_M + 0.13, DOME_WALL_M + 0.37)
+                _bolt_row(v, t, g, M_BOLT, r - 0.672 - stow, am2 - 0.050,
+                          DOME_WALL_M + 0.13, DOME_WALL_M + 0.37)
+                _strut(v, t, g, M_BOLT,
+                       ((r - 0.678 - stow) * math.cos(am2 + 0.030),
+                        DOME_WALL_M + 0.25,
+                        (r - 0.678 - stow) * math.sin(am2 + 0.030)),
+                       ((r - 0.730 - stow) * math.cos(am2 + 0.030),
+                        DOME_WALL_M + 0.25,
+                        (r - 0.730 - stow) * math.sin(am2 + 0.030)),
+                       0.022, seg=6)
         _console(v, t, g, (r - 0.62) * math.cos(ea + math.pi),
                  (r - 0.62) * math.sin(ea + math.pi), ea + math.pi)
 
@@ -1927,10 +2413,18 @@ def _selftest():
     # ...AND THE CONTROL, which is the room this session started from: put the
     # palette back to the shell names and count again.
     _saved = {k: getattr(_mod, k) for k in _PALETTE}
+    _sfam = (_mod.PLATE_COOL, _mod.PLATE_WARM, _mod._VARY_OFF)
     try:
         for k in _PALETTE:
             setattr(_mod, k, "worship_wall" if not k.startswith("L_")
                     else "light_pilaster_strip")
+        # AND THE PLATE FAMILIES COLLAPSE WITH IT. They are part of the
+        # palette as of round 2 (INV-1222) and a control that left them
+        # standing would report the families' own six materials as evidence
+        # for the palette they are not part of -- which is this file's own
+        # "a diff of two failed runs is not a pass", one level up.
+        _mod.PLATE_COOL = _mod.PLATE_WARM = ("worship_wall",)
+        _mod._VARY_OFF = True
         ctl = {}
         for key in sorted(PROGRAMS):
             _v2, _t2, g2 = room(schema, profile, dr.by_key(key))
@@ -1940,6 +2434,7 @@ def _selftest():
     finally:
         for k, val in _saved.items():
             setattr(_mod, k, val)
+        _mod.PLATE_COOL, _mod.PLATE_WARM, _mod._VARY_OFF = _sfam
     # A FIFTH, not a fixed number: the domes keep more of their materials
     # under the control than the rotunda does, because a watch room's consoles,
     # lockers, seats, doors and rails are already varied and it is the SHELL
@@ -1947,6 +2442,131 @@ def _selftest():
     check("...and with the palette collapsed to the shell names it falls",
           all(ctl[k] <= len(used[k]) * 0.8 for k in ctl),
           f"control {ctl} against {({k: len(u) for k, u in used.items()})}")
+
+    # ---------------------------------------------------------------------
+    # SESSION 4t ROUND 2'S TWO GATES. Both are about the SAME surface -- the
+    # window-band plate the round-2 finding named -- and they ask two
+    # different questions about it, because the finding made two different
+    # complaints and one of them cannot be answered by counting.
+    # ---------------------------------------------------------------------
+
+    # (4) THE PLATE IS NOT ONE PLATE. The finding: *"the largest object in
+    # frame at 1 m is a smooth lambert gradient ... the only variation across
+    # it is the lighting falloff"*. The cheap universal form of that question
+    # is the one gate (3) already uses -- IDENTITY, not similarity -- asked of
+    # the plated band alone rather than of the whole room, because a room can
+    # reach thirty materials on its consoles while its wall stays one value,
+    # which is precisely what gate (3) passed on.
+    fams = set(PLATE_COOL) | set(PLATE_WARM)
+    plated = {}
+    for key, (_v, _t, gg) in built.items():
+        plated[key] = {mats.resolve_any(nm, "interior").name
+                       for nm, _a, _b in gg if nm in fams
+                       and mats.resolve_any(nm, "interior")}
+        check(f"{key}: the wall plate carries at least 4 measured surfaces",
+              len(plated[key]) >= 4,
+              f"{len(plated[key])}: {sorted(plated[key])}")
+
+    # ...AND THE CONTROL IS THE WALL THIS ROUND STARTED FROM. `_VARY_OFF`
+    # makes `_vary` return `options[0]` every time, which is one flat value
+    # over the whole ring -- the round-1 build, in one flag.
+    try:
+        _mod._VARY_OFF = True
+        ctl_p = {}
+        for key in sorted(PROGRAMS):
+            _v2, _t2, g2 = room(schema, profile, dr.by_key(key))
+            ctl_p[key] = len({mats.resolve_any(nm, "interior").name
+                              for nm, _a, _b in g2 if nm in fams
+                              and mats.resolve_any(nm, "interior")})
+    finally:
+        _mod._VARY_OFF = False
+    check("...and with the per-plate variation withdrawn it is ONE surface",
+          all(c == 1 for c in ctl_p.values()), f"{ctl_p}")
+
+    # (5) NOTHING DEPOSITS ON AN UNDERSIDE. The finding's sharpest clause, and
+    # it is a RULE rather than a fitting: *"the wear decals are
+    # position-independent -- the same blob set appears on the UNDERSIDES of
+    # the rotunda collars ... where nothing would deposit."*
+    #
+    # The rule this module can state and check is that the varied family is
+    # emitted ONLY on faces a deposit could not reach anyway: a plate stands
+    # PROUD, so its up- and down-facing faces are its EDGES and nothing else.
+    #
+    # A FRACTION OF AREA WAS THE WRONG STATISTIC AND IT IS WORTH RECORDING WHY,
+    # because it is the same shape of error this file already carries about
+    # medians. Written as "under 6% of the plated area faces up or down" the
+    # gate failed at 13-15% on a correct wall -- because a plate 1.15 m long
+    # standing `PLATE_PROUD_M` off its substrate has, by construction, an edge
+    # band of exactly that thickness top and bottom, and 0.051 / (0.26 + 0.051)
+    # IS 14%. The statistic was measuring the plate's own thickness.
+    #
+    # The question that actually distinguishes a plate edge from a collar
+    # underside is SIZE, not proportion: no horizontal facet carrying a family
+    # material may be larger than one whole plate edge,
+    # `PLATE_L_M * (PLATE_PROUD_M + PLATE_DRAFT_M)`. That bound is derived from
+    # the plate the family is allowed to be, so it cannot be tuned; a soffit,
+    # a ledge, a cornice or the corbel underside the finding names is one to
+    # two orders of magnitude over it.
+    edge_max = PLATE_L_M * (PLATE_PROUD_M + PLATE_DRAFT_M)      # 0.0587 m2
+    for key, (vv, tt, gg) in built.items():
+        worst = 0.0
+        for nm, t0, t1 in gg:
+            if nm not in fams:
+                continue
+            for a, b, c in tt[t0:t1]:
+                p0, p1, p2 = vv[a], vv[b], vv[c]
+                u = [p1[i] - p0[i] for i in range(3)]
+                w = [p2[i] - p0[i] for i in range(3)]
+                nv = (u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2],
+                      u[0] * w[1] - u[1] * w[0])
+                ar = 0.5 * math.sqrt(sum(x * x for x in nv))
+                if ar > 0.0 and abs(nv[1]) / (2.0 * ar) > 0.5:
+                    worst = max(worst, ar)
+        check(f"{key}: no varied plate lands on a horizontal face",
+              worst <= edge_max,
+              f"largest up/down facet {worst:.4f} m2 against a plate edge's "
+              f"{edge_max:.4f} m2")
+
+    # ...AND THE CONTROL, which is the defect the finding describes: put the
+    # family on a horizontal surface -- the rotunda's own corbel underside is
+    # the one it names -- and the fraction goes through the bound.
+    _rr = _rotunda_fittings
+
+    def _ctl_fittings(v2, t2, g2, prog2, r2, n2, ea2):
+        _rr(v2, t2, g2, prog2, r2, n2, ea2)
+        for i2 in range(n2):
+            a2 = ea2 + math.tau * i2 / n2
+            _pad(v2, t2, g2, PLATE_WARM[i2 % len(PLATE_WARM)],
+                 [((r2 - 0.30) * math.cos(a2 - 0.10),
+                   (r2 - 0.30) * math.sin(a2 - 0.10)),
+                  ((r2 - 0.30) * math.cos(a2 + 0.10),
+                   (r2 - 0.30) * math.sin(a2 + 0.10)),
+                  ((r2 - 1.10) * math.cos(a2 + 0.10),
+                   (r2 - 1.10) * math.sin(a2 + 0.10)),
+                  ((r2 - 1.10) * math.cos(a2 - 0.10),
+                   (r2 - 1.10) * math.sin(a2 - 0.10))],
+                 ROT_ENTAB_M - 0.06, ROT_ENTAB_M - 0.02)
+    try:
+        _mod._rotunda_fittings = _ctl_fittings
+        vc, tc, gc = room(schema, profile, dr.by_key("obs_rotundas"))
+    finally:
+        _mod._rotunda_fittings = _rr
+    worst_c = 0.0
+    for nm, t0, t1 in gc:
+        if nm not in fams:
+            continue
+        for a, b, c in tc[t0:t1]:
+            p0, p1, p2 = vc[a], vc[b], vc[c]
+            u = [p1[i] - p0[i] for i in range(3)]
+            w = [p2[i] - p0[i] for i in range(3)]
+            nv = (u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2],
+                  u[0] * w[1] - u[1] * w[0])
+            ar = 0.5 * math.sqrt(sum(x * x for x in nv))
+            if ar > 0.0 and abs(nv[1]) / (2.0 * ar) > 0.5:
+                worst_c = max(worst_c, ar)
+    check("...and with a varied plate laid on the corbel underside it fails",
+          worst_c > edge_max,
+          f"control's largest up/down facet is only {worst_c:.4f} m2")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
