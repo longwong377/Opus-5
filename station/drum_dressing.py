@@ -2226,6 +2226,15 @@ CROP_TYPES = (
 # every 4.04 m.
 CROP_CROWN_BREAK = 0.16
 CROP_WANDER_M = 0.07
+# How much of its height a drill keeps where it runs out into the headland.
+# Not zero, because a zero-height end ring makes the end cap a degenerate
+# triangle and `_selftest` asserts every near prototype is a closed solid with
+# positive signed volume. 0.10 of 0.95 m is 95 mm, which is under
+# `drum_ground.NEAR_GROUND_TOL_M` and therefore under anything a player's foot
+# resolves. -- INV-990
+CROP_RUNOUT = 0.10
+# How much of a 2x2 coarse block one land covers, leaving the rest as furrow.
+COARSE_LAND_COVER = 0.92
 
 # A TRAMLINE IS THE WHEELING A BOOM LEAVES, so its spacing is the boom's span
 # and not a look. `GANTRY_SPAN_M` is the irrigation boom this module already
@@ -2390,8 +2399,12 @@ def _near_proto(item, group, index, lod):
         # cell carries the tramline. Encoding it in the item name rather than in
         # a parameter is what keeps `_NEAR_PROTO` a correct cache: two cells
         # that differ in what they grow must not share a prototype.
+        # "crop<ci><t|->|<ends>" -- crop type, tramline flag, and which of the
+        # two z ends runs out into ground that carries no crop. Fixed width so
+        # the `_NEAR_PROTO` key is unambiguous.
         ci = int(item[4]) % len(CROP_TYPES)
-        tram = item.endswith("t")
+        tram = item[5] == "t"
+        ends = item[6] if len(item) > 6 else "-"
         _nm, ch, wfrac, cfrac, _tl = CROP_TYPES[ci]
         rows = 1 if lod >= 2 else CROP_ROWS
         p1 = crop_pitch_m()
@@ -2408,7 +2421,18 @@ def _near_proto(item, group, index, lod):
             # Sized to the OUTER extent of the three instead, the coarse drill
             # swallows them and the switch stops being a seam. The height is
             # the mean of the three rows for the same reason.
-            halfw = p1 * (CROP_ROWS - 1) / 2.0 + p1 * wfrac * 0.5
+            # A COARSE CROP IS A LAND, NOT A STAND. `near_field` decimates the
+            # coarse rung to one cell in four -- right for a tussock, which is
+            # a scatter, and wrong for a drill, which is a continuous field
+            # feature: `scratchpad/drum4t/after-pnormal.png`'s first take is a
+            # CHECKERBOARD of isolated 4 m patches on a lattice, which is the
+            # same "eye can index it" defect the 3.90 m stripe was. So the one
+            # surviving cell of each 2x2 block draws a broad land covering the
+            # whole block, with a furrow left between lands. Triangle-neutral:
+            # one drill either way.
+            cell_a = 2.0 * math.pi * dg.FLOOR_R / dg.CELLS_A
+            halfw = cell_a * COARSE_LAND_COVER
+            cfrac = max(cfrac, 0.78)
         cz = (dg.Z1 - dg.Z0) / dg.CELLS_Z
         # SEGMENTS PER CELL, and the count went DOWN at the middle rung while
         # the section went from three points to four. A three-point section is a
@@ -2424,6 +2448,11 @@ def _near_proto(item, group, index, lod):
             if tram and rows == CROP_ROWS and r == CROP_ROWS // 2:
                 continue          # the wheeling: one drill left undrilled
             x0 = (r - (rows - 1) / 2.0) * pitch
+            if rows == 1:
+                # Centred on the 2x2 block this stand speaks for, not on its
+                # own cell, and spanning both of the block's cells in z so
+                # consecutive blocks abut instead of leaving a gap.
+                x0 = cell_a / 2.0
             # THE ROW'S HEIGHT IS KEYED ON (crop, row) AND NOT ON THE CELL, and
             # the first version was keyed on the cell -- which put a STEP AT
             # EVERY 4.04 m, because consecutive cells drew different prototypes
@@ -2440,8 +2469,12 @@ def _near_proto(item, group, index, lod):
                               for q in range(CROP_ROWS)) / CROP_ROWS
             else:
                 hh = ch * (0.90 + 0.20 * _unit(SEED, "drill", ci, r))
+            z0, z1 = (-cz / 2.0, 1.5 * cz) if rows == 1 else (-cz / 2.0,
+                                                              cz / 2.0)
             _drill(v, t, g, group, x0, halfw, halfw * cfrac,
-                   -cz / 2.0, cz / 2.0, hh, segs, seed=f"{seed}/{r}")
+                   z0, z1, hh, segs, seed=f"{seed}/{r}",
+                   taper_lo="b" in ends or "a" in ends,
+                   taper_hi="c" in ends or "a" in ends)
     elif item == "clod":
         # A turned clod. Four sides and one stack -- eight triangles -- because
         # at 16 px it is a lump and not a shape, and because there are of order
@@ -2531,7 +2564,8 @@ def _squash(v, sx, sz):
         v[i] = (x * sx, y, z * sz)
 
 
-def _drill(v, t, g, name, x0, halfw, crownw, z0, z1, h, segs, seed="d"):
+def _drill(v, t, g, name, x0, halfw, crownw, z0, z1, h, segs, seed="d",
+           taper_lo=False, taper_hi=False):
     """One drilled crop row: a trapezoidal section swept along the axis.
 
     FOUR POINTS A RING RATHER THAN THREE, and that is the near field's whole
@@ -2557,6 +2591,16 @@ def _drill(v, t, g, name, x0, halfw, crownw, z0, z1, h, segs, seed="d"):
         env = math.sin(math.pi * f)
         hh = h * (1.0 + CROP_CROWN_BREAK * env
                   * (_unit(seed, "k", k) - 0.5) * 2.0)
+        # A DRILL THAT RUNS OUT INTO A HEADLAND MUST RUN OUT, NOT STOP DEAD.
+        # A drill ending in a full-height cross-section leaves a vertical face
+        # along the whole width of the field, and a vertical face on the drum
+        # floor takes no light from lamps 200 m overhead: it renders as a hard
+        # black band running across the crop, which is what
+        # `scratchpad/drum4t/after-near.png` shows at every headland. Tapering
+        # the end ring to `CROP_RUNOUT` of the height turns it into the last
+        # few metres of a drill, which is what it is.
+        if (taper_lo and k == 0) or (taper_hi and k == n):
+            hh = h * CROP_RUNOUT
         wx = CROP_WANDER_M * env * (_unit(seed, "w", k) - 0.5) * 2.0
         v.append((x0 - halfw + wx, -NEAR_SINK_M, z))
         v.append((x0 - crownw + wx, hh, z))
@@ -2724,6 +2768,20 @@ def _crop_index(kind):
     return int(tail) % len(CROP_TYPES) if tail.isdigit() else 0
 
 
+def _no_crop(ia, iz):
+    """Does this cell carry no crop at all -- headland, road, band, off the end?
+
+    The question a drill's END has to ask, because a drill that stops dead
+    against nothing leaves a vertical face across the whole field.
+    """
+    if not (0 <= iz < dg.CELLS_Z):
+        return True
+    k = _lattice_sample(ia, iz)[1]
+    if not (k == "arable" or (k.startswith("arable") and k[6:].isdigit())):
+        return True
+    return _is_headland(ia, iz)
+
+
 _HEADLAND_CACHE = {}
 
 
@@ -2821,8 +2879,12 @@ def near_field(eye, radius=None, full_m=None, gain=None):
                     if not head:
                         tram = (has_tram
                                 and ia % tramline_cells() == 0)
+                        lo = _no_crop(ia, iz - 1)
+                        hi = _no_crop(ia, iz + (2 if lod >= 2 else 1))
+                        ends = ("a" if lo and hi else
+                                "b" if lo else "c" if hi else "-")
                         out.append(NearItem(
-                            f"crop{ci}{'t' if tram else ''}", grp,
+                            f"crop{ci}{'t' if tram else '-'}{ends}", grp,
                             ia * 7 + iz, ang, z, gr, 0.0, 1.0,
                             ch, cell_a * 0.72, lod, kind))
                     # CLODS, on the tilled soil the drills stand in and on the
@@ -3638,7 +3700,7 @@ def _selftest():
         return out
 
     for _ci in range(len(CROP_TYPES)):
-        _it = f"crop{_ci}"
+        _it = f"crop{_ci}--"
         _a, _b = _ends(_it, 0), _ends(_it, 3)
         check(f"crop {CROP_TYPES[_ci][0]} tiles without a step at the cell seam",
               _a == _b and _a[0] and _a[0] == _a[1],
@@ -3650,7 +3712,7 @@ def _selftest():
     # here from the old expression, and the two must DISAGREE -- if they agree,
     # the tiling check above is asserting a tautology and proves nothing.
     _ch = CROP_TYPES[0][1]
-    _old = [_ch * (0.90 + 0.20 * _unit(f"{SEED}/near/crop0/{_i}", "h", 0))
+    _old = [_ch * (0.90 + 0.20 * _unit(f"{SEED}/near/crop0--/{_i}", "h", 0))
             for _i in (0, 3)]
     check("the tiling check can see a per-cell height",
           abs(_old[0] - _old[1]) > 1e-4,
@@ -3667,8 +3729,8 @@ def _selftest():
           abs(dg.NEAR_GROUND_M - NEAR_FULL_M) / NEAR_FULL_M < 0.05,
           f"ground {dg.NEAR_GROUND_M} m vs cover {NEAR_FULL_M:.3f} m")
 
-    _crop_items = [f"crop{_c}{_t}" for _c in range(len(CROP_TYPES))
-                   for _t in ("", "t")]
+    _crop_items = [f"crop{_c}{_t}{_e}" for _c in range(len(CROP_TYPES))
+                   for _t in ("-", "t") for _e in ("-", "a", "b", "c")]
     for item in _crop_items + ["clod", "tussock", "scrub", "margin",
                                "reedtuft", "stone", "boxhedge", "wall"]:
         for lod in (0, 1, 2):
