@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "_note": "Builder self-assessment for MASTER-PLAN R5, round 2. A build agent reviewing its own work is NOT a round (AAA-STANDARD.md, 'Round zero is the build'). Written here rather than to docs/aaa-scorecard.json to avoid colliding with the other 4t agents.",
+  "subsystems": {
+    "streaming_reach": {
+      "status": "active",
+      "rounds": [
+        {
+          "round": 2,
+          "reviewer": "build-4t-streaming_reach (self, not a review round)",
+          "scores": { "craft": 3, "fidelity": 3, "performance": 2, "robustness": 4 },
+          "evidence": {
+            "robustness": "Two orthogonal negative controls, both run and both quoted. (1) the reviewer's own edit -- obs_dome_2 z_m 7960 -> 7700 in blue_0_0_places.json -- now gives exit 1 and `verdict=FAIL handoff=PASS arrival=NONE`, naming blue_0_0_c04z12 and its inventory `(no place-tagged group at all)`. (2) `if true: continue` in the free loop gives `verdict=FAIL handoff=FAIL arrival=obs_dome_2@blue_0_0_c04z15 x108 groups`. The two failure modes are separable, which is the property the previous version lacked.",
+            "craft": "Not a geometry item; scored as behaviour per AAA-STANDARD's CRAFT clause for subsystems with no geometry. A body walks 1,507.4 m across 20 cell hand-offs, 0 frames off the floor, max activate 3.3 ms, and arrives standing on 108 mesh groups of the named place."
+          },
+          "broke_assertions": true,
+          "what_is_good": [
+            "the walk itself is real: 1,507.4 m of floor, 11 cells entered, 20 boundary crossings, resident peak 7 with a drawdown of 5",
+            "arrival is now a claim about triangles that exist, verified in the same frame the body is standing there",
+            "the budget overage is printed on every run with its ratio and frame count and is never implied by silence"
+          ],
+          "findings": [
+            { "severity": "major", "dimension": "performance", "descriptor": "P2",
+              "where": "godot/scripts/stream.gd resident set",
+              "text": "peak resident 359,584 tri against a 180,000 budget (2.00x) for 2,588 frames. Measured on ONE deck of 251 in the manifest / 71 in the register, which is one convenient case by definition. station/budget.py owns the number; --strict-budget puts it in an exit code." },
+            { "severity": "major", "dimension": "fidelity", "descriptor": "F3",
+              "where": "station/generated/scene/station/cells",
+              "text": "1 deck baked of 251 in cell_manifest.json deck_table, 1 of 71 the register addresses; STATE.md records a 70-deck bake. NOTHING in the repository states the intended denominator, so the gate covers 1/71 of the addressed station however it passes." },
+            { "severity": "major", "dimension": "craft", "descriptor": "C3",
+              "where": "the walk",
+              "text": "the gate walks the 2.16 m axial spine only, and `_wiring` is null in it, so doors are solid trimeshes and no NPC, interactable or crowd is exercised on the traverse. It proves the streamer hands off; it does not prove the far cluster is a place worth arriving in." }
+          ]
+        }
+      ]
+    }
+  }
+}
