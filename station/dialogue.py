@@ -2112,6 +2112,468 @@ ROLE_CLAUSE = {
     },
 }
 
+# THE SECOND CLAUSE. 19 x 11 = 209 MORE SENTENCES, AND THE REASON THEY HAD TO
+# BE WRITTEN RATHER THAN GENERATED IS A FINDING AGAINST THE FIRST ATTEMPT.
+#
+# DLG-02's arithmetic is *"11 topics x 2 variants + 8 greet/farewell = 30"*.
+# The first build spent the "x 2" on `SPECIES_FRAME`: one role clause put
+# through the species' two affixes, counted as two lines. That is an affix, not
+# a variant -- a Narn dockworker's two "port" lines were the same sentence with
+# "No more than that." on one and "It is simple enough." in front of the other,
+# and the same two affixes wrapped all eleven topics. Nineteen real utterances
+# were being reported as thirty. The species frame is REGISTER MODULATION and
+# the annex says so in its own sentence -- *"Species register constraints
+# carried"* -- so it may not also be the variant count.
+#
+# So the variant is a second thing the role has to say about the subject, and
+# it is a different thought rather than a rephrasing: where clause A gives the
+# fact, clause B gives what the fact costs the speaker, or who it is really
+# about, or the part of it they would rather you did not ask. Read down any
+# role's column and the two halves are answerable in sequence without either
+# sounding like the other. INV-1020.
+#
+# BRACE DISCIPLINE: a clause may name only the keys its own topic's fact
+# supplies -- port {ship}/{when}/{souls}, news {text}, beat
+# {sector}/{min}/{on}, trade {counter}/{where}, shift {job}/{start}/{end},
+# meal {where}/{meals}, home {home}, worship {where}, visa {visa}; era and
+# refusal take none. `_selftest` renders all 418 against the topic facts, so a
+# clause that asks the station for a value it did not compute fails at import
+# rather than in a player's face.
+ROLE_CLAUSE_B = {
+    "command": {
+        "port": "Whoever signed the {ship} out at the other end is not the one "
+                "who has to berth her. I am.",
+        "news": "The version on the screen and the version in the traffic are "
+                "not the same version. Neither is a lie.",
+        "beat": "{on} officers is what the establishment allows. What the ring "
+                "needs is not a number anybody has asked me for.",
+        "trade": "A licence at {where} is a promise that somebody will answer "
+                 "for it. Most days somebody does.",
+        "shift": "{start} is when the watch begins. The hour before it is when "
+                 "the work is actually decided.",
+        "meal": "I have eaten at {where} with people who wanted something from "
+                "me. It is still the best table on the station.",
+        "home": "A door at {home} with my name on it, and I could not tell you "
+                "the last time I shut it before midnight.",
+        "worship": "There is no chapel on a duty roster. There is {where}, and "
+                   "there is whether I go.",
+        "visa": "The card says what I am allowed. It says nothing about what I "
+                "am answerable for, which is the longer list.",
+        "era": "Orders arrive faster than the reasons for them. That gap is "
+               "where a command either holds or does not.",
+        "refusal": "lets the silence run until you have finished, and then goes",
+    },
+    "security": {
+        "port": "The {ship} means four hours of people who do not know where "
+                "anything is, and one who knows exactly.",
+        "news": "{text}. Half the shift believes it and the other half has "
+                "stopped saying which half they are in.",
+        "beat": "You learn a ring by what is different on the second lap. "
+                "{min:.0f} minutes is long enough to forget and short enough "
+                "to notice.",
+        "trade": "The trouble is never the {counter}. It is the two metres "
+                 "either side of it, where nobody is standing.",
+        "shift": "Off at {end} is a thing we say. The report is what actually "
+                 "decides when I go home.",
+        "meal": "You eat where you can see the door. That narrows it down to "
+                "about three places, and {where} is one.",
+        "home": "{home} is close enough that the post can knock, and it has.",
+        "worship": "I have carried people out of {where} and I have sat in it "
+                   "afterwards. Both count, I think.",
+        "visa": "Most of what I do is reading a card and watching the face "
+                "above it. The face is the part they cannot forge.",
+        "era": "The new pamphlets came with a distribution list and no "
+               "signature. I have kept one.",
+        "refusal": "steps between you and the corridor and waits",
+    },
+    "customs": {
+        "port": "{souls} of them, and every one arrives certain that their "
+                "case is the exception. Four of them are right.",
+        "news": "They will not print the part that reaches this desk, which is "
+                "which declarations stop being accepted on Tuesday.",
+        "beat": "A queue is its own patrol. Nothing gets past it and everybody "
+                "in it is watching everybody else.",
+        "trade": "Everything on that counter crossed this desk first, and "
+                 "somebody on the far side of the hall priced the delay in.",
+        "shift": "The positions open at {start} whether the staff are on them "
+                 "or not, and that is how the queue at {end} is made.",
+        "meal": "There is a tray at {where} with my name written on the lid in "
+                "grease pencil. That is the whole of {meals} some days.",
+        "home": "I go home to {home} and I stop reading things for eight "
+                "hours. It is the discipline of the job.",
+        "worship": "You cannot stamp a soul. Somebody said that to me at "
+                   "{where} and I have not been able to put it down.",
+        "visa": "The card is not the question. The question is what somebody "
+                "was willing to say to get it.",
+        "era": "A form changed and the old one stopped being valid overnight, "
+               "and I turned away people who had done nothing wrong.",
+        "refusal": "stamps something that did not need stamping",
+    },
+    "traffic": {
+        "port": "{ship} is a mass and a vector until she is docked. Then she is "
+                "somebody else's problem.",
+        "news": "It moves the departures before it moves anything else. Watch "
+                "the board, not the screen.",
+        "beat": "The ring has {on}. The approach has me, and the approach is "
+                "where somebody actually dies.",
+        "trade": "{where} is a berth number to me. What is sold there is three "
+                 "decks and one profession away.",
+        "shift": "{start} to {end}, and the handover is ninety seconds. You do "
+                 "not chat over a live board.",
+        "meal": "{meals}. Between hulls, at {where}, and cold if the window "
+                "closes.",
+        "home": "{home}. Twelve minutes if the lift behaves, which is why I "
+                "took it.",
+        "worship": "{where} is quiet and the quiet is the point. I do not go "
+                   "for the rest of it.",
+        "visa": "{visa}. Controllers are cleared, re-cleared and cleared again. "
+                "Nobody has ever asked me to see it.",
+        "era": "Departures rose eleven per cent and nobody in this room will "
+               "say the word for that out loud.",
+        "refusal": "holds up one finger for silence and does not lower it",
+    },
+    "medical": {
+        "port": "{souls} came off the {ship} and none of them declared what "
+                "they were carrying, because none of them knew.",
+        "news": "The screens say it once. I see it six weeks later in what "
+                "people have stopped coming in for.",
+        "beat": "{min:.0f} minutes is the honest figure for how long somebody "
+                "lies on a deck plate before anyone finds them.",
+        "trade": "I do not tell people not to buy at {where}. I tell them what "
+                 "to do when it goes wrong, which is more use.",
+        "shift": "There is no {end} in medicine. There is a point at which "
+                 "somebody else is competent to hold it.",
+        "meal": "Eating at {where} is the only part of the day I am not being "
+                "asked a question.",
+        "home": "{home}. There is a bed in it that I use as somewhere to put "
+                "the coat.",
+        "worship": "Half of what happens at {where} is people needing to be "
+                   "told it was not their fault. I do that too, with worse "
+                   "grace.",
+        "visa": "I treat the person in front of me. If the card says they are "
+                "not entitled, the card can wait outside.",
+        "era": "I am being asked which patients I have seen, and by people who "
+               "have no medical reason to know.",
+        "refusal": "writes something on the chart and does not look up",
+    },
+    "diplomat": {
+        "port": "One is expected to know who was aboard the {ship} without "
+                "having asked, and to be surprised by none of it.",
+        "news": "The question is never what was announced. It is who was told "
+                "the evening before, and in what room.",
+        "beat": "Security is a courtesy extended to a mission, and a courtesy "
+                "extended can be withdrawn. One notices the strength of it.",
+        "trade": "A gift bought at {where} says one thing. The same gift bought "
+                 "at a rival's counter says quite another.",
+        "shift": "Between {start} and {end} I will say nothing of consequence, "
+                 "and every word of it will be reported home.",
+        "meal": "Who is seated beside whom at {where} is the entire despatch. "
+                "The food is a formality.",
+        "home": "One entertains at {home} precisely as often as the budget and "
+                "the appearance of confidence require.",
+        "worship": "Observance in a foreign house is a language. I speak it "
+                   "adequately and I am not fluent.",
+        "visa": "Immunity is a door that opens outward. It keeps rather less "
+                "out than people imagine.",
+        "era": "My instructions have been rewritten twice and neither draft "
+               "explained what the first one had got wrong.",
+        "refusal": "smiles, and the smile closes the subject entirely",
+    },
+    "envoy": {
+        "port": "She was late. You knew.",
+        "news": "You have decided already.",
+        "beat": "Circles. Always circles.",
+        "trade": "You will buy. Then you will understand why.",
+        "shift": "There is no {end}.",
+        "meal": "You eat to be somewhere.",
+        "home": "A room is a place you are not.",
+        "worship": "You go to be asked nothing.",
+        "visa": "Paper. For the paper.",
+        "era": "The ones who ask are already too late.",
+        "refusal": "waits, and the waiting is the answer",
+    },
+    "cleric": {
+        "port": "Someone off the {ship} will come to us at three in the "
+                "morning with nowhere else, and we will not ask which ship.",
+        "news": "We read the screens afterwards because the hour itself asks "
+                "for attention, and attention is the whole discipline.",
+        "beat": "The officers walk it to see what is wrong. We walk it to be "
+                "seen by whoever needs to see somebody.",
+        "trade": "The {counter} sends us what will not keep another day, and I "
+                 "have never once been asked to be grateful for it in public.",
+        "shift": "The hours do not move for the station's clock. That is "
+                 "awkward, and it is meant to be.",
+        "meal": "The first {meals} is taken in silence because a person who "
+                "cannot be quiet at {where} cannot be quiet anywhere.",
+        "home": "A cell at {home} with one chair in it. I have wanted for "
+                "nothing and I have not always been glad about that.",
+        "worship": "People come for the quiet and stay for the company. I have "
+                   "stopped pretending that is the wrong reason.",
+        "visa": "We have stood surety for people whose papers were a lie, and "
+                "I would do it again, and I have told my superiors so.",
+        "era": "The confessions have changed. People are frightened of each "
+               "other now, and that is a different thing to be frightened of.",
+        "refusal": "bows the head briefly and goes back to the lamps",
+    },
+    "financier": {
+        "port": "Every hull that touches this station is somebody's collateral, "
+                "and half of them are insured by people who have never seen a "
+                "bay.",
+        "news": "{text}. What matters is the spread it opened and who was "
+                "standing on the right side of it.",
+        "beat": "A claim from {sector} ring is settled on the officer's report. "
+                "I have read reports written by people who did not attend.",
+        "trade": "The {counter} at {where} keeps two sets of figures and shows "
+                 "me the duller one. That is normal and I price it in.",
+        "shift": "{job} keeps banking hours in a place with no dawn. It is "
+                 "arbitrary and it is the only thing holding the settlement "
+                 "window together.",
+        "meal": "Lunch at {where} is where the terms are actually agreed. What "
+                "happens at the desk afterwards is stationery.",
+        "home": "{home}. I could halve that rent and I would lose more in "
+                "meetings than I saved.",
+        "worship": "Being seen at {where} costs an hour and buys a great deal "
+                   "of credit that does not appear on any ledger.",
+        "visa": "A visa is a liability with a date on it. So is a marriage, "
+                "and people take those less seriously.",
+        "era": "Risk is repriced by rumour and settled by fact, and there are "
+               "six weeks between the two where a fortune sits.",
+        "refusal": "caps the stylus and turns the ledger face down",
+    },
+    "merchant": {
+        "port": "{souls} off the {ship}, and the trick is knowing which forty "
+                "of them have not yet been told what things cost here.",
+        "news": "Whatever it is, my carrier will have heard it first and my "
+                "price will move before yours does.",
+        "beat": "I have been robbed twice in {min:.0f} minutes of quiet and "
+                "never once while the officers were in sight. Draw your own "
+                "conclusion.",
+        "trade": "Everything on this cloth came a long way to be here and I "
+                 "can tell you the road for each of them. Ask about one.",
+        "shift": "There is no {end}. There is the hour when nobody is walking "
+                 "past any more, and that is not the same thing.",
+        "meal": "Behind the counter, standing, with one eye on the front. "
+                "{meals} has looked like that for eleven years.",
+        "home": "Two rooms at {home}. When the stock is high I sleep badly and "
+                "when it is low I sleep worse.",
+        "worship": "A stall left unattended at {where} is a stall robbed. That "
+                   "is between me and whoever is listening.",
+        "visa": "The licence is renewed by a clerk who has never bought "
+                "anything in his life and prices my year anyway.",
+        "era": "Two of my suppliers stopped writing in the same month. Nobody "
+               "will tell me whether that is politics or a debt.",
+        "refusal": "starts folding the cloth away one corner at a time",
+    },
+    "service": {
+        "port": "Everyone off the {ship} is thirsty by twenty hundred and "
+                "honest by midnight. That is the trade in one sentence.",
+        "news": "It gets shouted about across my counter and I have to serve "
+                "both sides of it and take neither.",
+        "beat": "Two of the {on} drink in here and I still ring the bell when "
+                "they come in, so the room knows.",
+        "trade": "The {counter} is mine and everything behind it is somebody's "
+                 "long story about how it got here.",
+        "shift": "I lock up at {end} and then I clean, and the cleaning is when "
+                "I find out what actually happened.",
+        "meal": "I eat standing at the end of my own bar at {where}, which "
+                "tells you everything about {meals} in this trade.",
+        "home": "{home}, and the shift change goes past my door like weather. "
+                "I sleep through all of it.",
+        "worship": "The quiet at {where} is the only hour of the week nobody "
+                   "wants anything from me.",
+        "visa": "The licence is what they take away. The visa is what they "
+                "threaten to take away first.",
+        "era": "Six months ago this room argued about everything. Now they "
+               "watch the door, and I am the one who has to look at that.",
+        "refusal": "sets the glass down harder than it needs to be set down",
+    },
+    "engineer": {
+        "port": "Her grapple will be on my list by morning, and whatever her "
+                "crew has already tried to fix themselves will be under it.",
+        "news": "It reaches the shop floor as a revised procedure with the "
+                "reason cut out. We reconstruct the reason from what changed.",
+        "beat": "{min:.0f} minutes walking, forty pulling cable, and there is "
+                "no allowance in anybody's plan for the difference.",
+        "trade": "Half the gaskets sold at {where} are surplus with the "
+                 "markings ground off, and they are still better than the "
+                 "issue ones.",
+        "shift": "{job} is {start} to {end} and then the plant decides. It has "
+                 "never once decided in my favour.",
+        "meal": "Out of a tin at {where}, with clean hands if I am lucky and "
+                "the job allowed for it.",
+        "home": "{home} is loud. Everything is loud. You stop hearing the "
+                "constant and you start hearing the change, which is the job.",
+        "worship": "{where}, if the plant behaves. It generally chooses that "
+                   "hour to misbehave, and I have opinions about that.",
+        "visa": "The trade certification took four years. The visa took an "
+                "afternoon and a fee. Guess which one they check.",
+        "era": "You learn what has happened from the parts you are suddenly "
+               "not allowed to order. Nothing else is ever explained.",
+        "refusal": "goes back under the panel, boots first",
+    },
+    "industrial": {
+        "port": "Means the line runs long tomorrow. Nobody asks. It just runs.",
+        "news": "Screens are up in the canteen. Nobody looks at them and "
+                "nobody turns them off.",
+        "beat": "None of them come down our end. Whatever happens on this "
+                "floor gets sorted on this floor.",
+        "trade": "I buy at {where} when I have to and I resent every credit of "
+                 "it.",
+        "shift": "Three shifts round the clock and this one is mine. Ask me in "
+                 "six weeks and it will be a different one.",
+        "meal": "Twenty minutes at {where}, and eight of those are the walk.",
+        "home": "Ninety decks of us at {home}, stacked, and you can hear the "
+                "man above you turn over.",
+        "worship": "Not often. There is a thing at {where} at the shift end "
+                   "and I have been twice this year.",
+        "visa": "Never been asked for it in Grey. That is not the same as not "
+                "carrying it.",
+        "era": "They have started counting us on the way in as well as the way "
+               "out. Nobody has said why.",
+        "refusal": "keeps walking and does not break stride",
+    },
+    "dockworker": {
+        "port": "Two crates over, every time, and the manifest is never the "
+                "one that gets corrected.",
+        "news": "Ask me at the end of the shift. Right now it's a crate.",
+        "beat": "Never one down a bay when you want one. Always three when "
+                "you're having a smoke.",
+        "trade": "Everything you buy up top came off a gang's back down here. "
+                 "Remember that at the price.",
+        "shift": "Off at {end} and not a minute over, and I have been told "
+                 "twice this month that I am difficult about it.",
+        "meal": "Fast, at {where}, and the gang eats together or the gang eats "
+                "apart. It's never nothing, that.",
+        "home": "Bunk, locker, done. You're not in it to look at it.",
+        "worship": "Once a year, if that. My mother would have something to "
+                   "say about that.",
+        "visa": "Guild card's the one that counts. Lose that and the visa is "
+                "just a paper saying where you'll starve.",
+        "era": "Somebody's got a list. Everybody knows somebody's got a list. "
+               "Nobody's seen it.",
+        "refusal": "hauls the strap tight and turns his back to you",
+    },
+    "waste": {
+        "port": "Two kilos a day each. Multiply it out and then tell me this "
+                "job is the bottom of anything.",
+        "news": "Nobody down at the plant has said a word, and that is how we "
+                "always know it is serious.",
+        "beat": "They do not come below the plant deck. In eleven years I have "
+                "seen an officer down here four times, and I remember all "
+                "four.",
+        "trade": "Half of what is sold at {where} comes back through me inside "
+                 "the month. I have handled your rubbish. I do not hold it "
+                 "against you.",
+        "shift": "It never stops, so neither do we. There is no {end}, there "
+                 "is a relief, and sometimes the relief does not come.",
+        "meal": "Washed first, at {where}, and anybody who has ever laughed at "
+                "that has never worked a reclamation deck.",
+        "home": "Close to the plant at {home}. You get used to it and then you "
+                "cannot smell your own quarters at all.",
+        "worship": "Nobody at {where} minds where I have come from, and that "
+                   "is not true of anywhere else on this station.",
+        "visa": "Nobody checks it in the reclamation levels. That is why some "
+                "of the gang are down here at all, and I do not ask.",
+        "era": "Whatever they decide up there arrives down here as more of it, "
+               "and it always has, and it always will.",
+        "refusal": "pulls the mask up and the conversation is over",
+    },
+    "hydroponics": {
+        "port": "More mouths off the {ship} and the same number of trays. That "
+                "sum has only one answer and it takes about six weeks.",
+        "news": "Whatever it is, it will be a shortage by the time it reaches "
+                "a bed, and I will be the one blamed for the shortage.",
+        "beat": "None of them can tell a seedling from a weed, and one of them "
+                "walked through tray nine last winter and never said.",
+        "trade": "What is on that counter at {where} was cut this morning, and "
+                 "by tomorrow evening it is worth nothing at all.",
+        "shift": "The beds are awake before the station is. {start} here means "
+                 "something different to {start} anywhere else aboard.",
+        "meal": "Most of {meals} came off my own beds, and I can tell you the "
+                "tray it grew in, which spoils it slightly.",
+        "home": "{home} smells of the beds. Visitors notice in the first "
+                "minute and I stopped noticing years ago.",
+        "worship": "After the cut, at {where}. Growing things and sitting "
+                   "still are closer together than people think.",
+        "visa": "Agricultural certification, renewed each season, and it is "
+                "the season that decides, not me.",
+        "era": "Plant what stores, they say. Less of what tastes of anything. "
+               "That order arrives before every bad year and never after one.",
+        "refusal": "does not straighten up from the tray",
+    },
+    "visitor": {
+        "port": "One of {souls}, and I have not yet worked out which of the "
+                "others were also travelling alone.",
+        "news": "I do not know what to make of it and I have noticed that "
+                "nobody here will explain it to a stranger.",
+        "beat": "{on} officers seems a great many until you have walked "
+                "{sector} ring once at the wrong hour.",
+        "trade": "Somebody recommended {where} to me on the ship and I cannot "
+                 "now remember a thing about them.",
+        "shift": "I am meant to be at {job} between {start} and {end}. I have "
+                 "read the letter four times and it does not say what for.",
+        "meal": "I have nowhere to cook, so it is {where} and {meals}, and the "
+                "expense is quietly frightening.",
+        "home": "{home}, for as long as it is paid for, and I have counted the "
+                "days more than once.",
+        "worship": "{where} is the one thing here that looks like it does at "
+                   "home. I sat at the back and I did not follow any of it.",
+        "visa": "Thirty days. I have started thinking of it as a number rather "
+                "than a date, which I am told is a bad sign.",
+        "era": "It seemed very far away when I read about it at home. It is "
+               "not far away at all from a corridor here.",
+        "refusal": "apologises for something that did not need apologising for",
+    },
+    "refugee": {
+        "port": "I came the same way. There is a particular quiet in a hold "
+                "with {souls} in it and nobody talking.",
+        "news": "We hear it first and we hear it wrong, and the correction "
+                "never travels as fast as the first telling.",
+        "beat": "I know when they pass. Everybody here knows when they pass. "
+                "That is not the same as being afraid of them.",
+        "trade": "The {counter} at {where} will take a name it does not "
+                 "recognise. You do not know what that is worth until you "
+                 "have no name anybody recognises.",
+        "shift": "If I am picked at {start} there is a day. If I am not, there "
+                 "is the whole of it to get through in a corridor.",
+        "meal": "Two of them, at {where}, and I have been in places where "
+                "there was one, so I will not be told I am ungrateful.",
+        "home": "A partition and a curtain at {home}. It is ours. The word is "
+                "doing a great deal of work and I am keeping it.",
+        "worship": "At {where} I am asked nothing at all, and that is the "
+                   "whole of why I go.",
+        "visa": "That one word is the whole of my standing here. Everything "
+                "else about me is a story nobody has time for.",
+        "era": "You are asking me about the news. The news is the reason there "
+               "is a curtain instead of a door.",
+        "refusal": "goes very still, the way people do who have learned to",
+    },
+    "lurker": {
+        "port": "Full pockets and no idea where they are. Give it two hours "
+                "and half of them have paid twice for the same directions.",
+        "news": "Doesn't reach down here till it's old, and by then it's been "
+                "improved by about four people.",
+        "beat": "I know all {on} by their boots. Two of them are all right and "
+                "you don't get told which two.",
+        "trade": "Moved on from {where} twice. Third time it stops being moved "
+                 "on and starts being a caution.",
+        "shift": "Whoever's hiring at {start}, and nothing at all by {end}. "
+                 "You stop planning past the morning.",
+        "meal": "{meals} is for people with a door. {where} is for the rest of "
+                "us and only when it's going.",
+        "home": "That's what they call it on the register. There's no register "
+                "down where I actually sleep.",
+        "worship": "They feed you after. I sit through the rest of it and I've "
+                   "started listening, which I wouldn't admit up top.",
+        "visa": "Don't go near the readers. Everything else about surviving "
+                "down here is detail.",
+        "era": "Worse down here first, better down here last. Been true every "
+               "time and there's no reason for it to stop being true.",
+        "refusal": "is not there any more, and you did not see him go",
+    },
+}
+
+
 # 15 x 2. `{say}` is the role clause. NO FRAME MAY BE BARE and no two may be
 # equal, because a bare frame would let two species collide on one string --
 # which is exactly the degeneracy `deck.py --degeneracy` exists to catch, and
@@ -2273,40 +2735,100 @@ def _cell_part(species: str, role: str) -> tuple:
                  for p in SPECIES_PART.get(species, SPECIES_PART["other"]))
 
 
-def cell_clause(role: str, topic: str) -> str:
+def cell_clauses(role: str, topic: str) -> tuple:
+    """BOTH things this role has to say about this subject. DLG-02's "2 variants".
+
+    A tuple of one or two clauses. Empty when the matrix has no row for the
+    role, which is the documented fallback to `PHRASE`. The second entry is
+    dropped rather than duplicated when A and B are equal, so a B-clause copied
+    from its A cannot be counted twice -- `_selftest` asserts all 209 pairs
+    differ, and `spec_harness/dlg.py` counts UNFRAMED utterances, so the only
+    way to reach the annex's 30 is to have written them.
+    """
+    a = (ROLE_CLAUSE.get(role) or {}).get(topic)
+    if a is None:
+        return ()
+    b = (ROLE_CLAUSE_B.get(role) or {}).get(topic)
+    return (a,) if (b is None or b == a) else (a, b)
+
+
+def cell_clause(role: str, topic: str, variant: int = 0) -> str:
     """WHAT this role says about this subject, braces and all. None if absent."""
-    return (ROLE_CLAUSE.get(role) or {}).get(topic)
+    cs = cell_clauses(role, topic)
+    return cs[variant % len(cs)] if cs else None
 
 
 def cell_line(species: str, role: str, topic: str, variant: int = 0) -> str:
-    """One tier-2 matrix line: the role's clause in this species' mouth.
+    """One tier-2 matrix line: a role clause in this species' mouth.
+
+    `variant` walks the CROSS PRODUCT of clause and frame, clause-major, so
+    variant 0 and 1 are two different SENTENCES rather than one sentence with
+    two affixes on it. That ordering matters to every caller that asks for
+    variant 0 and 1 and stops: before this, those two calls returned the same
+    thought twice.
 
     Returns None when the matrix has no clause for the role, which is the
     documented fallback to `PHRASE` -- a role that exists in `schedule.ROLES`
     and not here. `_selftest` asserts there are none today, so the fallback is
     a safety net rather than a hiding place.
     """
-    say = cell_clause(role, topic)
-    if say is None:
+    says = cell_clauses(role, topic)
+    if not says:
         return None
     frames = SPECIES_FRAME.get(species, SPECIES_FRAME["other"])
-    return frames[variant % len(frames)].format(say=say)
+    n = len(says) * len(frames)
+    v = variant % n
+    return frames[v % len(frames)].format(say=says[v // len(frames)])
 
 
 def cell_lines(species: str, role: str) -> tuple:
     """Everything one (species x role) cell can say. DLG-02's per-cell pool.
 
-    11 topics x 2 frames + 4 greetings + 4 farewells = 30, and the harness
-    counts THIS rather than a number written down beside it.
+    11 topics x 2 CLAUSES = 22 utterances, each available in the species' 2
+    register frames = 44 rendered, + 4 greetings + 4 farewells = 52 strings
+    over **30 distinct utterances**, which is the annex's own arithmetic and
+    the number the harness measures once the frame affix is stripped back off.
     """
     out = []
     for key, _fn in TOPICS:
-        for v in range(len(SPECIES_FRAME.get(species, SPECIES_FRAME["other"]))):
+        nsay = len(cell_clauses(role, key))
+        nfr = len(SPECIES_FRAME.get(species, SPECIES_FRAME["other"]))
+        for v in range(nsay * nfr):
             ln = cell_line(species, role, key, v)
             if ln:
                 out.append(ln)
     out.extend(_cell_greet(species, role))
     out.extend(_cell_part(species, role))
+    return tuple(out)
+
+
+def cell_utterances(species: str, role: str) -> tuple:
+    """The cell's pool with the species register frame STRIPPED OFF.
+
+    THE MEASUREMENT THE ROW IS ACTUALLY ABOUT, and it exists because the first
+    build of this matrix passed the row's floor without it. `SPECIES_FRAME` is
+    register modulation -- the annex asks for it under *"species register
+    constraints carried"* -- and a modulation applied to one sentence does not
+    make two sentences. Stripping it is exact rather than approximate: every
+    frame is `prefix + "{say}" + suffix` with a literal prefix and suffix, so
+    the inverse is a prefix/suffix match. Adding a third frame therefore buys
+    a cell nothing at all here, which is the property that makes this a floor
+    rather than a knob.
+    """
+    frames = SPECIES_FRAME.get(species, SPECIES_FRAME["other"])
+    cuts = []
+    for f in frames:
+        pre, _, suf = f.partition("{say}")
+        cuts.append((pre, suf))
+    out = []
+    for ln in cell_lines(species, role):
+        bare = ln
+        for pre, suf in cuts:
+            if ln.startswith(pre) and ln.endswith(suf) and (pre or suf):
+                cand = ln[len(pre):len(ln) - len(suf)] if suf else ln[len(pre):]
+                if len(cand) < len(bare):
+                    bare = cand
+        out.append(bare)
     return tuple(out)
 
 
@@ -4508,15 +5030,64 @@ def _selftest(out=print):                                       # noqa: C901
     check(len(cells) == 79, "the tier-2 matrix has 79 occupied cells "
                             "(schedule.ROLE_WEIGHTS)", f"{len(cells)}")
     n += 1
-    sizes = {len(cell_lines(sp, r)) for sp, r in cells}
-    check(sizes == {30}, "every cell can say 30 things "
-                         "(11 topics x 2 frames + 4 greet + 4 part)",
+    # THE ASSERTION THAT MOVED, AND WHY IT HAD TO. It used to read
+    # `sizes == {30}` on `cell_lines`, and 30 was reached as 11 topics x 2
+    # SPECIES FRAMES -- an affix counted as a variant, so nineteen real
+    # utterances passed as thirty. The count that answers the row is the pool
+    # with the register frame stripped back off.
+    sizes = {len(set(cell_utterances(sp, r))) for sp, r in cells}
+    check(sizes == {30}, "every cell can say 30 distinct things with the "
+                         "species register frame stripped off "
+                         "(11 topics x 2 CLAUSES + 4 greet + 4 part)",
           f"{sorted(sizes)}")
+    n += 1
+    rend = {len(cell_lines(sp, r)) for sp, r in cells}
+    check(rend == {52}, "and 52 rendered strings per cell "
+                        "(22 utterances x 2 register frames + 8)",
+          f"{sorted(rend)}")
+    n += 1
+    pairs = [(r, t) for r in ROLE_CLAUSE for t, _ in TOPICS
+             if len(cell_clauses(r, t)) != 2]
+    check(not pairs, f"all {len(ROLE_CLAUSE) * len(TOPICS)} (role, topic) "
+                     "cells carry TWO different clauses, not one repeated",
+          f"{len(pairs)} carry one, e.g. {pairs[:3]}")
+    n += 1
+    # AND EVERY ONE OF THEM MUST RENDER. A clause may name only the brace keys
+    # its own topic's fact supplies; the keys are collected from the topic
+    # functions themselves rather than written down here, so a topic that stops
+    # supplying a key takes the clauses that wanted it down with it. Without
+    # this a mistyped `{bay}` in a B clause is a KeyError in a player's face at
+    # whatever hour that topic first comes up.
+    keys, unrend = {}, []
+    for _sp, _r in cells:
+        _s = _Speaker(f"probe-{_r}", _sp, _r, "zocalo", "zocalo", "red_quarters",
+                      "zocalo", "chapel", "core_lift", "EA-B5", False, "")
+        _li = Listener()
+        for _h in range(0, 24, 3):
+            _w = World(hour=_h)
+            _rg = register(_s, _li, _w)
+            for tkey, tfn in TOPICS:
+                try:
+                    td = tfn(_s, _li, _w, _rg)
+                except Exception:                            # pragma: no cover
+                    continue
+                if td:
+                    keys.setdefault(tkey, {}).update(td.get("fact") or {})
+    for _r in ROLE_CLAUSE:
+        for tkey, _fn in TOPICS:
+            for cl in cell_clauses(_r, tkey):
+                try:
+                    _fmt(cl, keys.get(tkey, {}))
+                except (KeyError, IndexError, ValueError) as e:
+                    unrend.append((_r, tkey, str(e)[:40]))
+    check(not unrend, f"all {sum(len(cell_clauses(r, t)) for r in ROLE_CLAUSE for t, _ in TOPICS)}"
+                      " role clauses render against the facts their own topic "
+                      "supplies", f"{len(unrend)} do not, e.g. {unrend[:3]}")
     n += 1
     flat = [l for sp, r in cells for l in cell_lines(sp, r)]
     dupe = {l for l in flat if flat.count(l) > 1} if len(set(flat)) != len(flat) \
         else set()
-    check(len(set(flat)) == len(flat) == 2370,
+    check(len(set(flat)) == len(flat) == 4108,
           f"{len(flat)} tier-2 lines, all distinct across the 79 cells",
           f"{len(flat) - len(set(flat))} shared, e.g. {sorted(dupe)[:2]}")
     n += 1
