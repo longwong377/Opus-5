@@ -6,6 +6,8 @@ enforcement --ensure -- station/generated/ is gitignored
 PROGRESSION IN THE ENGINE -- `godot --headless --path godot -- --no-coldstart --arrest-gate --arrest-contraband`
   the card this run opens: IVANOVA, AMIS, rung 2 transit, 2402.00 cr
   PASS refused=3 responded=3 arrived=3 moved_on=0 detained=3 searched=3 brig=3/3 floor=-1.00 tier=2->0 walked=9.6m cr=-619.89 clock=+19.2h out=17.4m rate=x40 place=arrival_concourse
+    | draw check 4/4 against consequence._u (worst |d| 0.00000000000000000)
+    | a restricted good is sold in 4 place(s), 0 of them in this build's rooms -- so `--arrest-contraband` is the only route into a search. See enforcement.py::restricted_sources
     | bag: took `Dust` -> yes (carrying Dust, identicard, kit_bag)
     | gate: arrival_concourse, rung 2(transit) against need 2, response 1 s at x40
     | searched at arrival_concourse -- `Dust` in the bag: this is a contraband docket, not a citation (grade 3)

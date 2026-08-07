@@ -1803,6 +1803,14 @@ def _prog_gate(verbose=False) -> dict:
     for line in out.splitlines():
         if line.startswith("ARREST ") and "gate=" not in line:
             print("    | " + line[7:])
+        # AND THE TWO LINES THAT ARE NOT `ARREST` AND ARE THE POINT. The draw
+        # check says this build's blake2b IS `consequence._u`; the restricted
+        # count says whether a player could reach the search branch without the
+        # harness flag. Both were printed by the engine and both were filtered
+        # out of this summary, which left a reader taking the fine on trust.
+        elif line.startswith("enforcement: draw check") \
+                or line.startswith("enforcement: a restricted good"):
+            print("    | " + line[13:])
     t0, t1 = -99, -99
     m = re.search(r"tier=(-?\d+)->(-?\d+)", out)
     if m:

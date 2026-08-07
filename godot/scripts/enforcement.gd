@@ -421,9 +421,16 @@ func _check_draw() -> void:
 		if not (e < 1e-15):
 			bad += 1
 	_draw_ok = (bad == 0)
-	print("enforcement: draw check %d/%d against consequence._u (worst |d| %.3e)"
-		% [vs.size() - bad, vs.size(), worst]
-		+ ("" if _draw_ok else " -- FAILED, so nothing will be charged"))
+	# `%e` IS NOT A GDSCRIPT FORMAT SPECIFIER, and the failure mode is the nasty
+	# one: `String % Array` does not raise on an unknown conversion, it returns
+	# THE FORMAT STRING with its placeholders intact. This line shipped once
+	# reading, literally, `draw check %d/%d against consequence._u (worst |d|
+	# %.3e)` -- a status line that reports nothing while looking like it does.
+	# Godot takes %s %c %d %o %x %X %f %v and %% and nothing else.
+	print(("enforcement: draw check %d/%d against consequence._u "
+		+ "(worst |d| %.17f)%s")
+		% [vs.size() - bad, vs.size(), worst,
+			("" if _draw_ok else " -- FAILED, so nothing will be charged")])
 
 
 ## THIS PERSON'S FINE FOR THIS OFFENCE, drawn here because the person is here.
