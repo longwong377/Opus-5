@@ -11734,3 +11734,86 @@ fails for a reason that has nothing to do with the thing being tested.
 **What would overturn it.** A different boot deck with a different call density — the honest form
 is a fraction of `calls.size()` scaled by the slept interval, and this constant should become that
 expression when more than one deck is streamed.
+
+## INV-790 — the Observer: where the player is standing, and what they do about what they see
+
+**What.** `station/incident.py::Observer` — a register place, a `Probe` volume built from it once,
+a sight radius taken from `populace.corridor_sight_m()` at call time, an optional set of waking
+hours, and a **policy**: `(incident) -> stance`. `simulate(..., observer=...)` consults it at
+exactly one point, after the draw and after the cast is named, to choose which of
+`absent / helps / reports` the incident is resolved in. Four policies ship: `absent` (present and
+does nothing — the null control), `helps`, `reports`, and `citizen`, which reports what the
+station would already punish and helps what it would not.
+
+**Why.** `MASTER-PLAN` A2 promises the player *"is drawn into events that would have happened
+without them, changes how they end"*, and `docs/THE-GAME.md` §7 lists the absence row red. Before
+this, **every incident on the station resolved ABSENT, forever** — `simulate` took no observer and
+its docstring justified that with SYS-14's *"none of them requires the player to exist"*. That
+clause is about the RATE. Applied to the resolution as well it removed the second half of A2's
+sentence: `three_ways` replayed one hand-picked incident into three fresh worlds, which checks the
+class table, and **no day the player was in had ever been run**.
+
+**Constrained by.** The separation SYS-14 demands is kept and is asserted rather than claimed: an
+Observer may not touch a lambda, so `absence()` checks first that a player-present day fires the
+**identical incident stream** — same class, same place, same minute, same named cast — and only
+then that the worlds differ. `policy_citizen` is derived from `books_custody(cid)`, which resolves
+the class rather than reading a fifth hand-written table of class ids. Witnessing is
+`Probe` ∧ sight radius, both of which already existed and neither of which this file chose:
+SYS-14 requires a volume *"never a floating radius an implementation can shrink"*.
+
+**What would overturn it.** A ruling that the player's stance should move rates as well as
+resolutions — e.g. that a visible uniformed player suppresses petty theft nearby. That is a real
+design position and it would make the stream-identity assertion above wrong rather than merely
+looser, so it should be taken deliberately if at all.
+
+## INV-791 — a find needs a scanner, not a response time
+
+**What.** `incident._scanned(place)` — true for the register's customs halls, false elsewhere — is
+now INC-CONTRA's discriminator in the ABSENT branch, ANDed with the existing `_responded()`. Where
+it is false the contraband leaks and `_stock(w, "black_market", item, +1)` fires.
+
+**Why.** `spec_check --red` reported INC-CONTRA as a declared write that cannot happen: SYS-14's
+row declares `{custody, seizure, stock}` and 72 resolutions produced `stock` never. The leak limb
+was guarded by `_responded()` alone, and `response_s` is **0.0 at both customs halls at all 24
+hours**, so it was unreachable by construction. Read the shape before the size: across the register
+`_responded` is a genuine discriminator — **1,469 of 3,096 place-hours carry a non-zero wait** —
+and a constant TRUE at exactly the two places this class was bound to. A number that fails 100% on
+one side of a line is a structural fact, and the structure is that the question was wrong. A
+uniform standing in the room is not what finds concealed goods; the scanner is. `customs_north`
+declares `baggage_scanner`; `cargo_bays` declares `cargo_crane`, `container` and
+`manifest_terminal` and screens nothing — which is exactly why `security.BLACK_MARKET_ROUTE[0]`
+names it the route's entry, *"42 bays on a station that is not full, with spare volume nobody
+inventories"*.
+
+**Constrained by.** Neither the spec nor the station was edited to make the other pass. The control
+is in `_selftest`: at a hall that scans, the same class still ends in a seizure and a custody row
+and **nothing** reaches the black market, so the leak is the scanner's absence rather than a
+weakened rule.
+
+**What would overturn it.** Any canon establishing routine screening of cargo manifests at B5, or a
+frame showing a scan arch on the cargo side.
+
+## INV-792 — the cargo consignment rate, and 20 t of it
+
+**What.** `incident.cargo_consignments_per_hour` = `CARGO_T_PER_DAY / CONTAINER_T` spread over
+`traffic.rate_per_hour`'s own arrival curve and split across the cargo places the register has.
+`CARGO_T_PER_DAY = 4500.0`, `CONTAINER_T = 20.0`. INC-CONTRA's rate on the cargo side is that
+times `arrival.CONTRABAND_P`, producing ~2.2 leaks a station-day.
+
+**Why.** INC-CONTRA now fires on the cargo side (INV-791) and `hall_souls_per_hour` is a customs
+number — souls a minute through one hall, from `traffic.hall_rate`. Borrowing it for a cargo bay
+would be a rate on the wrong denominator, which is the defect this module's own MTBF check caught
+once already: *a derivation is not checked until its own units are.*
+
+**Constrained by.** The tonnage is the spec's: `docs/spec/PLACES.md` PLC-`cargo_bays` prices the
+transshipment ledger at *"4,000–5,000 t/day through SYS-02/04"*. The share that carries something
+is `arrival.CONTRABAND_P` **reused** rather than a second constant, exactly as `arrival` itself
+reused it for TRAFFIC 6.6's leak — "one in a hundred goes wrong" is the same claim either side of
+the hull. Only `CONTAINER_T` is invented, at authority 5, and it is bracketed rather than guessed:
+a cargo unit small enough to carry by hand makes the manifest meaningless, one larger than a
+shuttle bay does not fit through the mouth, and 20 t is a standard intermodal payload. The output
+is bracketed too — under one leak a day would make LAW-CRIME:858's route decorative, dozens would
+make smuggling the norm rather than a crime.
+
+**What would overturn it.** Any figure for B5 cargo unit mass, or any seizure volume for the cargo
+side, or a stated throughput that replaces the spec's 4,000–5,000 t/day.

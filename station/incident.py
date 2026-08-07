@@ -3422,9 +3422,16 @@ def _body_survives_help(cid):
     hit = _HELP_KEEPS.get(cid)
     if hit is None:
         _inc, worlds, _s, _u = three_ways(cid)
-        a = {f[1] for f in worlds[ABSENT].facts if f[0] == "casualty"}
-        h = {f[1] for f in worlds[HELPS].facts if f[0] == "casualty"}
-        hit = bool(a) and not (a & h)
+        a = {f for f in worlds[ABSENT].facts if f[0] == "casualty"}
+        h = {f for f in worlds[HELPS].facts if f[0] == "casualty"}
+        # THE SUBJECT IS THE SAME PERSON IN BOTH BRANCHES AND THE FIRST VERSION
+        # COMPARED SUBJECTS, so it answered False for every class in
+        # `RAGDOLL_OF` -- the same defect as any A/B that measures the wrong
+        # column. What differs is the casualty ROW: "crush injury; medlab bed 3"
+        # against "pulled clear -- burns", "contusions" against "separated
+        # before injury". INC-STRAY has no casualty row in either branch and is
+        # correctly False: a child who is walked home was never on the deck.
+        hit = bool(a) and a != h
         _HELP_KEEPS[cid] = hit
     return hit
 
@@ -4311,6 +4318,12 @@ def absence_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
     out(f"  witnessed {len(obs.witnessed)} of {len(fp)} in scope; acted "
         f"{obs.acted[HELPS]} helps / {obs.acted[REPORTS]} reports / "
         f"{obs.acted[ABSENT]} stood by")
+    out(f"  fingerprint {r['fingerprints'][0]} absent / "
+        f"{r['fingerprints'][1]} present -- "
+        f"{len(r['only_absent'])} fact(s) exist ONLY because you were not "
+        f"there ({', '.join(sorted(kinds_a)) or 'none'}), "
+        f"{len(r['only_present'])} ONLY because you were "
+        f"({', '.join(sorted(kinds_p)) or 'none'})")
     out(f"  custody absent {len(wa.custody)} -> present {len(wp.custody)}; "
         f"deltas {len(wa.deltas())} -> {len(wp.deltas())}")
     for f in r["only_present"][:3]:
