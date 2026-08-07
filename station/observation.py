@@ -1893,15 +1893,36 @@ def _dome_chamber(v, t, g, prog):
         # programs and not only on the one with `shutters`, because a shutter
         # that is not fitted still leaves its track: dome 2's leaves were
         # removed from the ring, its tracks were not.
+        #
+        # AND IT IS A MACHINED CHANNEL, NOT A TREAD PLATE. The first build ran
+        # its two flanges in `D_TRIM` -- `steel_catwalk_tread`, whose map is
+        # `deck_stud`, the highest-frequency pattern in the whole texture set
+        # and one made for a floor. Twenty-four of them running 2.7 m up the
+        # face of every pier turned the piers black and studded:
+        # `after-dome1-half.png` on that build against `before-` is the A/B,
+        # and it is the same finding as the bolts one paragraph up. A shutter
+        # runs in a drawn steel section, so the flanges are `D_FRAME` and the
+        # channel is a shadow gap, and the whole thing is 26 mm across rather
+        # than 38 -- it is a guide for a leaf, not a structural member.
+        #
+        # THE CHANNEL IS MATTE DARK STEEL AND NOT `M_RECESS`. `M_RECESS` is
+        # `furn_dark_stone` -- albedo 0.094, roughness 0.24, `stone_agg` map --
+        # and a 2.7 m channel of glossy black aggregate seen down its length at
+        # 0.7 m was the largest object in `after-dome1-arm.png` on that build:
+        # a cracked stone slab inside a steel shutter guide, which fails CRAFT
+        # 4's *"a fitting is where a fitting would be needed"* on the material
+        # rather than on the placement. It is the same surface as the gasket,
+        # which is the right answer twice: both are the dark matte thing inside
+        # a machined section.
         for s in (-1, 1):
-            at = am + s * (half + 0.052)
-            _seg(v, t, g, M_RECESS, r - 0.098, r - 0.040,
-                 at - 0.019, at + 0.019, 0.88, DOME_WALL_M - 0.06)
-            for tk in (-0.021, 0.021):
-                _seg(v, t, g, D_TRIM, r - 0.104, r - 0.052,
-                     at + tk - 0.010, at + tk + 0.010, 0.86, DOME_WALL_M - 0.04)
-            _seg(v, t, g, M_BOLT, r - 0.110, r - 0.044, at - 0.030,
-                 at + 0.030, 0.84, 0.90)
+            at = am + s * (half + 0.048)
+            _seg(v, t, g, M_GASKET, r - 0.094, r - 0.044,
+                 at - 0.013, at + 0.013, 0.88, DOME_WALL_M - 0.06)
+            for tk in (-0.015, 0.015):
+                _seg(v, t, g, D_FRAME, r - 0.098, r - 0.056,
+                     at + tk - 0.007, at + tk + 0.007, 0.86, DOME_WALL_M - 0.04)
+            _seg(v, t, g, D_FRAME, r - 0.102, r - 0.048, at - 0.024,
+                 at + 0.024, 0.84, 0.90)
         # THE BLUE WALL COURSE. `light_wall_course` is in
         # `export_scene.FIXTURE_LIGHTING` -- omni, 22000 K, energy_rel 0.44,
         # range 3.5 m, measured off the C&C frame -- so this one throws.
