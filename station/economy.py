@@ -111,7 +111,7 @@ LADDER = (
     # "climbable": THE-STATION.md:172 gives the player's own ladder as
     # "transient 4-8 cr/wk -> civilian 10-15 -> hotel/business class, filed at
     # PLC-032", and the first two were rows here while the third was not, so
-    # the thing the row says you climb TO had no price. INV-720.
+    # the thing the row says you climb TO had no price. INV-721.
     #
     # DERIVED IN ONE STEP FROM EACH OF THE TWO ROWS THAT BRACKET IT, rather
     # than picked:
@@ -300,7 +300,7 @@ GOODS = (
          "The same case, off the manifest. Undercuts the Zocalo -- SYS-06"),
 
     # =======================================================================
-    # THE 4t WIDENING -- 34 lines to the GDS-01 floor of 60. INV-721.
+    # THE 4t WIDENING -- 34 lines to the GDS-01 floor of 60. INV-722.
     # =======================================================================
     # WHY IT IS HERE AND NOT SPREAD ACROSS THE BLOCKS ABOVE: those blocks are
     # the seed set PLACES §0.3 names, in the order that annex names it, and
@@ -324,7 +324,7 @@ GOODS = (
     # about a week of the rent of the unit it furnishes, so `household` IS the
     # `quarters_personnel` row, 10-15 cr. Eight items is then 80-120 cr against
     # an 8-15 cr/day casual wage -- eight days' work to furnish a room, which
-    # is a sink a player feels and a lurker cannot reach. INV-721.
+    # is a sink a player feels and a lurker cannot reach. INV-722.
     #
     # SUPPLY: Grey's fabrication decks already have `industrial polymer stock`
     # above as their declared feedstock, so a moulded durable is made ABOARD
@@ -475,7 +475,7 @@ CLASS_BAND = {
     "contraband": _band(CASUAL_LO * 2.0, CASUAL_HI * 4.0),
     "free":       _band(0.0, 0.0),
     "bulk_fuel":  _band(CASUAL_LO * 0.1, CASUAL_LO * 0.2),
-    # -- the two classes the 4t widening needed, one step each. INV-721 -----
+    # -- the two classes the 4t widening needed, one step each. INV-722 -----
     #   household   a durable furnishing costs about a week of the rent of the
     #               unit it furnishes, so the band IS `quarters_personnel`.
     #               Eight of them furnish a room for 80-120 cr, which against
@@ -625,7 +625,7 @@ def price_check():
 # AND THAT SPREAD IS THE WHOLE MECHANIC. The fence pays WORSE and is the only
 # buyer for what a licensed reader will not touch, which is exactly what
 # FACTIONS 11.4 says the black market is for. A player with a clean card and a
-# clean crate goes to a shop; everybody else goes to Solly Vane. INV-722.
+# clean crate goes to a shop; everybody else goes to Solly Vane. INV-723.
 BUY_BACK = 0.5
 FENCE_TAKE = SUPPLY_MULT["route"]                                # 0.75
 
@@ -650,7 +650,7 @@ FENCE_HOURS = (14.0, 2.0)                            # buys 14:00-02:00
 # is derived from the register exactly the way `Good.sold_by` is, and the name
 # is the only authored thing about it. `npc/names.py`'s human grammar is what
 # an in-world nameplate would draw from; this is one draw from it, fixed so a
-# save can refer to it. INV-723.
+# save can refer to it. INV-724.
 HOUSEHOLD_GOODS_FUNCTION = "retail"
 HOUSEHOLD_KEEPER = ("Ada Roskoe", "shops_kiosks")
 

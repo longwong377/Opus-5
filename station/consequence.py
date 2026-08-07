@@ -486,7 +486,7 @@ def purchase(led, buyer, place_key, good, n=1, bag=False):
 #
 # So a player with a clean card and a clean crate has two buyers and takes the
 # better price; a player with either problem has one, and Solly Vane pays 75%
-# of what a shopfront would (`economy.FENCE_TAKE`). INV-722.
+# of what a shopfront would (`economy.FENCE_TAKE`). INV-723.
 def buys_from(place_key: str, t: int) -> tuple:
     """(will this counter buy from that rung, the reason a keeper would give).
 
