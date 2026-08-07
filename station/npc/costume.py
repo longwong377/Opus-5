@@ -1754,6 +1754,38 @@ def _part_axis(verts):
     return cx, cz
 
 
+def _section_at(verts, yf, band=0.05):
+    """(cx, cz, rx, rz, y) -- the part's section at `yf` as an ELLIPSE.
+
+    `_axis_at` returns ONE radius, the maximum, and every band in this module
+    was built from it as a circle. A human torso is 0.411 m across and 0.271 m
+    deep (`body.FIGURE`), so a circular band cut to the wider of those stands
+    **70 mm proud of the chest and the back** -- and at conversational range a
+    waist band doing that reads as a disc through the figure rather than as a
+    hem. The render is what said so; no assertion in this file could have,
+    because the band is closed, wound correctly, inside its own footprint and
+    exactly where it was asked to be. Layer 2's lesson at the scale of a belt.
+
+    Two radii, measured off the same ring, so a band follows whatever section
+    the body and the silhouette modifiers actually produced.
+    """
+    ys = [v[1] for v in verts]
+    y0, y1 = min(ys), max(ys)
+    y = y0 + (y1 - y0) * yf
+    h = max((y1 - y0) * band, 1e-4)
+    sel = [v for v in verts if abs(v[1] - y) <= h]
+    while len(sel) < 3 and h < (y1 - y0):
+        h *= 2.0
+        sel = [v for v in verts if abs(v[1] - y) <= h]
+    if not sel:
+        sel = list(verts)
+    cx = sum(v[0] for v in sel) / len(sel)
+    cz = sum(v[2] for v in sel) / len(sel)
+    rx = max(max(abs(v[0] - cx) for v in sel), 1e-4)
+    rz = max(max(abs(v[2] - cz) for v in sel), 1e-4)
+    return cx, cz, rx, rz, y
+
+
 def _front_at(verts, yf, band=0.05):
     """(cx, z_front, y) of a part at height fraction `yf` of its own extent.
 
@@ -1944,16 +1976,18 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
         # and `body.py` uses for the arm root and the neck: the cap still
         # exists, so the solid is closed, and no camera outside the body can
         # reach it.
-        cx0, cz0, r0, y0 = _axis_at(torso_verts, YOKE_LO_YF, band=0.05)
-        cx1, cz1, r1, y1 = _axis_at(torso_verts, YOKE_HI_YF, band=0.05)
-        yseg = _att_seg(r0 * YOKE_PANEL_R, distance_m, cap=16)
+        cx0, cz0, rx0, rz0, y0 = _section_at(torso_verts, YOKE_LO_YF,
+                                             band=0.05)
+        cx1, cz1, rx1, rz1, y1 = _section_at(torso_verts, YOKE_HI_YF,
+                                             band=0.05)
+        yseg = _att_seg(rx0 * YOKE_PANEL_R, distance_m, cap=16)
 
-        def _yoke(m, cx0=cx0, cz0=cz0, r0=r0, y0=y0,
-                  cx1=cx1, cz1=cz1, r1=r1, y1=y1, yseg=yseg):
-            rings = [body._ring(cx0, y0, cz0, r0 * YOKE_PANEL_R,
-                                r0 * YOKE_PANEL_R, yseg),
-                     body._ring(cx1, y1, cz1, r1 * YOKE_BURY,
-                                r1 * YOKE_BURY, yseg)]
+        def _yoke(m, cx0=cx0, cz0=cz0, rx0=rx0, rz0=rz0, y0=y0,
+                  cx1=cx1, cz1=cz1, rx1=rx1, rz1=rz1, y1=y1, yseg=yseg):
+            rings = [body._ring(cx0, y0, cz0, rx0 * YOKE_PANEL_R,
+                                rz0 * YOKE_PANEL_R, yseg),
+                     body._ring(cx1, y1, cz1, rx1 * YOKE_BURY,
+                                rz1 * YOKE_BURY, yseg)]
             v, t = body._loft(rings)
             m.add(v, t, trim_g, CONSTRUCTION_HANGS_ON["yoke_panel"])
 
@@ -1979,7 +2013,7 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
 
     # --- the hem -----------------------------------------------------------
     if on("hem") and torso_verts and not c.robed:
-        cx, cz, r, y = _axis_at(torso_verts, HEM_YF, band=0.05)
+        cx, cz, rx, rz, y = _section_at(torso_verts, HEM_YF, band=0.05)
         # THE HEM TAKES THE TRIM, not the body cloth, and that is a draw call
         # as much as a decision about tailoring. A bound hem -- the coat's edge
         # finished in the yoke fabric -- is ordinary garment construction and
@@ -1990,30 +2024,34 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
         # material run on every figure; in the trim it merges with the yoke
         # panel, the placket and the cuffs into one.
         g = dirty_g if soiled else trim_g
-        piece("hem", g, lambda m, cx=cx, cz=cz, r=r, y=y, g=g: _band(
-            m, cx, cz, y, r * HEM_R, HEM_HALF_H_F * H, g,
-            CONSTRUCTION_HANGS_ON["hem"],
-            _att_seg(r * HEM_R, distance_m, cap=16), taper=0.90))
+        piece("hem", g, lambda m, cx=cx, cz=cz, rx=rx, rz=rz, y=y, g=g:
+              _band_e(m, cx, cz, y, rx * HEM_R, rz * HEM_R,
+                      HEM_HALF_H_F * H, g, CONSTRUCTION_HANGS_ON["hem"],
+                      _att_seg(rx * HEM_R, distance_m, cap=16), taper=0.90))
 
     # --- the cuffs ---------------------------------------------------------
     if on("cuff"):
         g = dirty_g if soiled else (leather_g if tailored else trim_g)
         for av in arm_parts:
-            cx, cz, r, y = _axis_at(av, CUFF_YF, band=0.06)
-            piece("cuff", g, lambda m, cx=cx, cz=cz, r=r, y=y, g=g: _band(
-                m, cx, cz, y, r * CUFF_R, CUFF_HALF_H_F * H, g,
-                CONSTRUCTION_HANGS_ON["cuff"],
-                _att_seg(r * CUFF_R, distance_m, cap=10), taper=0.92))
+            cx, cz, rx, rz, y = _section_at(av, CUFF_YF, band=0.06)
+            piece("cuff", g, lambda m, cx=cx, cz=cz, rx=rx, rz=rz, y=y, g=g:
+                  _band_e(m, cx, cz, y, rx * CUFF_R, rz * CUFF_R,
+                          CUFF_HALF_H_F * H, g, CONSTRUCTION_HANGS_ON["cuff"],
+                          _att_seg(rx * CUFF_R, distance_m, cap=10),
+                          taper=0.92))
 
     # --- the boot tops -----------------------------------------------------
     if on("boot_top") and not c.robed:
         g = dirty_g if soiled else leather_g
         for lv in leg_parts:
-            cx, cz, r, y = _axis_at(lv, BOOT_TOP_YF, band=0.05)
-            piece("boot_top", g, lambda m, cx=cx, cz=cz, r=r, y=y, g=g: _band(
-                m, cx, cz, y, r * BOOT_TOP_R, BOOT_TOP_HALF_H_F * H, g,
-                CONSTRUCTION_HANGS_ON["boot_top"],
-                _att_seg(r * BOOT_TOP_R, distance_m, cap=10), taper=0.90))
+            cx, cz, rx, rz, y = _section_at(lv, BOOT_TOP_YF, band=0.05)
+            piece("boot_top", g, lambda m, cx=cx, cz=cz, rx=rx, rz=rz, y=y,
+                  g=g: _band_e(
+                      m, cx, cz, y, rx * BOOT_TOP_R, rz * BOOT_TOP_R,
+                      BOOT_TOP_HALF_H_F * H, g,
+                      CONSTRUCTION_HANGS_ON["boot_top"],
+                      _att_seg(rx * BOOT_TOP_R, distance_m, cap=10),
+                      taper=0.90))
 
     # The material already at the end of the mesh goes first, so the block
     # joins the run it is next to instead of starting a new one.
@@ -2033,6 +2071,14 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
             out.add(scratch.verts, scratch.tris, g, scratch.parts[0][0])
             made.append((len(out.parts) - 1, key))
     return made
+
+
+def _band_e(m, cx, cz, y, rx, rz, half_h, group, part, seg, taper=1.0):
+    """`_band`, on the part's own ELLIPTICAL section. See `_section_at`."""
+    rings = [body._ring(cx, y - half_h, cz, rx, rz, seg),
+             body._ring(cx, y + half_h, cz, rx * taper, rz * taper, seg)]
+    v, t = body._loft(rings)
+    m.add(v, t, group, part)
 
 
 def _skirt(m, torso_verts, stature, group, seg, dist=0.0, flare=1.85,
@@ -3288,6 +3334,20 @@ def _selftest():
     check(span > 0.75,
           f"and it runs down most of the torso's height rather than sitting on "
           f"the shoulders like a yoke (covers {span:.2f} of it)")
+    # A BAND FOLLOWS THE SECTION IT SITS ON, and the control is the circle it
+    # used to be. Measured on a nominal dressed human's own torso.
+    _tv = next(v for n, v, _t in dressed_parts("human", "sect-1", 0, chain,
+                                               distance_m=0.0) if n == "torso")
+    _cx, _cz, _rx, _rz, _y = _section_at(_tv, HEM_YF, band=0.05)
+    check(_rz < _rx * 0.92,
+          f"a torso section is measurably deeper than it is wide -- rx "
+          f"{_rx:.4f} m, rz {_rz:.4f} m -- so a circular band cut to the "
+          f"larger stands {1000 * (_rx - _rz):.0f} mm proud of the chest")
+    _r1 = _axis_at(_tv, HEM_YF, band=0.05)[2]
+    check(abs(_r1 - _rx) < 0.05 * _rx and _r1 > _rz * 1.08,
+          f"and `_axis_at`'s single radius is that larger one ({_r1:.4f} m "
+          f"against rx {_rx:.4f}, rz {_rz:.4f}) -- which is what every band in "
+          f"this module was built from before `_section_at`")
     check(abs(YOKE_LO_YF - (YOKE_TOP_FRACTION - 0.04)) < 1e-9,
           f"the yoke PANEL starts 0.04 below the yoke SEAM "
           f"({YOKE_LO_YF} against {YOKE_TOP_FRACTION} - 0.04) -- the two are "
