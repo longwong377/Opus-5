@@ -107,6 +107,28 @@ LADDER = (
      "A day's casual dock labour"),
     ("passage_home",      300.0, 800.0, "each",  5,
      "Passage home, economy -- the load-bearing number of the underclass"),
+    # PLY-03's TOP RUNG, and it was missing from a ladder the row calls
+    # "climbable": THE-STATION.md:172 gives the player's own ladder as
+    # "transient 4-8 cr/wk -> civilian 10-15 -> hotel/business class, filed at
+    # PLC-032", and the first two were rows here while the third was not, so
+    # the thing the row says you climb TO had no price. INV-720.
+    #
+    # DERIVED IN ONE STEP FROM EACH OF THE TWO ROWS THAT BRACKET IT, rather
+    # than picked:
+    #   floor  = `quarters_command`, the ONE sourced price in this table. A
+    #            commercial let cannot sensibly undercut what the station
+    #            values its own senior tenancy at, and 30 is the only figure
+    #            here with authority 1 behind it.
+    #   spread = the civilian row's own, 15/10 = x1.5, applied to that floor.
+    #            The published table gives exactly one width for a residential
+    #            rung and re-using it is one decision instead of two.
+    # -> 30-45 cr/week, which is 3-5.6 days of the `labour_casual` band, so it
+    # is a SINK for a lurker and ordinary for a trader -- which is what "one of
+    # SYS-04's three late-game sinks" has to mean arithmetically.
+    # OVERTURNED BY: any stated hotel or business-let rate; PLACES.md:1957's
+    # four Red hotels acquiring a tariff.
+    ("room_hotel",         30.0,  45.0, "week",  5,
+     "Hotel / business class -- PLY-03's top rung, filed at PLC-032"),
 )
 LADDER_BY_KEY = {r[0]: r for r in LADDER}
 
@@ -276,6 +298,127 @@ GOODS = (
          "Event-grade contraband"),
     Good("untaxed brivari", "centauri", "route", "drink", "bonded", _ROUTE,
          "The same case, off the manifest. Undercuts the Zocalo -- SYS-06"),
+
+    # =======================================================================
+    # THE 4t WIDENING -- 34 lines to the GDS-01 floor of 60. INV-721.
+    # =======================================================================
+    # WHY IT IS HERE AND NOT SPREAD ACROSS THE BLOCKS ABOVE: those blocks are
+    # the seed set PLACES §0.3 names, in the order that annex names it, and
+    # `gds.py`'s seed matcher reads them. Interleaving twenty-eight new lines
+    # through them would make the seed sentence's residue impossible to read.
+    #
+    # AND WHY WIDENING WAS NEEDED AT ALL, which is not the floor. The floor is
+    # a number; the reason is the SELL verb below. A vocabulary of 34 lines,
+    # 27 of which only a licensed counter carries, gives a player nothing to
+    # dispose of -- so `sell()` would have been a function with no content the
+    # way `stream.gd` was a mover with nobody to move. Every block below is
+    # something somebody in this station would put on a counter and somebody
+    # else would carry away.
+
+    # -- (a) HOUSEHOLD GOODS -- PLY-03's vendor, and the sink it names -------
+    # THE-STATION.md:172: "A **household-goods vendor** exists (a named keeper
+    # among PLC-052's shops)" and "the top tier plus furnishing it is one of
+    # SYS-04's three late-game sinks". A sink needs things to buy.
+    #
+    # THE BAND IS ONE STEP OFF A PUBLISHED ROW: a durable furnishing costs
+    # about a week of the rent of the unit it furnishes, so `household` IS the
+    # `quarters_personnel` row, 10-15 cr. Eight items is then 80-120 cr against
+    # an 8-15 cr/day casual wage -- eight days' work to furnish a room, which
+    # is a sink a player feels and a lurker cannot reach. INV-721.
+    #
+    # SUPPLY: Grey's fabrication decks already have `industrial polymer stock`
+    # above as their declared feedstock, so a moulded durable is made ABOARD
+    # (`station`); the two that are not moulded are shipped.
+    Good("bunk mattress", "b5 fabrication", "station", "household", "bulk",
+         _SHOP, "PLC-052's household keeper; moulded from polymer stock"),
+    Good("storage locker", "b5 fabrication", "station", "household",
+         "containerised", _SHOP, "Where a placed prop goes -- VRB-03"),
+    Good("shelf unit", "b5 fabrication", "station", "household",
+         "containerised", _SHOP,
+         "PLY-03's CHECK names the unit's SHELF by name"),
+    Good("folding chair", "b5 fabrication", "station", "household",
+         "containerised", _SHOP),
+    Good("lamp panel", "earth alliance", "import", "household",
+         "containerised", _SHOP, "A quarters light that is not the ceiling"),
+    Good("water jug", "human", "import", "household", "containerised", _SHOP,
+         "The standpipe economy needs something to carry it in"),
+    Good("cook ring", "earth alliance", "import", "household", "hazmat",
+         _SHOP, "An induction ring: mains current in a residence, so hazmat"),
+    Good("privacy curtain", "human", "import", "household", "containerised",
+         _SHOP, "Downbelow's own architecture, sold legitimately in Red"),
+
+    # -- (b) WHAT A LURKER SELLS -- the fence's supply side ------------------
+    # LAW-CRIME 6.2 puts 22% of the underclass on salvage and this file already
+    # prices the `salvage` class at "under the casual day rate: salvage pays
+    # worse than labour, which is why 22% do it and it is still the bottom".
+    # `salvage lots` was ONE line standing for all of it. These are the four
+    # things the same person actually carries up out of the unfinished decks,
+    # and they are what makes `sell()` a verb rather than a function.
+    Good("stripped cable", "b5 unfinished decks", "station", "salvage",
+         "bulk", _SHOP + _ROUTE, "A day of stripping cable, LAW-CRIME 6.2"),
+    Good("scrap plating", "b5 unfinished decks", "station", "salvage", "bulk",
+         _SHOP + _ROUTE),
+    Good("used breather filters", "b5 unfinished decks", "station", "salvage",
+         "containerised", _ROUTE,
+         "Re-packed and re-sold: the alien sector's grey trade"),
+    Good("recovered data crystals", "b5 unfinished decks", "station",
+         "salvage", "containerised", _ROUTE,
+         "What is ON them is why the fence and not the shop"),
+
+    # -- (c) THE ROUTE, WIDENED -- SYS-06's five stations carry more than three
+    # LAW-CRIME:858-879's route is a supply chain and a chain that moves three
+    # lines is a prop. Each of these displaces a named licensed line above, so
+    # `SUPPLY_MULT["route"]`'s undercut has something to undercut.
+    Good("untaxed jala", "centauri", "route", "drink", "bonded", _ROUTE,
+         "Displaces `jala`, off the manifest"),
+    Good("unlicensed breathers", "route", "route", "medical", "bonded",
+         _ROUTE, "Displaces `breather cartridges`; nobody certifies these"),
+    Good("black-market spoo", "narn", "route", "staple", "perishable", _ROUTE,
+         "Displaces `spoo`. A perishable on the route is a short window"),
+    Good("stolen tool sets", "route", "route", "hardware", "containerised",
+         _ROUTE, "8.2's petty theft, arriving at the other end"),
+    Good("forged transit visas", "route", "route", "contraband", "bonded",
+         _ROUTE, "The other half of `identicard blanks` -- FAC-25's trade"),
+    Good("weapons parts", "route", "route", "contraband", "bonded", _ROUTE,
+         "8.2 smuggling_military: 'Rare, enormous.' Off the fine ladder"),
+
+    # -- (d) WHAT THE SHOW PUT ON A COUNTER, and what 250,000 people need ----
+    # Era-locked S2-3 and each one traceable to something already in this
+    # repository rather than to a memory: the species mix `schedule` carries,
+    # the fixtures `rooms.FIXTURES` names, the classes `traffic` lands.
+    Good("Centauri hair oils", "centauri", "import", "household",
+         "containerised", _SHOP,
+         "9% of the station is Centauri and the Republic's grooming is a plot "
+         "point in its own right"),
+    Good("Minbari tea", "minbari", "import", "drink", "containerised",
+         _BAR + _SHOP),
+    Good("Narn ration bricks", "narn", "import", "ration", "containerised",
+         _SHOP, "What the Regime issues its own nationals in transit"),
+    Good("Drazi fermented cakes", "drazi", "import", "meal", "perishable",
+         _BAR),
+    Good("pak'ma'ra carrion stock", "pak'ma'ra", "import", "staple",
+         "perishable", _SHOP,
+         "INC-PAKMA's 04:00 meal has to come from somewhere"),
+    Good("Vree memory cores", "vree", "import", "precision", "containerised",
+         _SHOP, "The other half of `Vree instrument optics`"),
+    Good("Abbai water reclaim units", "abbai", "import", "household",
+         "containerised", _SHOP, "A water species sells water hardware"),
+    Good("Llort scrap consignments", "llort", "import", "salvage", "bulk",
+         _SHOP + _ROUTE,
+         "PEOPLE.md CAST-41: 'Llort suppliers overnight' at the fence"),
+    Good("EarthForce ration issue", "earth alliance", "import", "ration",
+         "containerised", _SHOP, "Free at a mess, priced at a stall"),
+    Good("hydroponic seed stock", "b5 hydroponics", "hydroponics", "staple",
+         "perishable", _SHOP, "PLC-026's racks come from somewhere"),
+    Good("drum dairy", "b5 drum", "drum", "staple", "perishable",
+         _SHOP + _BAR, "The Grome's herds -- FAC-21's grading dispute"),
+    Good("drum fibre", "b5 drum", "drum", "hardware", "bulk", _SHOP,
+         "What `privacy curtain` and a station's cordage are woven from"),
+    Good("pitch-fee scrip", "b5 station", "station", "licence",
+         "containerised", _SHOP,
+         "PEOPLE.md's 4 cr/wk Zocalo pitch fee, as the chit a stallholder "
+         "buys at PLC-032 and shows to a patrol. GDS-01's own seed set names "
+         "it and no row carried it"),
 )
 GOODS_BY_NAME = {g.name: g for g in GOODS}
 
@@ -332,6 +475,18 @@ CLASS_BAND = {
     "contraband": _band(CASUAL_LO * 2.0, CASUAL_HI * 4.0),
     "free":       _band(0.0, 0.0),
     "bulk_fuel":  _band(CASUAL_LO * 0.1, CASUAL_LO * 0.2),
+    # -- the two classes the 4t widening needed, one step each. INV-721 -----
+    #   household   a durable furnishing costs about a week of the rent of the
+    #               unit it furnishes, so the band IS `quarters_personnel`.
+    #               Eight of them furnish a room for 80-120 cr, which against
+    #               the 8-15 cr/day casual band is the eight days of work
+    #               PLY-03 needs its "late-game sink" to be.
+    #   licence     NOT derived at all: PEOPLE.md:758 states the Zocalo pitch
+    #               fee as 4 cr/wk against TRAFFIC:630-643, so the band is that
+    #               figure, both ends, and it is the second SOURCED price in
+    #               this file after `quarters_command`.
+    "household":  _band(*ladder("quarters_personnel")),
+    "licence":    _band(4.0, 4.0),
 }
 
 # THE SUPPLY MULTIPLIER. What it cost to get here.
@@ -436,6 +591,153 @@ def price_check():
                             f"is not the {s.ladder or 'squat'} row's "
                             f"{want:.2f}"))
     return bad
+
+
+# ===========================================================================
+# 4a.  THE BID -- what a counter PAYS, which is the other half of a price
+# ===========================================================================
+# VRB-05 IS "BUY/SELL" AND HALF OF IT WAS NEVER BUILT. `spec_check.py --red`
+# said so in the row's own words -- *"the buy side is consequence.purchase; the
+# sell side is not implemented -- no sell/fence entry point exists"* -- and a
+# verb the spec enumerates with no entry point is the shape of defect this
+# project has produced nine times, arriving from the other direction: not
+# machinery with no caller, but a caller (the spec) with no machinery.
+#
+# NOT ONE NEW NUMBER IS INTRODUCED HERE, and that is deliberate. Both factors
+# below are ratios this file already derived for other purposes, re-read:
+#
+#   BUY_BACK = 0.5.  `CLASS_BAND` derives the `staple` band as HALF the `meal`
+#       band on a stated argument -- *"a cart selling a 1-2 cr plate cannot
+#       have paid more than about half of that for its ingredients or there is
+#       no cart"*. That sentence IS a buy-back rate: it says what a counter
+#       pays for a unit of what it sells. A counter taking a line back over
+#       its own counter pays what it pays a supplier, because it is buying the
+#       same thing. Using the number twice for one decision is the point;
+#       inventing a second margin would be two answers to one question.
+#
+#   FENCE_TAKE = SUPPLY_MULT["route"] = 0.75.  A fence does not keep what it
+#       buys, it moves it on the route -- and the route already sells at 0.75
+#       of the licensed line it displaces (LAW-CRIME:858-879, SYS-06). So the
+#       fence's own shelf is worth 0.75 of a licit shelf and its bid is 0.75
+#       of a licit bid. The fence pays 37.5% of a shopfront's price against a
+#       shopfront's 50%.
+#
+# AND THAT SPREAD IS THE WHOLE MECHANIC. The fence pays WORSE and is the only
+# buyer for what a licensed reader will not touch, which is exactly what
+# FACTIONS 11.4 says the black market is for. A player with a clean card and a
+# clean crate goes to a shop; everybody else goes to Solly Vane. INV-722.
+BUY_BACK = 0.5
+FENCE_TAKE = SUPPLY_MULT["route"]                                # 0.75
+
+# THE NAMED FENCE. PEOPLE.md's CAST row 41, quoted: `41 | Solly Vane | hum M 44
+# | the fence, black_market stall | subfloor_stack | buys 14:00-02:00; Llort
+# suppliers overnight`. The hours are his, not ours.
+#
+# AND THE REGISTER DISAGREES WITH THAT ROW, which is reported rather than
+# papered over: `directory.by_key("subfloor_stack")["functions"]` is
+# ("services", "informal_residence", "storage") -- no `black_market`, so the
+# place CAST-41 files him at is not a counter and `sell()` will refuse there in
+# so many words. `fence_places()` returns the places that actually trade, and
+# `fence_register_gap()` is the finding, printed by `--trade`. Closing it is a
+# one-tuple edit in `directory.py`, which this module does not own.
+FENCE_NAME = "Solly Vane"
+FENCE_FILED_AT = "subfloor_stack"                    # PEOPLE.md CAST row 41
+FENCE_HOURS = (14.0, 2.0)                            # buys 14:00-02:00
+
+# The named household keeper PLY-03 asks for: *"A household-goods vendor
+# exists (a named keeper among PLC-052's shops)"*. PLC-052 is `shops_kiosks`,
+# whose register functions are ("commerce", "retail") -- so the keeper's stall
+# is derived from the register exactly the way `Good.sold_by` is, and the name
+# is the only authored thing about it. `npc/names.py`'s human grammar is what
+# an in-world nameplate would draw from; this is one draw from it, fixed so a
+# save can refer to it. INV-723.
+HOUSEHOLD_GOODS_FUNCTION = "retail"
+HOUSEHOLD_KEEPER = ("Ada Roskoe", "shops_kiosks")
+
+
+def household_goods():
+    """PLY-03's furnishing catalogue: every `household` line, ordered."""
+    return tuple(g.name for g in GOODS if g.klass == "household")
+
+
+def household_vendor():
+    """(keeper, place, what they sell). The named keeper among PLC-052's."""
+    name, key = HOUSEHOLD_KEEPER
+    return name, key, tuple(n for n in goods_list(key)
+                            if GOODS_BY_NAME[n].klass == "household")
+
+
+def fence_places():
+    """Every counter with no reader on it -- where a fence can actually trade.
+
+    Derived from `consequence.UNCHECKED_FUNCTIONS` via the register, never
+    listed. Imported lazily: `consequence` imports THIS module at its top, so a
+    module-level import here would be a cycle that takes both files down.
+    """
+    import consequence as _cq                                # noqa: PLC0415
+    return tuple(p["key"] for p in dr.PLACES
+                 if set(p["functions"]) & _cq.UNCHECKED_FUNCTIONS
+                 and set(p["functions"]) & SELLING_FUNCTIONS)
+
+
+def fence_register_gap():
+    """(ok, note) -- does the register agree with PEOPLE.md's CAST row 41."""
+    fns = tuple(dr.by_key(FENCE_FILED_AT)["functions"])
+    ok = FENCE_FILED_AT in fence_places()
+    return ok, (f"CAST-41 files {FENCE_NAME} at `{FENCE_FILED_AT}` and the "
+                f"register gives it {fns} -- no unchecked SELLING function, so "
+                f"it is not a counter. Trading fences: "
+                f"{', '.join(fence_places())}")
+
+
+def unchecked(place_key):
+    """Is this counter one the reader does not cover -- i.e. a fence."""
+    import consequence as _cq                                # noqa: PLC0415
+    return bool(set(dr.by_key(place_key)["functions"])
+                & _cq.UNCHECKED_FUNCTIONS)
+
+
+def bid(good_name, place_key, seed="b5"):
+    """What this counter PAYS for one unit, in credits. The mirror of `price`.
+
+    Deterministic in exactly the same (good, place, seed) as `price`, because
+    it IS `price` times a constant -- which is what makes the spread a fact a
+    player can learn rather than a draw they cannot.
+    """
+    p = round(price(good_name, place_key, seed) * BUY_BACK
+              * (FENCE_TAKE if unchecked(place_key) else 1.0), 2)
+    # A counter that pays a whole credit for a 0.66 cr drink is a money pump,
+    # and rounding to 2 dp can reach zero from below. Millicredits exist
+    # (LAW-CRIME:730) and a zero bid is a real answer for a `free` line.
+    return max(0.0, p)
+
+
+def spread(good_name, place_key, seed="b5"):
+    """(bid, price, price - bid). What the counter makes on a round trip."""
+    a, b = bid(good_name, place_key, seed), price(good_name, place_key, seed)
+    return a, b, round(b - a, 2)
+
+
+def buys_list(place_key, seed="b5"):
+    """What this counter will take OFF you. Derived, never listed.
+
+    THE TWO RULES ARE THE WHOLE CONTENT OF THE VERB and both come from rules
+    already in this project:
+
+      a licensed counter buys back ONLY ITS OWN LINES -- a chandlery has no
+        use for a plate of flarn and no shelf to put it on -- and never a
+        `bonded` or `route` line, because the identicard IS the credit card
+        (INV-342) so a payout is a named transaction and a named transaction
+        against a customs-sealed good is `consequence.OFFENCE["contraband"]`.
+
+      a FENCE buys anything, because there is no reader on the counter
+        (FACTIONS 11.4) and it does not keep what it buys.
+    """
+    if unchecked(place_key):
+        return tuple(g.name for g in GOODS)
+    return tuple(n for n in goods_list(place_key, seed)
+                 if GOODS_BY_NAME[n].cargo != "bonded"
+                 and GOODS_BY_NAME[n].supply != "route")
 
 
 # ===========================================================================
@@ -1144,7 +1446,16 @@ def retail_share(day=0, seed="b5"):
 # 8.  THE LEDGER -- the world's mutable half, and it survives the process
 # ===========================================================================
 LEDGER_PATH = os.path.join(HERE, "generated", "economy.json")
-LEDGER_VERSION = 1
+# BUMPED FROM 1 BY THE 4t WORK, and `load()` refuses the old number rather than
+# defaulting around it -- a ledger written before `placements` existed has no
+# key for it, and silently reading `{}` would be a save that lost a shelf
+# without saying so.
+LEDGER_VERSION = 2
+
+# THE SYS-13 DELTA CLASS, NAMED ONCE. It is the JSON key, the constant a
+# GDScript reader would look for, and the string PLY-03 spells out. One
+# spelling, so a grep for it finds the store and not a comment about it.
+PLAYER_PLACEMENTS = "player_placements"
 
 
 @dataclass
@@ -1156,6 +1467,29 @@ class Ledger:
     wages: dict = field(default_factory=dict)     # npc_id -> credits paid
     sales: list = field(default_factory=list)     # every transaction, in order
     delivered: dict = field(default_factory=dict)  # day -> crates landed
+    # SYS-13's `player_placements` SAVE-DELTA CLASS. PLY-03 names it by that
+    # exact string -- *"Placed props persist -- TAKE/PLACE anywhere in the
+    # player's unit survives save/reload as a SYS-13 delta class
+    # (player_placements)"* -- and it existed nowhere in station/, godot/ or
+    # tools/.
+    #
+    # IT BELONGS TO THE LEDGER AND NOT TO THE PURSE, and that is a decision
+    # rather than convenience. `player.Player.state()` is a PERSON: where they
+    # are, what they carry, what they are owed. A crate standing on a shelf in
+    # a room is the WORLD's, and it stays on that shelf when the person who put
+    # it there is on the other side of the station -- which is precisely the
+    # distinction `hud.gd` had to be taught in 4q ("the ledger also holds every
+    # counter's stock and till, and those belong to the world rather than to
+    # the person standing in it"). This file already survives a process and is
+    # already the engine's one writable world-state artefact, so a placement
+    # put here needs no second save path.
+    #
+    # NOTE FOR WHOEVER OWNS `player.py`: `spec_harness/vrb.py`'s VRB-03 asks
+    # `player.state()` for a placement key and will keep saying RED while the
+    # store is here. That is not a defect in either half -- it is one open
+    # question about which of the two owns a shelf -- and it is written down
+    # rather than settled by whichever module the harness happened to look in.
+    placements: dict = field(default_factory=dict)  # place -> [placement]
     seed: str = "b5"
 
     # -- construction -------------------------------------------------------
@@ -1185,7 +1519,8 @@ class Ledger:
                        "seed": self.seed, "stock": self.stock,
                        "till": self.till, "purses": self.purses,
                        "wages": self.wages, "sales": self.sales,
-                       "delivered": self.delivered}, f, indent=1,
+                       "delivered": self.delivered,
+                       PLAYER_PLACEMENTS: self.placements}, f, indent=1,
                       sort_keys=True)
         return path
 
@@ -1199,7 +1534,9 @@ class Ledger:
         return cls(day=d["day"], stock=d["stock"], till=d["till"],
                    purses=d.get("purses", {}), wages=d.get("wages", {}),
                    sales=d.get("sales", []),
-                   delivered=d.get("delivered", {}), seed=d.get("seed", "b5"))
+                   delivered=d.get("delivered", {}),
+                   placements=d.get(PLAYER_PLACEMENTS, {}),
+                   seed=d.get("seed", "b5"))
 
     # -- queries ------------------------------------------------------------
     def units(self, place_key, good):
@@ -1211,6 +1548,42 @@ class Ledger:
     def total_till(self):
         return sum(self.till.values())
 
+    # -- SYS-13 `player_placements` -----------------------------------------
+    def place(self, who, place_key, good, spot="shelf"):
+        """PUT an object down somewhere and have it still be there. VRB-03.
+
+        Takes it OUT OF THE BAG, because a thing cannot be both carried and
+        standing on a shelf -- the half of TAKE/PLACE that made the verb a
+        pair. Returns the placement record.
+        """
+        if not who.has(good):
+            raise Refused(f"{who.name} is not carrying {good}")
+        who.drop(good)
+        rec = {"good": good, "at": place_key, "spot": spot,
+               "who": who.npc_id, "day": self.day}
+        self.placements.setdefault(place_key, []).append(rec)
+        self.purses[who.npc_id] = who.state()
+        return rec
+
+    def lift(self, who, place_key, good):
+        """The inverse. Back in the bag, off the shelf, or `Refused`."""
+        rows = self.placements.get(place_key, [])
+        for i, r in enumerate(rows):
+            if r["good"] == good:
+                if who.full():
+                    raise Refused(f"{who.name}'s bag is full")
+                rows.pop(i)
+                who.take(good)
+                self.purses[who.npc_id] = who.state()
+                return r
+        raise Refused(f"no {good} placed at {place_key}")
+
+    def placed_at(self, place_key):
+        return tuple(r["good"] for r in self.placements.get(place_key, ()))
+
+    def total_placed(self):
+        return sum(len(v) for v in self.placements.values())
+
 
 # ---------------------------------------------------------------------------
 # The transaction
@@ -1219,8 +1592,16 @@ class Refused(Exception):
     """A sale that did not happen, with the reason a counter would give."""
 
 
-def buy(led, buyer, place_key, good, n=1):
+def buy(led, buyer, place_key, good, n=1, bag=False):
     """BUY/SELL (VRB-05). Credits move one way, stock the other, till up.
+
+    `bag` CLOSES A DIVERGENCE THIS FILE ALREADY REPORTED RATHER THAN HID.
+    `godot/scripts/interact.gd::_verb_serve` moves FIVE things -- it calls
+    `_player.take(good)` -- and this moved four, so the engine could refuse a
+    sale Python allowed. It defaults False so every existing caller
+    (`dockwork.py`'s fourteen-day loop, `background_sales`, `--selftest`) is
+    bit-for-bit what it was; `--trade` passes True, because a thing you are
+    going to SELL has to have been in your hands first.
 
     `buyer` is a `player.Player`. It is not duck-typed on purpose: the whole
     reason `player.py` exists is that a player is a `Resident` plus a purse, and
@@ -1245,6 +1626,68 @@ def buy(led, buyer, place_key, good, n=1):
     led.purses[buyer.npc_id] = buyer.state()
     led.sales.append({"day": led.day, "at": place_key, "good": good,
                       "n": n, "cr": total, "who": buyer.npc_id})
+    if bag:
+        buyer.take(good)
+        led.purses[buyer.npc_id] = buyer.state()
+    return unit, total
+
+
+# How deep a counter will stand on one line before it stops taking more.
+# NOT A NEW NUMBER: `opening_stock` already derives what a counter stands with
+# from its own covers over `RESTOCK_DAYS`, and a counter already holding that
+# has its next delivery contracted -- it has nowhere to put another and no
+# reason to want one. So the cap IS the opening depth.
+def shelf_cap(place_key, good, seed="b5"):
+    """Units of one line a counter will hold. 0 if it does not deal in it."""
+    return int(opening_stock(place_key, seed, 0).get(good, 0))
+
+
+def sell(led, seller, place_key, good, n=1):
+    """SELL (VRB-05), and it is `buy` run backwards through the same four rows.
+
+    buy   purse DOWN   shelf DOWN   till UP     one row, cr > 0
+    sell  purse UP     shelf UP     till DOWN   one row, cr < 0
+
+    THE SIGN IS THE DIRECTION and it is load-bearing rather than cosmetic:
+    `till[place]` is cumulative takings, so after any mix of buys and sells it
+    must still equal the sum of the `cr` of that place's own rows. `--trade`
+    asserts exactly that, and it is the invariant that would catch a sell
+    that moved money without writing it down.
+
+    THE SELLER MUST BE CARRYING IT. `player.Player.carrying` is a set of
+    NAMES -- `take()` refuses a duplicate -- so one bag slot is one line and
+    `n` is how many units of that line leave it. The slot clears on the sale.
+
+    Raises `Refused` with the sentence a keeper would give.
+    """
+    if place_key not in led.stock:
+        raise Refused(f"{place_key} is not a counter")
+    if n < 1:
+        raise Refused("nothing to sell")
+    if not seller.has(good):
+        raise Refused(f"{seller.name} is not carrying {good}")
+    if good not in buys_list(place_key, led.seed):
+        g = GOODS_BY_NAME.get(good)
+        if g is not None and (g.cargo == "bonded" or g.supply == "route"):
+            raise Refused(
+                f"{place_key} will not take {good} over a counter with a "
+                f"reader on it -- that is a `contraband` docket, not a sale")
+        raise Refused(f"{place_key} does not deal in {good}")
+    if not unchecked(place_key):
+        cap = shelf_cap(place_key, good, led.seed)
+        if led.units(place_key, good) + n > cap:
+            raise Refused(
+                f"{place_key} stands {cap} {good} deep and has "
+                f"{led.units(place_key, good)} -- no room on the shelf")
+    unit = bid(good, place_key, led.seed)
+    total = round(unit * n, 2)
+    seller.drop(good)
+    seller.credits = round(seller.credits + total, 3)
+    led.stock[place_key][good] = led.units(place_key, good) + n
+    led.till[place_key] = round(led.till.get(place_key, 0.0) - total, 2)
+    led.purses[seller.npc_id] = seller.state()
+    led.sales.append({"day": led.day, "at": place_key, "good": good,
+                      "n": -n, "cr": -total, "who": seller.npc_id})
     return unit, total
 
 
