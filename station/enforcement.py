@@ -693,6 +693,69 @@ def selftest(out=print) -> bool:                                  # noqa: C901
             f"fine_for({MOVED_ON_OFFENCE}) = {cq.fine_for(MOVED_ON_OFFENCE)} "
             f"-- 0 days of wages, so nothing is taken")
 
+    # ===================================================================
+    # 8. PROGRESSION -- the second row of the offence rule, and the record
+    # ===================================================================
+    # CHECK 4 ABOVE IS WHY THESE EXIST. "A refusal at a door never withdraws a
+    # permission, at ANY rung" is TRUE and was also the whole of what the
+    # engine carried, so the shipped build could not demote anybody. These
+    # check the OTHER row of the same rule, on the same machinery.
+    sr = rows[k0]["search"]
+    ever_c = sorted(t for t, seq in sr["ladder_by_tier"].items()
+                    if any(c["revoked"] for c in seq))
+    want_c = sorted(str(t) for t in cq.RUNGS
+                    if cq.REVOCABLE.get(t) is not None)
+    check(ever_c == want_c,
+          "and a SEARCH does, at exactly the rungs that hold a permission",
+          "revoking rungs %s; `REVOCABLE` says %s" % (ever_c, want_c))
+    first = sr["ladder_by_tier"]["2"][0]
+    check(bool(first["revoked"]) and int(first["tier_after"]) < 2,
+          "one contraband docket takes a transit visa on the FIRST conviction",
+          "rung 2 -> %d, %s" % (first["tier_after"], first["reason"]))
+
+    # THE BRIG IS A PLACE. Its stand point must be inside its own box, or the
+    # engine is putting a body beside the room it is meant to be in.
+    ba = brig_address()
+    blo, bhi = ba["box"]
+    bst = ba["stand"]
+    check(all(blo[i] - 0.01 <= bst[i] <= bhi[i] + 0.01 for i in range(3)),
+          "the brig's stand point is inside the brig's own box",
+          "(%.1f, %.1f, %.1f) in %s..%s" % (bst[0], bst[1], bst[2], blo, bhi))
+    check(ba["cells"] == cq.BRIG_CELLS and ba["sector"] == "red",
+          "and it is the register's brig, not a second one",
+          "%s %s ring %d deck %d, %d cells"
+          % (ba["place"], ba["sector"], ba["ring"], ba["deck"], ba["cells"]))
+
+    # A CELL NUMBER MUST BE STABLE AND MUST NOT BE ONE NUMBER.
+    cells = [brig_cell("player:%d" % i, 3) for i in range(64)]
+    check(brig_cell(pl.npc_id, 3) == brig_cell(pl.npc_id, 3)
+          and min(cells) >= 1 and max(cells) <= cq.BRIG_CELLS
+          and len(set(cells)) > cq.BRIG_CELLS // 3,
+          "a booking names the same cell every time, and not everyone's cell",
+          "%d distinct cells over 64 bookings, range %d..%d"
+          % (len(set(cells)), min(cells), max(cells)))
+
+    # THE LOOP AND THE RECORD, RUN RATHER THAN DESCRIBED.
+    _q = lambda *_a, **_k: None                                  # noqa: E731
+    g = progression_gate(out=_q)
+    check(g["ok"],
+          "the whole loop closes -- arrest, brig, fine, release, demotion, "
+          "reload",
+          "rung %d -> %d, reloaded %d, %.2f cr, cell %d%s"
+          % (g["tier_before"], g["tier_after"], g["tier_reloaded"], g["fine"],
+             g["cell"], "" if g["ok"] else "; failed: " + ", ".join(g["failed"])))
+
+    print("  CONTROLS -- progression")
+    g2 = progression_gate(no_restore=True, out=_q)
+    control(g2["ok"], "reload the purse WITHOUT its record (CAST-05's premise)",
+            "the rung comes back %d and not %d -- the demotion lives in the "
+            "record and nowhere else" % (g2["tier_reloaded"], g2["tier_after"]))
+    g3 = progression_gate(no_contraband=True, out=_q)
+    control(g3["ok"], "the same stop with an EMPTY BAG",
+            "rung %d -> %d: grade 1 is not `ordinary`, so being arrested is "
+            "not by itself what costs you the rung"
+            % (g3["tier_before"], g3["tier_after"]))
+
     print("enforcement selftest %s -- %d checked, %d failed"
           % ("PASS" if not _FAILED else "FAIL", _RAN[0], len(_FAILED)))
     return not _FAILED
@@ -1480,10 +1543,17 @@ def _prog_gate(verbose=False) -> dict:
     Then the LEDGER ON DISK is re-read and the demotion has to be in it, which
     is the reload half: the file is what a second session would open.
     """
+    # A GATE THAT SKIPS WHEN ITS INPUT IS MISSING IS A GATE THAT PASSES WHEN
+    # NOBODY BUILT ANYTHING, which is the shape of every green number in this
+    # repository's history that turned out to describe nothing. `--gate`'s own
+    # skip above is kept because it predates this session and something may
+    # depend on it; this one fails and names the four commands.
     if not os.path.exists(OUT_JSON):
-        print("ARREST SKIP -- no %s. Run `--bake`"
+        print("  ARREST-PROG FAIL -- no %s. `station/generated/` is gitignored "
+              "and a recycled container loses it. Run:\n"
+              "    python3 station/enforcement.py --ensure --gate --progression"
               % os.path.relpath(OUT_JSON, ROOT))
-        return {"ok": True, "skipped": True}
+        return {"ok": False}
     pl, src = prog_ledger()
     print("PROGRESSION IN THE ENGINE -- `godot --headless --path godot -- "
           "--no-coldstart --arrest-gate %s`" % " ".join(PROG_FLAGS))
@@ -1605,6 +1675,48 @@ def gate(verbose=False, legacy=False, progression=False) -> dict:
     return {"ok": ok, "verdict": d}
 
 
+# ===========================================================================
+# 8b. THE FOUR THINGS THIS GATE NEEDS ON DISK, AND HOW TO GET THEM
+# ===========================================================================
+# `station/generated/` is gitignored, the container recycles, and a verifier who
+# is handed a gate command must be able to run it. Each step below is named with
+# its OUTPUT and its cost, checked by whether the output exists rather than by
+# an exit code -- `tools/bootstrap.py`'s rule, and its own first run is why:
+# a step exited 0, wrote its real output, and was reported as FAILED because
+# the predicate named a different file.
+ENSURE = (
+    ("the arrival cluster",
+     lambda: bool(__import__("glob").glob(os.path.join(SCENE, "deck",
+                                                       "*_col.obj"))),
+     ["python3", "station/arrival.py", "--build"], "~90 s"),
+    ("the player's purse",
+     lambda: os.path.exists(LEDGER),
+     ["python3", "station/dockwork.py", "--loop", "--days", "14", "--role",
+      "lurker", "--seed", "downbelow", "--save",
+      "station/generated/economy.json"], "~9 s"),
+    ("the boot manifest",
+     lambda: os.path.exists(BOOT_JSON),
+     ["python3", "station/boot.py"], "~28 s"),
+    ("the consequence table",
+     lambda: os.path.exists(OUT_JSON),
+     ["python3", "station/enforcement.py", "--bake"], "~63 s"),
+)
+
+
+def ensure(force=False, out=print) -> bool:
+    ok = True
+    for name, have, cmd, cost in ENSURE:
+        if have() and not force:
+            out("  present  %s" % name)
+            continue
+        out("  BUILDING %s (%s) -- %s" % (name, cost, " ".join(cmd)))
+        subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+        if not have():
+            out("  FAILED   %s -- its output is still missing" % name)
+            ok = False
+    return ok
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--report", action="store_true")
@@ -1627,8 +1739,15 @@ def main(argv=None):
                     help="control: the same stop with an empty bag")
     ap.add_argument("--card", metavar="SEED", nargs="?", const="g2c",
                     help="read a card as an officer would (VRB-08)")
+    ap.add_argument("--ensure", action="store_true",
+                    help="build the four artefacts this gate reads, if the "
+                         "container lost them")
     ap.add_argument("--verbose", action="store_true")
     a = ap.parse_args(argv)
+    if a.ensure:
+        print("enforcement --ensure -- station/generated/ is gitignored")
+        if not ensure():
+            return 1
     if not any((a.report, a.bake, a.selftest, a.gate, a.progression_gate,
                 a.card)):
         a.report = True

@@ -11867,3 +11867,76 @@ to measure a named subset of its groups rather than its whole mesh. Landing P1 o
 `scratchpad/PATCHES-4t-shellfit.md` — `bespoke.axial_plan` returning `bay_w` — makes
 `rooms.built_span_m` true for composed places, at which point `room_box_m`'s `module` branch
 collapses into its `builder` branch and only `x_off_m` remains.
+
+## INV-770 — which cell of the brig a booking goes into
+
+**What.** `station/enforcement.py::brig_cell(npc_id, day, seed)` returns a cell number in
+`1..consequence.BRIG_CELLS` (32, the midpoint of LAW-CRIME's sourced 24–40), drawn through
+`consequence._u` on the key `("brig_cell", npc_id, day, seed)`. Authority 5.
+
+**Why.** A booking record has to name a cell, and it has to name the **same** cell every time
+that record is read — including after the process has ended and a new one has reopened the
+ledger. A real custody desk allocates the next free cell, which needs a brig-occupancy model
+across a station-day; `consequence.brig_check` already owns that question and already fails when
+a day's arrests overflow the sourced range, so building a second occupancy model here would be
+the duplicate-rule defect this repository has paid for four times. What a *player* needs is
+weaker and different: stability. A hash on the two things a booking is identified by gives that
+for nothing, and puts the draw on the same seed line as every fine, deferral and discretionary
+stop in `consequence.py`.
+
+Measured over 64 bookings the draw returns **28 distinct cells in 1..32**, which is the check
+that stops a constant wearing a hash from passing — `enforcement.py --selftest`.
+
+**What would overturn it.** An occupancy model that can answer "which cells are free at hour h".
+Then this becomes `next_free(hour)`, the booking stores the answer, and this function is
+**deleted** rather than kept beside it — a stored cell and a drawn cell in the same build is
+exactly the disagreement this entry exists to avoid.
+
+## INV-771 — a place that reads a card also searches the bag
+
+**What.** In `godot/scripts/enforcement.gd`, a stop opens at any place whose baked row has
+`reads_card` when the player is carrying a good `economy.GOODS` classes `contraband`, whether or
+not the identicard admits them; the offence is then `contraband` (grade 3) instead of
+`id_check_fail` (grade 1). Authority 5.
+
+**Why.** Before it, the only thing that could open a stop was a **refusal**, and a refusal is by
+construction something that happens to a card that is too *low* for the place. So the only people
+the enforcement chain could ever meet were people with nothing left to lose:
+`consequence.REVOCABLE[NO_STATUS]` is `None`, and `Record.ordinary()` does not count grade 1, so
+**no possible run of the shipped build could demote anybody.** `--selftest`'s own check 4 asserted
+that outcome ("a refusal at a door never withdraws a permission, at ANY rung") and was right about
+it, which is why nothing failed.
+
+The extrapolation is small and the constraint is the show's: customs is a search as well as a
+reader — LAW-CRIME 6.5 names Dust and concealed weapons and `arrival.checks` station 9 already
+refers on a hit, and `economy.py` already states that the offence against a customs-sealed good is
+`consequence.OFFENCE["contraband"]`. What is invented is only that the search happens *at the same
+boundary as the card read* rather than at some separate declared search point, because the register
+declares no such point. It is also what makes `docs/THE-GAME.md` §4's load-bearing sentence
+mechanical: *"Nightwatch and the Broker are both shortcuts, and taking either is how you lose
+tier 2."*
+
+**What would overturn it.** Any depiction placing the search somewhere other than the card reader —
+a separate customs hall stage, a random patrol search, a scanner arch — or a register that declares
+a `search` function. The rule then moves to those places and nothing else changes, because the
+offence, the grade and the disposal are all `consequence.py`'s.
+
+## INV-772 — the brig's world box, and why the stand point is the register's and not a mesh's
+
+**What.** `station/enforcement.py::brig_address()` returns the brig's world point as
+`collision.stand_at`'s own formula at `interior.place_floor_radius`, and a world AABB built from
+three angular samples (`angle ± half_w/r` and the centre) at the floor and ceiling radii, ±
+`deck.room_interior_half_m` in z. Authority 5.
+
+**Why.** The engine has to be able to say "the player is at the brig" on a container where
+**red/2/1 has not been built** — and it is not built here, which the run reports in those words
+(`floor=NONE`). A bound taken from the deck's mesh would make the claim unavailable in exactly the
+case where it is needed, and would also be a second description of where a place is: the register
+says (sector, ring, deck, angle, z) and `interior.place_floor_radius` turns that into a radius, so
+those are the terms the claim is made in. Three angular samples rather than two because the arc's
+extreme x or y can fall at the centre of the span, not only at its ends.
+
+**What would overturn it.** A built and streamed red/2/1: then the mesh bound is available, the
+`floor` term becomes a real number instead of `NONE`, and the box should be checked against
+`places.gd::boxes` rather than replaced by it — a disagreement between the two would be a finding
+about the deck builder, which is the reason to keep both.
