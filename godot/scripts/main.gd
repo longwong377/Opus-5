@@ -136,7 +136,25 @@ func _ready() -> void:
 	if args.has("rate"):
 		clock_rate = float(args["rate"])
 
+	# THE MANIFEST IS READ BEFORE THE DECISION, NOT AFTER IT. The front door has
+	# to be able to say "there is no world on disk, here is the command", and it
+	# cannot say that unless it has already looked. `_boot_manifest` prints and
+	# returns {} on a miss; nothing here quits on it any more -- see `_start`.
 	_boot = _boot_manifest(args)
+
+	# THE FRONT DOOR. When it takes the launch it puts a title screen up and
+	# returns, and `_on_menu_chosen` calls `_start` when the player presses
+	# something. Every other launch -- every gate, every developer command line,
+	# every headless CI step -- goes straight through, unchanged.
+	if _front_door(args):
+		return
+	_start(args)
+
+
+## Everything that used to be the body of `_ready`. Split out so that the menu
+## can call it LATER, on the frame the player chooses a mode, rather than the
+## frame the process starts.
+func _start(args: Dictionary) -> void:
 	if _boot.is_empty():
 		push_error("main: no boot manifest -- run `python3 station/arrival.py "
 			+ "--build` to write one, or pass --boot=<json>")
@@ -229,8 +247,140 @@ func _ready() -> void:
 		_ragdoll_gate()
 	elif _headless() and _args().has("collapse-gate"):
 		_collapse_gate()
-	elif _headless() and not _args().has("no-coldstart"):
+	elif _headless() and not _args().has("no-coldstart") and not _in_menu_gate:
 		_coldstart()
+
+
+# ---------------------------------------------------------------------------
+# The front door
+# ---------------------------------------------------------------------------
+## THE TITLE SCREEN, AND WHY IT IS HERE RATHER THAN IN A SCENE FILE.
+##
+## Measured at the start of session 4t: `godot/export_presets.cfg` did not
+## exist, `tools/` had no packaging path, and the strings "menu", "title" and
+## "new game" appeared nowhere in 25,000 lines of GDScript. `MASTER-PLAN` A2's
+## definition of done opens *"a stranger downloads ONE FILE, runs it at 60 fps,
+## arrives at Babylon 5 as a person with papers"* -- and there was no way for a
+## person to start this at all. A stranger who launched the shipped build with
+## no world on disk got `push_error` on a console they cannot see and exit 2.
+##
+## WHO GETS THE MENU, AND THE RULE IS DELIBERATELY NARROW. Only a launch with a
+## DISPLAY and NO USER ARGUMENTS AT ALL -- which is what double-clicking the
+## exported binary is, and nothing else in this repository. Every gate, every
+## `tools/render_godot.sh` shot, every `--mode=` developer command line and
+## every headless CI step is untouched, and `station/coldstart.py --g1` still
+## launches this scene with no arguments headlessly and gets a body on a floor.
+## Widening this predicate is how the front door would start eating the gates.
+##
+## `--menu-gate` forces it on headlessly so CI can drive it; `--no-menu` forces
+## it off. Both exist because a menu only a human can operate is a menu no step
+## can fail on, which is this project's signature defect in a new costume.
+const MENU_SCRIPT := "res://scripts/main_menu.gd"
+## The one slot the front door offers. `save.gd` supports any name; CONTINUE is
+## a single button and a single button needs a single slot.
+const MENU_SLOT := "auto"
+
+var _menu = null
+## True only for the duration of a `--menu-gate` run. Suppresses the cold start
+## so the gate's own verdict is the one that decides the exit code -- two gates
+## racing to `quit()` in one process is a result nobody can read.
+var _in_menu_gate := false
+
+
+func _front_door(args: Dictionary) -> bool:
+	if args.has("no-menu"):
+		return false
+	var forced := args.has("menu-gate")
+	if not forced:
+		if _headless():
+			return false
+		# ANY user argument at all means a developer or a tool is driving, and
+		# a title screen would be in the way of every one of them.
+		if not args.is_empty():
+			return false
+	_in_menu_gate = forced
+	var m = load(MENU_SCRIPT)
+	if m == null:
+		push_error("main: no %s -- launching straight into the station" % MENU_SCRIPT)
+		return false
+	_menu = m.new()
+	_menu.name = "MainMenu"
+	# `--no-world` is the gate's negative control: it withholds the world the
+	# same way an empty `station/generated/` would, so NEW GAME must refuse.
+	_menu.world_ok = (not _boot.is_empty()) and not args.has("no-world")
+	_menu.world_why = ("withheld by --no-world (control)" if args.has("no-world")
+		else "no boot manifest. Build one: `python3 station/arrival.py --build`"
+			+ " then `python3 station/boot.py`")
+	var snap: Dictionary = _save_lib().read(MENU_SLOT)
+	_menu.save_ok = not snap.is_empty()
+	_menu.save_why = (_save_lib().describe(snap) if _menu.save_ok
+		else "No saved station.")
+	_menu.chosen.connect(_on_menu_chosen)
+	add_child(_menu)
+	if forced:
+		# Deferred so the menu's own `_ready` has run and its rows exist. A gate
+		# that drove a half-constructed menu would be measuring nothing.
+		call_deferred("_menu_gate")
+	return true
+
+
+func _on_menu_chosen(id: String) -> void:
+	var mode := String(_menu.mode_of(id))
+	var restoring := (mode == "continue")
+	_mode = ("station" if restoring else mode)
+	_menu.queue_free()
+	_menu = null
+	print("main: front door -> %s (mode=%s)" % [id, _mode])
+	_start(_args())
+	if restoring and _world != null:
+		load_from(MENU_SLOT)
+
+
+## CI: drive the title screen with no keyboard and assert what it reached.
+##
+## IT PRESSES THE BUTTON RATHER THAN CALLING THE FUNCTION BEHIND IT. `select()`
+## and `activate()` are the same two calls `_unhandled_input` makes, so what is
+## gated is the path a player's ENTER key takes. Asserting `_build_station()`
+## works would prove the world builds and say nothing about whether anything
+## reaches it -- the exact shape of the nine no-caller defects CLAUDE.md counts.
+func _menu_gate() -> void:
+	var rows: Array = _menu.items()
+	var listed := []
+	for r in rows:
+		listed.append("%s=%s" % [r["id"], ("ready" if r["enabled"] else "no")])
+	var want := String(_args().get("menu-gate", "1"))
+	if want == "1":
+		want = "new_game"
+	# TYPED EXPLICITLY. `_menu` is a Variant -- it is `load()`ed rather than
+	# preloaded, so the parser cannot infer what `select()` returns and `:=`
+	# fails to compile.
+	var moved: bool = _menu.select(want)
+	var fired: String = (String(_menu.activate()) if moved else "")
+	# `_on_menu_chosen` has already run by here -- `chosen` is emitted
+	# synchronously inside `activate()` -- so the world, if there is one, is up.
+	var body := _player()
+	# THE CARD BY NAME, not "is there a CanvasLayer". `interact.gd` carries a
+	# second CanvasLayer and `hud.gd` a third, so a search by class finds one of
+	# those and reports a card the player has not been given -- the same trap
+	# `_hud()` documents one screen down.
+	var card := (_world != null
+		and _world.find_child("ArrivalCard", true, false) != null)
+	var fields := 0
+	var who := "-"
+	if _world != null and _world.has_method("card_lines"):
+		var seq_d: Dictionary = _world.get("seq")
+		fields = (seq_d.get("identicard", []) as Array).size()
+		who = String(seq_d.get("name", "-")).replace(" ", "_")
+	var ok: bool = (moved and fired == want and _world != null and body != null
+		and ((fields > 0 and card) if want == "new_game" else true))
+	print("MENUGATE want=%s entries=[%s] selected=%s fired=%s world=%s "
+		% [want, ", ".join(PackedStringArray(listed)), str(moved).to_lower(),
+			(fired if fired != "" else "-"),
+			("-" if _world == null else _world.name)]
+		+ "player=%s card=%s who=%s identicard_fields=%d verdict=%s"
+		% [str(body != null).to_lower(), str(card).to_lower(), who, fields,
+			("PASS" if ok else "FAIL")])
+	get_tree().quit(0 if ok else 2)
 
 
 # ---------------------------------------------------------------------------
@@ -298,12 +448,30 @@ func _build_station() -> Node3D:
 ## geometry 320 m from where it is standing. When the arrival sequence and the
 ## boot deck are the same cluster this becomes one line; until then the honest
 ## build is the monolith the sidecar names.
+## AND THE SIDECAR IS NAMED BY THE DECK, NOT BY WHERE THE MANIFEST CAME FROM.
+## This line used to read `a.set("arrival_path", _boot["_source"])`, and it was
+## correct exactly until `station/boot.py` existed: before that, `_source` WAS
+## `<deck>_arrival.json`, because the boot manifest was the arrival sidecar.
+## `boot.py`'s own header says so -- *"that was a borrowed manifest and it
+## should not have been"* -- and it stopped being true the day it was written.
+## Nothing failed, because nothing on this box had a `boot.json` to fall over;
+## the moment one existed, `--mode=arrival` handed `arrival.gd` the boot
+## manifest as a sequence and the run died on `arrival: no sequence at
+## .../boot.json`. **A fix applied to one caller and not to the assumption it
+## shared is a fix that will be needed again**, and this is the second half of
+## that one.
+##
+## So the path is passed ONLY when the manifest really is a sidecar. Otherwise
+## it is left empty and `arrival.gd::_load_sequence` derives it from the deck it
+## was given -- `<glb basename>_arrival.json` -- which is the one description of
+## where a sidecar lives, in the file that reads it.
 func _build_arrival() -> Node3D:
 	var a := _instance(ARRIVAL_SCENE)
 	if a == null:
 		return null
 	_configure_walk(a)
-	a.set("arrival_path", String(_boot.get("_source", "")))
+	var src := String(_boot.get("_source", ""))
+	a.set("arrival_path", src if src.ends_with("_arrival.json") else "")
 	add_child(a)
 	return a
 
