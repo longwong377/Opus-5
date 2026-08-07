@@ -601,6 +601,36 @@ def bake_cells(stem, deck_dir=None, timeout=900):
                                        os.path.relpath(path, ROOT), side)
 
 
+def _crowd_ladder(stem, deck_dir=None):
+    """-> {"crowd_ladder": "max_m:lod,...", "crowd_glbs": "path,..."}.
+
+    Empty strings when the placement list or the libraries are absent, so a
+    deck with no crowd boots exactly as it did. ONLY RUNGS THAT ACTUALLY EXIST
+    ON DISK are named: `walk.gd` treats a missing glb as a hard failure of the
+    whole library load, so naming a rung that was never baked is worse than
+    naming none -- it turns a partial crowd into no crowd.
+    """
+    dd = deck_dir or DECK_DIR
+    if not sidecar(stem, "_crowd.json", dd):
+        return {"crowd_ladder": "", "crowd_glbs": ""}
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "station"))
+        import populace as _pop                                 # noqa: PLC0415
+        lad = _pop.crowd_ladder()
+    except Exception:                                           # noqa: BLE001
+        return {"crowd_ladder": "", "crowd_glbs": ""}
+    rungs, glbs = [], []
+    for hi, lod in lad:
+        p = os.path.join(dd, "crowd_lod%d.glb" % lod)
+        if not os.path.exists(p):
+            continue
+        rungs.append("%g:%d" % (hi, lod))
+        glbs.append(p)
+    if not rungs:
+        return {"crowd_ladder": "", "crowd_glbs": ""}
+    return {"crowd_ladder": ",".join(rungs), "crowd_glbs": ",".join(glbs)}
+
+
 def build(stem=None, hour=None, deck_dir=None):
     """The boot manifest for one deck, derived from what is on disk."""
     dd = deck_dir or DECK_DIR
@@ -692,6 +722,22 @@ def build(stem=None, hour=None, deck_dir=None):
         "actors": actors_p,
         "dialogue": sidecar(stem, "_dialogue.json", dd),
         "crowd": sidecar(stem, "_crowd.json", dd),
+        # THE LADDER AND ITS LIBRARIES, because naming only the placement list
+        # is instance ten of this project's signature defect and it shipped.
+        # `walk.gd::_derived_crowd_glbs` has a fallback that scans the
+        # placement list's own directory, and the fallback is not the same
+        # answer: it prints
+        #
+        #     no crowd library was named -- found 3 beside blue_0_0_crowd.json,
+        #     ladder 1e9:8 (the coarsest that shipped)
+        #
+        # and draws all 444 walkers at LOD 8 -- 23,016 vertices for the whole
+        # species set -- at every distance including arm's length. The rungs
+        # exist precisely so a body two metres away is not the one built for
+        # 400 m. `populace.crowd_ladder()` derives them from
+        # `schedule.NPC_BUDGET`'s allowances, so it is read rather than
+        # restated here.
+        **_crowd_ladder(stem, dd),
         # WHAT MAKES THE SHIPPED SCENE STREAM. Empty means it does not, and
         # `cells_why` says which of the two reasons it is -- there is no set, or
         # the set on disk no longer describes this deck.
@@ -1231,6 +1277,22 @@ def main():
                          "station/generated/ is gitignored. A walk that runs "
                          "and FAILS still exits 1. See `_cannot_run`")
     ap.add_argument("--out", default=OUT)
+    # WHICH OF THE TWO BUILD DIRECTORIES TO BOOT FROM, and the default is not
+    # the right one any more. `DECK_DIR` (`scene/deck/`) holds what
+    # `walkable.py` writes: ONE z-cluster, built for a walk test -- 83 room
+    # occupants, no corridor crowd, no cell set. `scene/station/` holds what
+    # `tools/export_station.py` writes and `tools/bake_station.py` cuts into
+    # cells: the whole deck, 6 clusters, 23 rooms, 408 actors, 444 crowd
+    # instances, 206 streaming cells.
+    #
+    # Nothing chose the small one. `decks()` enumerates `*_col.obj` and only
+    # the walk-test path emitted that name, so the real build was INVISIBLE to
+    # this file and the packaged game shipped a test fixture. The flag exists
+    # so the choice is stated in the command that writes the manifest, rather
+    # than falling out of a filename convention.
+    ap.add_argument("--deck-dir", default=None,
+                    help="directory to boot from (default: scene/deck). "
+                         "Use scene/station for the streamed build")
     a = ap.parse_args()
     if a.gate:
         return gate()
@@ -1246,12 +1308,12 @@ def main():
                   "ran. This is NOT a pass and the line above says so")
             return 0
         return rc
-    man = build(a.deck, a.hour)
+    man = build(a.deck, a.hour, a.deck_dir)
     if a.bake and not (man["cells_count"] > 1 and man["cells_fresh"]
                        and man["cells_start"] >= 0):
-        ok, why = bake_cells(man["deck"])
+        ok, why = bake_cells(man["deck"], a.deck_dir)
         print("boot: bake %s -- %s" % ("ok" if ok else "FAILED", why))
-        man = build(a.deck, a.hour)
+        man = build(a.deck, a.hour, a.deck_dir)
     d = man["spawn_derivation"]
     print("boot: %s -- spawn %.3f,%.3f,%.3f in %s, %d rooms; standing on 1 of "
           "%d floor triangles (of %d in the shell) at r=%.3f, %.0f deg"

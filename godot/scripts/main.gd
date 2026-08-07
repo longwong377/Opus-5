@@ -589,6 +589,15 @@ func _configure_walk(w: Node) -> void:
 	w.set("actors_path", String(_boot.get("actors", "")))
 	w.set("dialogue_path", String(_boot.get("dialogue", "")))
 	w.set("crowd_path", String(_boot.get("crowd", "")))
+	# THE LADDER AND THE LIBRARIES, not just the placement list. Setting
+	# `crowd_path` alone is the exact defect `walk.gd::_derived_crowd_glbs`
+	# documents as instance ten: its scan-the-directory fallback then loads
+	# whatever it finds under a synthetic `1e9:8` ladder, so every walker on
+	# the deck is drawn with the 400 m body at every distance. Empty strings
+	# leave the fallback in charge, which is what a deck with no baked library
+	# should still do.
+	w.set("crowd_ladder", String(_boot.get("crowd_ladder", "")))
+	w.set("crowd_glbs", String(_boot.get("crowd_glbs", "")))
 	w.set("spawn", _vec3(_boot.get("spawn", [])))
 	# A RING DECK IS SPUN, so "down" is away from the axis and not -Y. This is
 	# the same value `station/walkable.py --deck` passes, and `player.gd`'s
