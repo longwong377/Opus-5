@@ -697,19 +697,147 @@ def unchecked(place_key):
                 & _cq.UNCHECKED_FUNCTIONS)
 
 
+# THE STATION-WIDE FLOOR ON WHAT A LINE CAN BE BOUGHT FOR, and it is the fix
+# for a live money pump that the first version of this verb shipped with.
+#
+# WHAT WAS WRONG, MEASURED ON SHIPPED CONTENT. `bid` was `price(good, THIS
+# place) * BUY_BACK`, which makes "no counter pays more than it charges" an
+# algebraic identity in a constant -- true for any content, so the assertion
+# guarding it could only fail when the gate reached in and rewrote BUY_BACK.
+# The pump a player actually finds is CROSS-PLACE, because `price` multiplies
+# by `VENUE_MULT[sector]` and the sectors span x0.5503 (grey) to x1.71
+# (green). Buy `identicard blanks` off the black_market shelf at 6.88 cr, walk
+# them to N'Grath, whose 49.82 cr shelf produced an 18.68 cr bid: +171% a lap,
+# restocking daily, on 23 of the 65 lines. That is not a rounding error, it is
+# the market shape this project had never had until the sell side existed.
+#
+# THE RULE, AND IT INTRODUCES NO NEW NUMBER. Nobody pays more for a unit than
+# they can source it for. This is a station, not a trade route: it is 8,047 m
+# end to end, every counter on it is a walk from every other, and `deliver()`
+# already moves consignments between them daily. So a dealer's bid is capped
+# by the CHEAPEST shelf on the station carrying that line, not by their own --
+# the law of one price, applied to a closed market whose diameter is a walk.
+#
+# WHAT IT LOOKS LIKE IN WORLD, which is the test of whether it is a rule or a
+# patch: N'Grath goes on selling blanks at 49.82 and now pays 2.58 for one
+# (6.88 x BUY_BACK x FENCE_TAKE -- his counter has no reader on it), because
+# he is a monopolist reseller and not a bulk buyer, and the black market two
+# decks down will sell him all he wants at 6.88. A player who
+# notices the 49.82 has learned where NOT to shop, which is a real thing to
+# know; a player who noticed the 18.68 had learned that the economy is broken.
+# The spread a player can still earn is the one the fence pays for what a
+# licensed reader will not touch -- which is the mechanic FACTIONS 11.4 is
+# for, and it survives this untouched. INV-1015.
+#
+# `CROSS_CLAMP` exists so `--break-crossplace` can restore the old local-price
+# bid and show the new assertion going red on all 23 lines. A gate nobody has
+# watched fail is a gate nobody has tested.
+CROSS_CLAMP = True
+_SHELF_FLOOR = {}
+
+
+def shelf_floor(seed="b5"):
+    """{good -> the lowest shelf price ANYWHERE on the station}. Memoised.
+
+    A pure function of `GOODS`, `CLASS_BAND`, `SUPPLY_MULT`, `VENUE_MULT` and
+    the register, so it is computed once per seed in one pass over the places
+    rather than once per `bid` -- `bid` is called inside the O(places x goods)
+    loop the cross-place gate itself runs.
+
+    A line stocked NOWHERE has no entry, and that is a real answer rather than
+    a hole: `buys_list` at a fence returns every good in `GOODS`, and GDS-01
+    reports 7 wares that declare no selling function at all. For those the bid
+    falls back to the local shelf, because there is no cheaper source to
+    arbitrage against.
+    """
+    if seed not in _SHELF_FLOOR:
+        f = {}
+        for p in dr.PLACES:
+            k = p["key"]
+            for n in goods_list(k, seed):
+                v = price(n, k, seed)
+                if n not in f or v < f[n]:
+                    f[n] = v
+        _SHELF_FLOOR[seed] = f
+    return _SHELF_FLOOR[seed]
+
+
 def bid(good_name, place_key, seed="b5"):
     """What this counter PAYS for one unit, in credits. The mirror of `price`.
 
     Deterministic in exactly the same (good, place, seed) as `price`, because
-    it IS `price` times a constant -- which is what makes the spread a fact a
-    player can learn rather than a draw they cannot.
+    it is a fixed fraction of a price -- which is what makes the spread a fact
+    a player can learn rather than a draw they cannot.
+
+    The price it is a fraction of is the CHEAPEST shelf on the station, not
+    this counter's, and the long comment above is why.
     """
-    p = round(price(good_name, place_key, seed) * BUY_BACK
+    shelf = price(good_name, place_key, seed)
+    if CROSS_CLAMP:
+        floor = shelf_floor(seed).get(good_name)
+        if floor is not None and floor < shelf:
+            shelf = floor
+    p = round(shelf * BUY_BACK
               * (FENCE_TAKE if unchecked(place_key) else 1.0), 2)
     # A counter that pays a whole credit for a 0.66 cr drink is a money pump,
     # and rounding to 2 dp can reach zero from below. Millicredits exist
     # (LAW-CRIME:730) and a zero bid is a real answer for a `free` line.
     return max(0.0, p)
+
+
+def cross_pump(seed="b5"):
+    """Every line a player can buy at one counter and sell at another for more.
+
+    THE QUESTION THE PER-COUNTER ASSERTION CANNOT ASK. `bid(g, k) < price(g,
+    k)` compares a counter against itself and is therefore true by
+    construction while BUY_BACK < 1. This compares the BEST bid on the station
+    against the CHEAPEST shelf on the station, which is the trip a player
+    actually makes, and it is a statement about the CONTENT -- the venue
+    ladder, the supply multipliers and which counters carry which lines --
+    rather than about a constant.
+
+    Returns rows sorted best-lap-first:
+        (margin, good, buy_at, buy_cr, sell_at, sell_cr)
+
+    A line with no shelf anywhere, or a free line (floor 0.00), is skipped: a
+    trip that starts at a counter nobody stocks is not a trip, and 0 >= 0 is
+    not a pump, it is a rounding floor.
+    """
+    return tuple(r for r in laps(seed) if r[0] > 0.0)
+
+
+def laps(seed="b5"):
+    """Every tradable line's BEST round trip, profitable or not. Sorted.
+
+    Same rows as `cross_pump`, without the sign filter -- so the top row is
+    the best lap on the board and a healthy economy's is NEGATIVE. Printing
+    that number is what turns "0 pumps found" from an absence into evidence.
+    """
+    stock, take = {}, {}
+    for p in dr.PLACES:
+        k = p["key"]
+        gl = goods_list(k, seed)
+        if gl:
+            stock[k] = set(gl)
+        if set(p["functions"]) & SELLING_FUNCTIONS:
+            bl = buys_list(k, seed)
+            if bl:
+                take[k] = set(bl)
+    rows = []
+    for g in GOODS:
+        n = g.name
+        buys = [(bid(n, k, seed), k) for k in take if n in take[k]]
+        sells = [(price(n, k, seed), k) for k in stock if n in stock[k]]
+        if not buys or not sells:
+            continue
+        best_bid, at_b = max(buys)
+        cheapest, at_s = min(sells)
+        if cheapest <= 0.0:
+            continue
+        rows.append((round(best_bid - cheapest, 2), n,
+                     at_s, cheapest, at_b, best_bid))
+    rows.sort(reverse=True)
+    return tuple(rows)
 
 
 def spread(good_name, place_key, seed="b5"):
@@ -1827,6 +1955,29 @@ def background_sales(led, day=None):
 # gives them nowhere to take it; this is where they take it.
 FENCE_INTAKE_SHARE = BLACK_MARKET_SHARE
 
+# THE LURKER NAMESPACE, and it exists because the background sellers were
+# being minted INSIDE the player's. `player.random_player(s)` resolves its
+# record from `player.player_id(s)`, which is `player:{s}` -- so every
+# background fencer `background_fencing` created wrote a `player:...` key into
+# `led.purses`, and a save file for a station nobody was playing came back
+# with dozens of players in it. The people who bring salvage up to a fence are
+# residents of Downbelow, not player characters, so they get their own prefix
+# and the ledger can be asserted to hold exactly ONE player. Nothing else
+# changes: the card is still `RES.resident(id, species)` for the id, drawn by
+# the same census machinery, so `player.indistinguishable` still accepts them.
+# INV-1016.
+LURKER_PREFIX = "lurker:"
+
+
+def _lurker(key, at, seed="b5"):
+    """One background seller, minted OUTSIDE the player namespace."""
+    import player as _pl                                     # noqa: PLC0415
+    nid = LURKER_PREFIX + key
+    card = _pl.RES.resident(nid, _pl._draw_species(nid))      # noqa: SLF001
+    return _pl.Player(card=card, at=at, credits=0,
+                      carrying=(_pl.IDENTICARD,), status=_pl.UNPROCESSED,
+                      quarters="", generated=True)
+
 
 def background_fencing(led, day=None):
     """What the fences BUY on a day nobody plays. The route's supply side.
@@ -1844,7 +1995,6 @@ def background_fencing(led, day=None):
     `--trade` assert it twice and get the same answer.
     """
     day = led.day if day is None else day
-    import player as _pl                                     # noqa: PLC0415
     n = 0
     for v in fence_places():
         if v not in led.stock:
@@ -1858,9 +2008,7 @@ def background_fencing(led, day=None):
                        * (0.5 + _u("fenceint", v, g, day)))
             if want < 1:
                 continue
-            s = _pl.random_player(f"fence/{day}/{v}/{g}")
-            s.move_to(v)
-            s.credits = 0
+            s = _lurker(f"fence/{day}/{v}/{g}", v, led.seed)
             if not s.take(g):
                 continue
             try:
@@ -2298,7 +2446,7 @@ def _selftest(out=print):                                        # noqa: C901
 # ===========================================================================
 # 9.  --trade -- THE VRB-05 ACCEPTANCE RUN, BOTH DIRECTIONS, ONE PROCESS
 # ===========================================================================
-def trade_gate(out=print, break_margin=False):
+def trade_gate(out=print, break_margin=False, break_crossplace=False):
     """A player BUYS and SELLS in one run, and every number is shown moving.
 
     THE ROW'S OWN WORDS ARE THE BAR: VRB-05's CHECK is *"credits and stock move
@@ -2307,14 +2455,24 @@ def trade_gate(out=print, break_margin=False):
     the invariants a sale in two directions has to satisfy but a sale in one
     direction cannot even express.
 
-    `break_margin=True` is the NEGATIVE CONTROL and it is the whole reason this
-    function takes an argument: it sets the buy-back rate above 1.0, which is a
-    counter paying more than it charges, and the money-pump assertion must go
-    red. A gate nobody has watched fail is a gate nobody has tested.
+    THERE ARE TWO NEGATIVE CONTROLS and they fail different assertions, which
+    is the point of having both:
+
+      `break_margin=True` sets the buy-back rate above 1.0 -- a counter paying
+        more than it charges -- and the per-counter assertion must go red.
+
+      `break_crossplace=True` restores the ORIGINAL local-price `bid` by
+        clearing `CROSS_CLAMP`, and the station-wide assertion must go red on
+        the 23 lines that were live money pumps in round 1. This is the
+        control that matters, because the per-counter one can only be failed
+        by the author's own knob while the cross-place one is failed by the
+        CONTENT.
+
+    A gate nobody has watched fail is a gate nobody has tested.
     """
     import consequence as CQ                                  # noqa: PLC0415
     import player as pl                                       # noqa: PLC0415
-    global BUY_BACK
+    global BUY_BACK, CROSS_CLAMP
     n = [0]
     failed = []
 
@@ -2326,11 +2484,15 @@ def trade_gate(out=print, break_margin=False):
         if note:
             out(f"         {note}")
 
-    saved = BUY_BACK
+    saved, saved_clamp = BUY_BACK, CROSS_CLAMP
     if break_margin:
         BUY_BACK = 1.2
         out("!! NEGATIVE CONTROL: BUY_BACK forced to 1.2 -- a counter paying "
             "more than it charges")
+    if break_crossplace:
+        CROSS_CLAMP = False
+        out("!! NEGATIVE CONTROL: CROSS_CLAMP off -- `bid` is back to the "
+            "LOCAL shelf price, which is what round 1 shipped")
     try:
         out("")
         out("THE COUNTER, AND WHO IS BEHIND IT")
@@ -2417,11 +2579,46 @@ def trade_gate(out=print, break_margin=False):
                     continue
                 if bid(g, k) >= price(g, k) and price(g, k) > 0:
                     pump.append((k, g, bid(g, k), price(g, k)))
-        check("NO COUNTER ANYWHERE PAYS MORE THAN IT CHARGES -- the money "
-              "pump a player finds in ten minutes",
+        check("no counter pays more than IT ITSELF charges -- and this one is "
+              "nearly free, because bid IS price x BUY_BACK at one counter",
               not pump,
               f"{len(pump)} pair(s) over {len(counters())} counters"
               + (f"; e.g. {pump[0]}" if pump else ""))
+        # THE ASSERTION THE ONE ABOVE CANNOT MAKE, and the reason this section
+        # exists at all. A per-counter comparison is `p*0.5 < p`, true for any
+        # content while BUY_BACK < 1 -- it can only fail through
+        # `--break-margin`, which is the author's own knob. The trip a player
+        # actually makes is BETWEEN counters, and on the content this file
+        # shipped in round 1 it paid 171% a lap on 23 of 65 lines. This
+        # compares the best bid on the station against the cheapest shelf on
+        # the station, so it is a statement about the venue ladder and the
+        # supply table rather than about a constant.
+        all_laps = laps()
+        cp = tuple(r for r in all_laps if r[0] > 0.0)
+        top = all_laps[0] if all_laps else None
+        out(f"  the BEST round trip on the whole board, over {len(all_laps)} "
+            f"tradable line(s) and {len(counters())} counters:")
+        if top:
+            out(f"    {top[1]}: buy `{top[2]}` {top[3]:.2f} -> sell "
+                f"`{top[4]}` {top[5]:.2f} = {top[0]:+.2f} cr a lap")
+        check("NO ROUND TRIP ANYWHERE ON THE STATION IS FREE -- buy at the "
+              "cheapest counter, walk it to the best bid, and you are still "
+              "down",
+              not cp,
+              (f"{len(cp)} of {len(all_laps)} line(s) pay to arbitrage"
+               if cp else
+               f"0 of {len(all_laps)}; every bid is capped by `shelf_floor`, "
+               f"the cheapest shelf on the station, so the best lap is "
+               f"{top[0]:+.2f} cr"))
+        check("...and the CLAMP is what makes that true, not luck -- one "
+              "lurker per fence, and exactly ONE player in the ledger",
+              sum(1 for k in led.purses if k.startswith("player:")) == 1
+              and CROSS_CLAMP,
+              f"{len(led.purses)} purse(s): "
+              f"{sum(1 for k in led.purses if k.startswith('player:'))} "
+              f"player, "
+              f"{sum(1 for k in led.purses if k.startswith(LURKER_PREFIX))} "
+              f"{LURKER_PREFIX}")
 
         # -- THE FENCE, AND WHY IT EXISTS -------------------------------------
         out("")
@@ -2458,13 +2655,37 @@ def trade_gate(out=print, break_margin=False):
             f"{a3[1]:5d}   till {b3[2]:8.2f} -> {a3[2]:8.2f}")
         check("the fence takes what the shop refused", a3[0] > b3[0]
               and a3[1] == b3[1] + 1 and a3[2] < b3[2])
+        # STATED AS A CEILING BETWEEN TWO COUNTERS, not as a fraction of one
+        # counter's own shelf, and the change is forced by the clamp: `bid` is
+        # now a fraction of `min(this shelf, the cheapest shelf anywhere)`, so
+        # a fence that does not stock a line at all can have a cheaper local
+        # quote than the floor (`flarn` is 2.53 at the casino against a 2.60
+        # floor) and the two sides no longer share a base to the millicredit.
+        # What DOES hold for every pair, and is the mechanic FACTIONS 11.4
+        # describes, is the direction and the ceiling: a fence never pays more
+        # than FENCE_TAKE of what a shopfront pays. Checked over every line
+        # both will take rather than over the one line that used to be
+        # spot-checked. INV-1015.
+        both = [(g.name, kf, kl) for g in GOODS
+                for kf in [next((k for k in counters()
+                                 if unchecked(k) and g.name in buys_list(k)),
+                                None)]
+                for kl in [next((k for k in counters()
+                                 if not unchecked(k)
+                                 and g.name in buys_list(k)), None)]
+                if kf and kl and bid(g.name, kl) > 0.0]
+        off = [(nm, kf, bid(nm, kf), kl, bid(nm, kl)) for nm, kf, kl in both
+               if bid(nm, kf) > bid(nm, kl) * FENCE_TAKE + 0.01]
         check("...and pays WORSE for it -- FENCE_TAKE is the route's own "
-              "undercut, read backwards",
-              abs(bid("salvage lots", fkey)
-                  - price("salvage lots", fkey) * BUY_BACK * FENCE_TAKE) < 0.02,
-              f"BUY_BACK {BUY_BACK} x FENCE_TAKE {FENCE_TAKE} = "
-              f"{BUY_BACK * FENCE_TAKE:.3f} of shelf, against "
-              f"{BUY_BACK:.3f} at a shopfront")
+              "undercut, read backwards, on EVERY line both will take",
+              not off and len(both) > 0,
+              f"{len(both)} line(s) a fence and a shopfront both buy; "
+              f"{len(off)} where the fence pays over "
+              f"{FENCE_TAKE:.2f} of the shopfront"
+              + (f"; e.g. {off[0]}" if off else
+                 f"; e.g. {both[0][0]}: `{both[0][1]}` "
+                 f"{bid(both[0][0], both[0][1]):.2f} against `{both[0][2]}` "
+                 f"{bid(both[0][0], both[0][2]):.2f}"))
 
         # -- THE REFUSALS -----------------------------------------------------
         out("")
@@ -2551,11 +2772,24 @@ def trade_gate(out=print, break_margin=False):
               f"{-wrows[0]['cr']:.2f} cr" if wrows else "none")
         w2 = Ledger.fresh()
         background_sales(w2, 0)
+        # `len(wrows) > 0` is not decoration: `[] == []` is True, so without
+        # it this claim passes on two runs that both produced nothing --
+        # which is the vacuous-A/B defect this project already has on record
+        # from an IDENTICAL that was two runs dying on the same IndexError.
         check("...and it is DETERMINISTIC -- two ledgers, same day, same rows",
-              [x for x in w2.sales if x["cr"] < 0] == wrows,
+              len(wrows) > 0 and [x for x in w2.sales if x["cr"] < 0] == wrows,
               f"{len(wrows)} rows compared field for field")
+        check("...and the world's sellers are NOT players -- a save for a "
+              "station nobody is playing holds no player purse",
+              len(w.purses) > 0
+              and not [k for k in w.purses if k.startswith("player:")],
+              f"{len(w.purses)} purse(s) after a tick, "
+              f"{sum(1 for k in w.purses if k.startswith(LURKER_PREFIX))} of "
+              f"them {LURKER_PREFIX}, "
+              f"{sum(1 for k in w.purses if k.startswith('player:'))} player; "
+              f"e.g. {sorted(w.purses)[0]}")
     finally:
-        BUY_BACK = saved
+        BUY_BACK, CROSS_CLAMP = saved, saved_clamp
 
     out("")
     out(f"{n[0] - len(failed)}/{n[0]} passed"
@@ -2572,9 +2806,13 @@ if __name__ == "__main__":                                   # pragma: no cover
     ap.add_argument("--break-margin", action="store_true",
                     help="the --trade negative control: pay more than you "
                          "charge and watch the money-pump assertion fail")
+    ap.add_argument("--break-crossplace", action="store_true",
+                    help="the --trade negative control that CONTENT can "
+                         "fail: restore the local-price bid and watch the "
+                         "station-wide arbitrage assertion go red")
     ap.add_argument("--day", type=int, default=None)
     a = ap.parse_args()
-    if a.trade or a.break_margin:
+    if a.trade or a.break_margin or a.break_crossplace:
         # RUN IT OUT OF THE *IMPORTED* COPY, NOT OUT OF `__main__`, and this
         # is not tidiness -- it is a live defect this gate hit on its first
         # run. `python3 station/economy.py` makes this file `__main__`, and
@@ -2587,7 +2825,8 @@ if __name__ == "__main__":                                   # pragma: no cover
         sys.path.insert(0, HERE)
         import economy as _EC                                # noqa: PLC0415
         raise SystemExit(0 if _EC.trade_gate(
-            break_margin=a.break_margin) else 1)
+            break_margin=a.break_margin,
+            break_crossplace=a.break_crossplace) else 1)
     if a.day is not None:
         day_report(a.day)
         raise SystemExit(0)
