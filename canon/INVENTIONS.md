@@ -12944,3 +12944,82 @@ stays RED.
 **What would overturn it.** Either the writing, or an owner's ruling that Tier-1 distinctness
 means distinct *facts* in a shared frame rather than distinct frames. The second is a
 legitimate reading and it is much cheaper; it is not a call a build agent may make.
+
+## INV-1015
+
+**The bid is capped by the cheapest shelf on the station, not by the counter's own.**
+Authority 5. `station/economy.py::shelf_floor`, `bid`, `cross_pump`, `laps`.
+
+**What.** `bid(good, place)` — what a counter pays a player for one unit — is
+`min(price(good, place), min over every counter that stocks the line of price(good, k))`
+times `BUY_BACK`, times `FENCE_TAKE` at a counter with no reader on it. Before this it was
+the LOCAL price times those same two factors.
+
+**Why.** The sell verb shipped with a live money pump and the assertion guarding it could not
+see it. `bid = price(g, THIS place) * BUY_BACK` makes "no counter pays more than it charges"
+an algebraic identity in a constant — true for any content, failable only through the gate's
+own `--break-margin` knob. The trip a player actually makes is between counters, and
+`price()` multiplies by `VENUE_MULT[sector]`, which spans ×0.5503 (grey) to ×1.71 (green).
+Measured on shipped, unmodified content: **23 of 65 lines paid to arbitrage**, worst
+`identicard blanks` — buy at `black_market` for 6.88 cr, sell at `ngrath` for 18.68 cr,
+**+171% a lap**, restocking daily.
+
+**What constrained it, and it is not a new number.** No dealer pays more for a unit than they
+can source it for. This is a closed market whose diameter is a walk: 8,047 m end to end,
+every counter reachable from every other, and `deliver()` already moves consignments between
+them daily. So the law of one price applies, and it is expressed with the two ratios this
+file already derived (`BUY_BACK = 0.5` from `CLASS_BAND`'s staple/meal argument, `FENCE_TAKE
+= SUPPLY_MULT["route"] = 0.75` from LAW-CRIME:858-879). Nothing was invented but the
+direction of the comparison.
+
+**What it makes true in world.** N'Grath goes on selling blanks at 49.82 cr and now pays 2.58
+for one, because he is a monopolist reseller and not a bulk buyer. A player who notices the
+49.82 has learned where not to shop; a player who noticed the 18.68 had learned the economy
+was broken. The spread that survives is the one FACTIONS 11.4 is for — the fence pays worse
+and is the only buyer for what a licensed reader will not touch.
+
+**A consequence, recorded because it changed an assertion.** A fence that does not STOCK a
+line can quote a local price below the floor (`flarn` is 2.53 at the casino against a 2.60
+floor), so a fence bid is no longer exactly `FENCE_TAKE` of a shopfront bid to the
+millicredit. What holds for all 43 lines both will take is the ceiling: a fence never pays
+more than 0.75 of what a shopfront pays. `--trade` asserts that form.
+
+**What would overturn it.** Any stated in-show price for a line at two named counters that
+differ by more than 2× — that would say the station's counters do not arbitrage against each
+other and the cap belongs at a sector rather than at the station. Also a decision to make
+freight between decks cost money, which would give the floor a per-sector markup instead of
+being flat.
+
+**The gate.** `python3 station/economy.py --trade` asserts `cross_pump()` is empty over every
+tradable line and prints the best lap on the board (**−0.16 cr**, `drum greens`). Its negative
+control is `--break-crossplace`, which clears `CROSS_CLAMP`, restores the local-price bid and
+reports **`identicard blanks: buy black_market 6.88 -> sell ngrath 18.68 = +11.80 cr a lap`**
+with the assertion red.
+
+## INV-1016
+
+**Background fencers are minted under `lurker:`, outside the player namespace.**
+Authority 5. `station/economy.py::LURKER_PREFIX`, `_lurker`, `background_fencing`.
+
+**What.** The people who bring salvage up to a fence on a day nobody plays get npc ids
+`lurker:fence/{day}/{place}/{good}` instead of `player:fence/…`.
+
+**Why.** `background_fencing` created them with `player.random_player(seed)`, whose
+`player.player_id(seed)` returns `player:{seed}`. So `station/generated/economy.json` — the
+shipped ledger `till.py` and `godot/scripts/interact.gd` read — came back with **68 purses,
+67 of them "players"**, for a station nobody was playing. `till._seed_ledger(lurker=True)`
+picks the first `player:` purse in sorted order to build its control run; it happened to get
+the right one only because `player:downbelow` sorts before `player:fence/…`.
+
+**What constrained it.** Nothing else changes: the card is still
+`RES.resident(id, _draw_species(id))` for the id, drawn by the same census machinery, so
+`player.indistinguishable` still accepts one. LAW-CRIME 6.2 puts 22% of the underclass on
+salvage with nowhere to take it, which is who these people are — residents, not player
+characters.
+
+**What would overturn it.** A design decision that the player's own past sales should be
+indistinguishable from a lurker's in the ledger, which nothing currently wants.
+
+**The gate.** `--trade` asserts `sum(k.startswith("player:") for k in purses) == 1` on the
+gate's own ledger, on a world tick, and on the artefact the launched shipped writer produces
+(**68 purses: 1 player (`player:downbelow`), 67 `lurker:`**).

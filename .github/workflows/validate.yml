@@ -852,6 +852,29 @@ jobs:
           python3 station/dockwork.py --selftest
           python3 station/dockwork.py --controls
 
+      # VRB-05's ACCEPTANCE GATE -- a player BUYS and SELLS in one run, and
+      # the two negative controls are run here rather than described, because
+      # a gate nobody has watched fail is a gate nobody has tested.
+      # `--break-crossplace` is the one that matters: it restores the local
+      # price `bid` and the station-wide arbitrage assertion goes red on the
+      # 23 lines that were a live money pump.
+      #
+      # WRITTEN AS `if ...; then exit 1; fi` AND NOT AS `! cmd`, and that is
+      # not style. Actions runs `bash -eo pipefail`, and POSIX exempts a
+      # command whose status is inverted with `!` from errexit -- so
+      # `! python3 ... --break-crossplace` returning 1 would NOT fail the step
+      # and only the LAST control would be load-bearing. A negative control
+      # the runner swallows is the defect this whole step exists to prevent.
+      - name: BUY and SELL both ways, and the two controls that break them
+        id: strade
+        continue-on-error: true
+        run: |
+          python3 station/economy.py --trade
+          if python3 station/economy.py --break-crossplace; then
+            echo "CONTROL DID NOT FIRE: --break-crossplace passed"; exit 1; fi
+          if python3 station/economy.py --break-margin; then
+            echo "CONTROL DID NOT FIRE: --break-margin passed"; exit 1; fi
+
       # THE NAVIGATION GRAPH, IN THE ENGINE -- P0.6's last item. Until this
       # existed, `grep -rn Navigation godot/` returned nothing: every route
       # this project had ever walked was chosen in Python and played back, so
@@ -1260,6 +1283,8 @@ jobs:
             echo "FAILED: sagenda_selftest"; fail=1; fi
           if [ "${{ steps.sjob_loop.outcome }}" != "success" ]; then
             echo "FAILED: sjob_loop"; fail=1; fi
+          if [ "${{ steps.strade.outcome }}" != "success" ]; then
+            echo "FAILED: strade"; fail=1; fi
           if [ "${{ steps.snavgraph.outcome }}" != "success" ]; then
             echo "FAILED: snavgraph"; fail=1; fi
           if [ "${{ steps.sconfirm_the_schema_still_parses_and_is_f.outcome }}" != "success" ]; then
