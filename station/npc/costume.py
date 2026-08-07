@@ -1017,7 +1017,7 @@ class Attachment:
         band stops being resolvable as a band at all: `body.aliases_beyond_m`,
         the same one-pixel shading rate `body.py` uses to decide when a whole
         figure stops being a figure. The larger of the two wins, because either
-        reason alone is a reason to keep it. INV-471.
+        reason alone is a reason to keep it. INV-813.
         """
         sil = body.honest_from_m(self.error_m)
         val = body.aliases_beyond_m(self.value_m) if self.value_m > 0.0 else 0.0
@@ -1857,16 +1857,37 @@ def _soil_group():
 FITTINGS_NONE_M = 1.0e6
 
 
+# WHICH BONE CHAIN EACH PIECE HANGS FROM, EXPRESSED AS THE PART NAME IT TAKES.
+# `npc/animation.py::PART_CHAINS` maps a part NAME to a bone chain and `_bind`
+# raises on a name it does not know -- correctly, and it fired on the first
+# build here: "no bone chain declared for mesh part 'yoke_panel'". That table
+# belongs to `animation.py` and this module does not own it, so a construction
+# piece is emitted under the name of the part it is sewn to. That is not a
+# workaround, it is the right answer twice over: a cuff IS part of the sleeve
+# and must follow the elbow, a hem IS part of the coat and must follow the
+# pelvis, and `animation._groups_for_parts` resolves a part's material by its
+# TRIANGLE OFFSET rather than by its name -- so sharing a name costs the piece
+# nothing and buys it the correct joint.
+#
+# The consequence is that construction parts are not findable by name, which is
+# why `_construct` returns their indices and `--construct` uses those.
+CONSTRUCTION_HANGS_ON = {"yoke_panel": "torso", "placket": "torso",
+                         "hem": "torso", "cuff": "arm", "boot_top": "leg"}
+
+
 def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
     """The seams, cuffs, hem and closure that make a loft a garment.
 
     Every piece is its own CLOSED SOLID sewn proud of the surface under it, for
     the reason section 7b gives: `animation.rig` resolves one material group
     per PART, so a span split inside a part is unreachable by every posed
-    figure on the station -- which is all of them.
+    figure on the station -- which is all of them. INV-814; the grime is
+    INV-815.
 
-    Returns the list of pieces actually built, so `--construct` can assert
-    against what happened rather than against what this function intends.
+    Returns `[(part index, construction key), ...]` for what was actually
+    built, so `--construct` can assert against what happened rather than
+    against what this function intends -- and because the parts CANNOT be found
+    by name; see `CONSTRUCTION_HANGS_ON`.
     """
     made = []
     soiled = c.wear >= WEAR_SOIL_MIN
@@ -1888,9 +1909,10 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
             and c.split != "plastron" and torso_verts):
         cx, cz, r, y = _axis_at(torso_verts, YOKE_TOP_FRACTION, band=0.05)
         _band(out, cx, cz, y + 0.55 * YOKE_PANEL_HALF_H_F * H,
-              r * YOKE_PANEL_R, YOKE_PANEL_HALF_H_F * H, trim_g, "yoke_panel",
+              r * YOKE_PANEL_R, YOKE_PANEL_HALF_H_F * H, trim_g,
+              CONSTRUCTION_HANGS_ON["yoke_panel"],
               _att_seg(r * YOKE_PANEL_R, distance_m, cap=16), taper=1.03)
-        made.append("yoke_panel")
+        made.append((len(out.parts) - 1, "yoke_panel"))
 
     # --- the front closure -------------------------------------------------
     # Not on a robe (it has no front to close) and not on a plastron set (the
@@ -1901,19 +1923,20 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
         cx, z_lo, y_lo = _front_at(torso_verts, PLACKET_LO_YF, band=0.04)
         _cx2, z_hi, y_hi = _front_at(torso_verts, PLACKET_HI_YF, band=0.04)
         thick = PLACKET_THICK_F * H
-        body._blade(out, trim_g, "placket", cx, y_lo, z_lo + 0.45 * thick,
+        body._blade(out, trim_g, CONSTRUCTION_HANGS_ON["placket"],
+                    cx, y_lo, z_lo + 0.45 * thick,
                     PLACKET_HALF_W_F * H, max(y_hi - y_lo, 1e-3), thick,
                     _att_seg(PLACKET_HALF_W_F * H, distance_m, cap=8),
                     sweep=(z_lo - z_hi), taper=1.0)
-        made.append("placket")
+        made.append((len(out.parts) - 1, "placket"))
 
     # --- the hem -----------------------------------------------------------
     if on("hem") and torso_verts and not c.robed:
         cx, cz, r, y = _axis_at(torso_verts, HEM_YF, band=0.05)
         _band(out, cx, cz, y, r * HEM_R, HEM_HALF_H_F * H,
-              dirty_g if soiled else cloth_g, "hem",
+              dirty_g if soiled else cloth_g, CONSTRUCTION_HANGS_ON["hem"],
               _att_seg(r * HEM_R, distance_m, cap=16), taper=1.02)
-        made.append("hem")
+        made.append((len(out.parts) - 1, "hem"))
 
     # --- the cuffs ---------------------------------------------------------
     if on("cuff"):
@@ -1921,17 +1944,19 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
             cx, cz, r, y = _axis_at(av, CUFF_YF, band=0.06)
             _band(out, cx, cz, y, r * CUFF_R, CUFF_HALF_H_F * H,
                   dirty_g if soiled else (leather_g if tailored else trim_g),
-                  "cuff", _att_seg(r * CUFF_R, distance_m, cap=10), taper=1.04)
-            made.append("cuff")
+                  CONSTRUCTION_HANGS_ON["cuff"],
+                  _att_seg(r * CUFF_R, distance_m, cap=10), taper=1.04)
+            made.append((len(out.parts) - 1, "cuff"))
 
     # --- the boot tops -----------------------------------------------------
     if on("boot_top") and not c.robed:
         for lv in leg_parts:
             cx, cz, r, y = _axis_at(lv, BOOT_TOP_YF, band=0.05)
             _band(out, cx, cz, y, r * BOOT_TOP_R, BOOT_TOP_HALF_H_F * H,
-                  dirty_g if soiled else leather_g, "boot_top",
+                  dirty_g if soiled else leather_g,
+                  CONSTRUCTION_HANGS_ON["boot_top"],
                   _att_seg(r * BOOT_TOP_R, distance_m, cap=10), taper=0.97)
-            made.append("boot_top")
+            made.append((len(out.parts) - 1, "boot_top"))
     return made
 
 
@@ -2460,7 +2485,10 @@ def _build_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
     # AFTER the attachments, so a belt sits under a placket rather than through
     # it, and so `_construct` can read the parts the loop above emitted.
     leg_parts = [v for n, v, _t in out.parts if n == "leg"]
-    _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m)
+    # RECORDED ON THE MESH because the pieces are not findable by name -- see
+    # `CONSTRUCTION_HANGS_ON`. `--construct` reads it; nothing else has to.
+    out.construction = tuple(_construct(out, c, H, torso_verts, arm_parts,
+                                        leg_parts, seg, distance_m))
     return out
 
 
@@ -2737,7 +2765,7 @@ def report(out=print):
 #
 # Cheap on purpose: no build, no GPU, seconds. Run it before claiming a garment
 # is on anybody.
-CONSTRUCTION_PARTS = ("yoke_panel", "placket", "hem", "cuff", "boot_top")
+CONSTRUCTION_PARTS = tuple(CONSTRUCTION_HANGS_ON)
 
 # The chain level the shipped corridor crowd is baked at. Read off
 # `populace.corridor_lod` when it can be imported, because that is the module
@@ -2757,74 +2785,106 @@ def _shipped_lod():
         return SHIPPED_CROWD_LOD, f"FALLBACK ({exc})"
 
 
-def construction_gate(out=print, legacy=False, sample=12):
+def construction_gate(out=print, legacy=False, sample=8):
     """Does a garment feature survive the door the shipped build goes through?
 
+    IT RUNS THE THING. A first version of this gate called
+    `animation._groups_for_parts` on this module's own mesh and reported PASS
+    while `animation.rig` was RAISING on every figure -- "no bone chain declared
+    for mesh part 'yoke_panel'" -- which `populace._posed` swallows in a bare
+    `except`, so the whole station would have fallen back to the un-posed bind
+    pose and no gate would have said so. CLAUDE.md's own rule, paid for again:
+    a static scan can tell you a caller exists; only running the thing tells
+    you the caller runs. So this builds the person the way the deck builds
+    them -- `populace._posed`, the same call `deck.build_deck` reaches -- and
+    asks the resulting SPANS.
+
     `legacy` is the negative control and it is the code as it stood before this
-    session: garment construction suppressed, so the yoke exists only as a span
-    split inside the torso part. It must FAIL.
+    session: `_construct` suppressed, so the yoke exists only as a span split
+    inside the torso part. It must FAIL.
     """
     import animation as _anim                                   # noqa: PLC0415
+    sys.path.insert(0, _STATION)
+    import populace as _pop                                     # noqa: PLC0415
     lod, lod_src = _shipped_lod()
     chain = body.lod_chain()
     dist = chain[lod]["switch_distance_m"]
     species = ("human", "human", "human", "minbari", "narn", "centauri",
                "drazi", "brakiri")
-    bad, carried, figures, pieces = [], 0, 0, 0
-    for sp in species:
-        for i in range(sample):
-            npc_id = f"gate/{sp}/{i}"
-            try:
-                m = dressed_mesh(sp, npc_id, lod=lod, distance_m=dist)
-            except Exception as exc:                            # noqa: BLE001
-                bad.append(f"{sp}/{i}: {exc}")
-                continue
-            if isinstance(m, tuple) or not getattr(m, "parts", None):
-                continue
-            if legacy:
-                # THE CONTROL: rebuild with every fitting culled, which is
-                # exactly what the corridor crowd got before this session --
-                # the yoke as a span, nothing else.
-                m = dressed_mesh(sp, npc_id, lod=lod,
-                                 distance_m=FITTINGS_NONE_M)
-            figures += 1
-            groups = _anim._groups_for_parts(m.parts, m.spans)
-            # What group did THIS module put each part under? The span whose
-            # range starts where the part starts. Compared against what the
-            # rig resolves, which is the only comparison that matters.
-            off, mine = 0, []
-            for _n, _v, t in m.parts:
-                hit = ""
-                for name, lo, hi in m.spans:
-                    if lo == off:
-                        hit = name
-                mine.append(hit)
-                off += len(t)
-            got = set()
-            for idx, (pname, _v, _t) in enumerate(m.parts):
-                if pname not in CONSTRUCTION_PARTS:
+
+    # THE MODULE OBJECT `animation` AND `populace` ACTUALLY SEE, which is not
+    # necessarily this one. Run as `python3 costume.py` this file is `__main__`
+    # and `import costume` inside `animation` creates a SECOND module object
+    # with its own globals -- so patching `__main__._construct` for the control
+    # left the shipped path untouched and the control failed for the wrong
+    # reason, reporting the two builds as a fallback. The same duplicate-module
+    # trap `body.py` already works around with `import npc.costume`.
+    try:
+        import costume as _cos                                  # noqa: PLC0415
+    except ImportError:                                         # pragma: no cover
+        _cos = sys.modules[__name__]
+    keep = _cos._construct
+    if legacy:
+        _cos._construct = lambda *_a, **_k: ()                  # noqa: E731
+    _anim._RIG_CACHE.clear()
+    _pop._mesh_for.cache_clear()
+    try:
+        bad, carried, figures, pieces, rig_ok = [], 0, 0, 0, 0
+        for sp in species:
+            for i in range(sample):
+                npc_id = f"gate/{sp}/{i}"
+                # 1. THE RIG MUST NOT RAISE. This is the check the first
+                #    version of this gate did not have.
+                try:
+                    rg = _anim.rig(sp, npc_id, lod)
+                    rig_ok += 1
+                except Exception as exc:                        # noqa: BLE001
+                    bad.append(f"{sp}/{i}: rig raised {exc}")
+                    rg = None
+                # 2. THE SHIPPED CALL. `deck.build_deck` -> `populace` ->
+                #    `_posed`; nothing here reaches around it.
+                try:
+                    _v, t, g = _pop._posed(sp, npc_id, lod, "walk",
+                                           _pop.G0_MS2, None, phase=0)
+                except Exception as exc:                        # noqa: BLE001
+                    bad.append(f"{sp}/{i}: _posed raised {exc}")
                     continue
-                pieces += 1
-                if groups[idx] != mine[idx]:
-                    bad.append(f"{sp}/{i} {pname}: rig resolves "
-                               f"{groups[idx]!r}, this module wrote "
-                               f"{mine[idx]!r}")
-                got.add(groups[idx])
-            # THE QUESTION A PLAYER ASKS: is this person's COAT one flat
-            # colour? Boots are excluded deliberately -- `npc_leather__civ_boot`
-            # survived posing all along, and counting it would let the gate
-            # pass on a figure whose entire garment is one value, which is the
-            # frame this session started from.
-            if any(("cloth_trim" in g or "garment_soil" in g)
-                   for g in groups if g):
-                carried += 1
+                figures += 1
+                groups = {n for n, _lo, _hi in g}
+                # 3. Did it silently fall back to the un-posed mesh? A fallback
+                #    returns `_mesh_for`, which is the same triangle count, so
+                #    the count cannot tell -- the rig's own part count can.
+                if rg is not None and len(rg.parts) != len(rg.groups):
+                    bad.append(f"{sp}/{i}: rig has {len(rg.parts)} parts and "
+                               f"{len(rg.groups)} groups")
+                m = _cos.dressed_mesh(sp, npc_id, lod=lod, distance_m=dist)
+                if not isinstance(m, tuple):
+                    pieces += len(getattr(m, "construction", ()))
+                    if len(t) != len(m.tris):
+                        bad.append(f"{sp}/{i}: posed {len(t)} triangles, "
+                                   f"dressed {len(m.tris)} -- a fallback")
+                # 4. THE QUESTION A PLAYER ASKS: is this person's COAT one flat
+                #    colour? Boots are excluded deliberately --
+                #    `npc_leather__civ_boot` survived posing all along, and
+                #    counting it would let the gate pass on a figure whose whole
+                #    garment is one value, which is the frame this session
+                #    started from.
+                if any(("cloth_trim" in n or "garment_soil" in n)
+                       for n in groups):
+                    carried += 1
+    finally:
+        _cos._construct = keep
+        _anim._RIG_CACHE.clear()
+        _pop._mesh_for.cache_clear()
+
     ok = (not bad) and figures and carried == figures and pieces > 0
     out(f"construction gate: chain level {lod} ({lod_src}), "
-        f"switch distance {dist:.1f} m, {figures} figures")
-    out(f"  {pieces} construction pieces checked through "
-        f"animation._groups_for_parts")
-    out(f"  {carried}/{figures} figures carry a SECOND garment material "
-        f"after posing")
+        f"switch distance {dist:.1f} m, {figures} figures POSED through "
+        f"populace._posed")
+    out(f"  {rig_ok}/{figures} rigged without raising; "
+        f"{pieces} construction pieces on the dressed mesh")
+    out(f"  {carried}/{figures} POSED figures carry a second garment "
+        f"material -- a coat that is not one flat colour")
     if bad:
         for line in bad[:8]:
             out(f"  FAIL {line}")

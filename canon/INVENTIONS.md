@@ -11793,6 +11793,108 @@ weakened rule.
 **What would overturn it.** Any canon establishing routine screening of cargo manifests at B5, or a
 frame showing a scan arch on the cargo side.
 
+## INV-813 — a fitting is priced by its VALUE band as well as by its silhouette
+
+**What.** `npc/costume.py::Attachment.honest_from_m` returns
+`max(body.honest_from_m(error_m), body.aliases_beyond_m(value_m))`. `value_m` is the width of the
+contrasting band the fitting paints and is `0.0` for a fitting that is the same value as what it
+sits on. Every band's `value_m` is `2 x <its own half-height constant> x HUMAN_STATURE_M`, and
+those constants (`COLLAR_HALF_H_F`, `EPAULETTE_HALF_H_F`, `BELT_HALF_H_F`, `BALDRIC_HALF_W_F` and
+the five `CONSTRUCTION` ones) are the same literals `_build_mesh` builds the band from — hoisted
+out of the builder so a table entry cannot drift from the geometry.
+
+**Why.** The old rule priced a fitting purely by how far it moves the OUTLINE, against
+`body.PIXEL_BUDGET = 1.5 px`. A waist belt moves the outline 8 mm, so it was honest to drop at
+5.5 m — and the shipped corridor crowd is baked at chain level 4 (`populace.corridor_lod` returns
+4 for a Blue ring, switch distance 23.6 m), so **not one of the forty walkers on `blue/0/0` had a
+belt, an epaulette or a baldric.** Measured by group census over
+`station/generated/scene/deck/shot_blue_0_0.obj`: four groups a person and nothing else. A dark
+leather belt across a coat of albedo 0.06 barely changes the silhouette and is the only horizontal
+in forty centimetres of unbroken value; it goes on reading long after it stops being a bulge. The
+table's own `armband` note had already made this argument in prose — "the DECAL it carries stays
+legible to 16.4 m and visible as a dark band far beyond" — and then priced the strap by silhouette
+anyway.
+
+**Constrained by.** `body.aliases_beyond_m` is not a new rule: it is the existing one-pixel shading
+rate `body.py` already uses to decide when a whole figure stops being a figure, applied to a band
+instead of to a person. It is a CEILING, not a floor — a 56 mm belt survives to 57.6 m and no
+further, which is inside the 82 m longest sightline down a Blue ring corridor
+(`2*sqrt(R^2-(R-w)^2)`, R = 211.478 m, w = 4 m) but not indefinite. `armband` is deliberately left
+at `value_m = 0.0` because its decal is priced separately and covers the same band; giving the
+strap a value term would double-count one stripe.
+
+**What would overturn it.** A measurement of how far a same-family value step (0.055 leather on
+0.092 cloth, both measured off `more zocalo.png`) actually survives in a rendered frame. The rule
+assumes a one-pixel band is worth keeping, which is true for a step of that size and would not be
+for a step of 0.005.
+
+## INV-814 — garment construction is PARTS, because a span reaches nobody
+
+**What.** `npc/costume.py::CONSTRUCTION` and `_construct`: the shoulder yoke panel, the front
+closure placket, the coat hem, the two sleeve cuffs and the two boot tops, each built as its own
+CLOSED SOLID sewn proud of the surface under it, exactly the way `ATTACHMENTS` already builds a
+collar. Sized off the part's own extent read back by `_axis_at` / `_front_at`, never off
+`body.FIGURE`. Gated by `costume.py --construct`, whose negative control is `--construct --legacy`.
+
+**Why.** The yoke was a *span split* inside the torso part, and its own note was proud of costing
+zero triangles. `npc/animation.py::_groups_for_parts` resolves ONE material group per PART, by the
+triangle offset the part starts at — its docstring says so — so a second span inside a part is
+unreachable through it. Every person on the station is posed, and posing goes through that
+function. Measured: **0 of 40 corridor walkers** on the built `blue/0/0` deck carry any
+`npc_cloth_trim` group, while `build_dressed` emits the yoke at every chain level including the
+coarsest. The gate reports **0/96 figures before, 96/96 after**. This is the tenth instance of the
+defect CLAUDE.md enumerates — finished, tested machinery with no caller on the shipped path — and
+it survived ninety self-test assertions because every one of them scored the part in isolation.
+
+**Constrained by.** The yoke's placement and fabric are unchanged: `YOKE_TOP_FRACTION = 0.78` and
+`civ_collar_yoke` are the existing authority-1 measurements off `more zocalo.png`, and this only
+changes what carries them. The CUFF is authority 2 and was already written down in this file and
+never built — `ef_command`'s note records, off `Sheridan.jpg` and corroborated on a second subject
+in `Zach Allan in security uniform.jpg`, that "the CUFF carries a brown leather band with crimson
+piping on BOTH its edges". The PLACKET is authority 5 and its argument is that a closed loft is not
+a garment: a coat has to open to be put on. It is suppressed on robed sets and on plastron sets,
+which have their own front. Cost, measured by `costume_triangles`: **412 of 7,304 triangles at
+LOD0 (5.6%) and 140 of 1,236 at lod3 (11.3%)**; on the shipped corridor level a person goes from
+624 to 768 triangles, which on a 40-walker Blue deck is +5,760 against 869,924 — **0.66% of the
+deck**. The two self-test caps are now fractions of the body the construction is sewn to rather
+than the absolute 260 and 100 they were when clothing was free, and they fail if a sixth piece is
+added.
+
+**What would overturn it.** A runtime that resolves materials per span rather than per part would
+make the span split reachable again and the panels redundant as *value* — though not as relief,
+which is the half of AAA-STANDARD craft 4 ("lighting response varies across the surface") an
+albedo split cannot deliver. Any frame that resolves a civilian wrist or hem on this station would
+replace the authority-5 extrapolations with measurements.
+
+## INV-815 — one grime material for the whole station, and the first thing `wear` has ever touched
+
+**What.** `FABRICS["garment_soil"]`, declared albedo `(0.048, 0.045, 0.041)`, roughness 0.96,
+authority 5. The hem, the cuffs and the boot tops of any resident whose `Costume.wear` is at or
+above `WEAR_SOIL_MIN = 0.30` are cut from it instead of from their own garment.
+
+**Why.** `Costume.wear` has been drawn per individual from each costume set's own range since this
+file was written and reached **nothing** — no mesh, no material, no group; `grep` finds no consumer
+outside `costume.py` itself. AAA-STANDARD's craft 4 asks for wear and grime that "vary across the
+surface rather than being uniform", and the round-2 scorecard finding on this subsystem is exactly
+"each garment reads as one flat value ... no variation within a garment". This is the cheapest true
+answer available: one material, applied to the three places on a garment that touch the world.
+
+**Constrained by.** ONE fabric rather than a soiled twin per garment, and that is a physical claim
+rather than a saving: grime is a property of the DECK, not of the coat, so the same dust settles on
+a Minbari's black robe and a docker's drab. It also costs the library one material instead of
+thirty. The value is the middle of the measured civilian floor — `civ_cool_dark` 0.029 to
+`civ_worker_drab` 0.156, four samples off `more zocalo.png` — desaturated, by the same argument
+`civ_lurker` already records. `WEAR_SOIL_MIN = 0.30` is set so it separates the crowd rather than
+colouring all of it or none: `civ_business` (0.02–0.15) and `ef_command` (0.02–0.10) never reach
+it, `civ_worker` (0.35–0.85) and `civ_lurker` (0.65–1.00) always do, and `civ_ordinary`
+(0.10–0.40) is split.
+
+**What would overturn it.** Any frame that resolves the bottom 100 mm of a garment on this station.
+`Costume.value_jitter` is still unreached and is recorded here as such: it is a per-individual
+value multiplier, and reaching it needs a per-instance shader parameter this pipeline does not
+have — `materials.py` builds one material per fabric and the renderer draws instances of a shared
+library.
+
 ## INV-792 — the cargo consignment rate, and 20 t of it
 
 **What.** `incident.cargo_consignments_per_hour` = `CARGO_T_PER_DAY / CONTAINER_T` spread over
