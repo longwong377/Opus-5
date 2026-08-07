@@ -12321,3 +12321,43 @@ fill, which is the sequence `AMBIENT_SOLVED["mod:quarters"]` already went throug
 
 **Authority 3** — the 0.094 is measured off an authority-1 frame; the decision not to take it is
 this session's, on this project's own level window.
+
+## INV-925 — a per-person draw is never baked; the band is baked and the draw is taken in the engine
+
+**Authority 5.** Session 4t, `station/enforcement.py`, `godot/scripts/enforcement.gd`.
+Not a fact about Babylon 5 — a rule about where a number is allowed to be computed, logged here
+because it is the reason two shipped figures changed.
+
+**What.** `consequence.py` decides a fine and a brig cell by drawing through `_u`, its blake2b
+hash, keyed on `npc_id`. Those two numbers are now **derived in the engine** from the live
+`npc_id`, not baked into `station/generated/scene/enforcement.json`. What the sidecar carries is
+the **band**: `offence[k].fine_lo`/`fine_hi` from `consequence.fine_for` (days of casual labour ×
+the sourced wage band) and `brig_cells`. `enforcement.gd::u()` is blake2b-64 written out in
+GDScript because `HashingContext` has no blake2b, and four `draw_check` vectors baked from
+`consequence._u` prove the two agree **before a credit can move**.
+
+**Why — the measurement that forced it.** The sidecar is baked from
+`player_from_ledger()`, which takes the first `player:` purse in `station/generated/economy.json`
+(`ALLAN, ANNA`, `player:downbelow`). `interact.gd::_my_purse` picks the first `player:` purse in
+whatever ledger the *session* opened. Those are the same person only while nothing has saved a
+different one. Measured in the progression run, which opens a minted transit visa
+(`IVANOVA, AMIS`, `player:g2c`): the engine debited **187.66 cr**, which is
+`fine_amount('contraband', 'player:downbelow')`, while `bookings()` reconstructed **206.63 cr**,
+which is `fine_amount('contraband', 'player:g2c')` — the record and the money describing two
+different people, printed four lines apart, with nothing asserting either. The cell had the same
+defect one key up: `brig_cell` was baked as `04` and the record said `22`.
+
+**What constrained it.** The engine may not hold a copy of a *rule* — that is this module's
+premise and the reason the offence table, the fine ladder and the disposal ladder are all baked
+results. A hash is not a rule; it is the project's PRNG, and the band it is applied to is still
+`consequence.py`'s. The alternative — bake a fine for every `npc_id` the engine might load — is
+impossible the moment a player is minted at character creation rather than read out of a shipped
+purse, which is exactly what `docs/THE-GAME.md` §3 asks for.
+
+**What would overturn it.** A `HashingContext` blake2b, or `consequence._u` changing hash: either
+makes `enforcement.gd::u` deletable or wrong, and `draw_check` fails loudly in both cases. Also
+an occupancy model for the brig (see INV-770), which replaces the cell draw with an allocation.
+
+**What it does NOT claim.** That the fine is right for the offence — that is `fine_for`'s, and
+unchanged. Only that the person charged is the person booked. Failing that check is fail-SAFE:
+`_fine_of` returns −1, nothing is charged, and the run says `fine UNPRICED`.

@@ -1,0 +1,31 @@
+enforcement.py -- the arithmetic behind a refusal
+  ok   the rebuilt player is the rung the engine holds -- 0 (no_status) == purse 0
+  ok   the boot deck has places that read a card -- 3 of 3 rooms
+  FAIL response time VARIES across the deck -- 0 s at the nearest, 1 s at the furthest
+  ok   a place with its own post answers in zero seconds -- customs_north, customs_south
+  ok   every responding pair is one band, one bare -- 3 of 3
+  ok   a refusal at a door never withdraws a permission, at ANY rung -- grade 1 is not `ordinary` (Record.ordinary counts grade 2); revoking rungs: none
+  ok   and a grade-2 conviction DOES, on the second one -- transit: 1st -> first conviction: fined, transit s; 2nd -> 2 ordinary convictions; transit withdrawn
+  ok   the fine sits inside the offence's own band -- 9.62 cr in 8.00-10.00 (1 day of wages)
+  ok   and the player can pay it, so 'paid' is not a fiction -- 9.62 of 420.71 cr
+  ok   the hold depends on the hour of arrest -- 0.8 h at 06:00, 23.8 h at 07:00
+  ok   one refusal in five detains, over the whole register -- 22 of 98 = 0.224 against DETAIN_ON_FAIL 0.2
+  ok   and it is deterministic in the event
+  CONTROLS -- each removes one input; the claim must stop holding
+  FIRED control: route every turn-out from HQ, not from the nearest post -- nearest becomes 820 s, span 15 s -- 2.6's 'to the Zocalo it is seconds' is gone
+  FIRED control: take the place and the stop count out of the fork's key -- 0 of 98 detain -- one number, 98 times
+  FIRED control: ask rung 3's disposal for a fine -- fine_for(move_on) = (0.0, 0.0, 0.0) -- 0 days of wages, so nothing is taken
+  ok   and a SEARCH does, at exactly the rungs that hold a permission -- revoking rungs ['1', '2', '3']; `REVOCABLE` says ['1', '2', '3']
+  ok   one contraband docket takes a transit visa on the FIRST conviction -- rung 2 -> 0, one grade-3 conviction; transit withdrawn
+  ok   the brig's stand point is inside the brig's own box -- (-141.3, -68.9, 6600.0) in [-144.731, -76.2266, 6591.0]..[-134.3678, -60.028, 6609.0]
+  ok   and it is the register's brig, not a second one -- brig red ring 2 deck 1, 32 cells
+  ok   a booking names the same cell every time, and not everyone's cell -- 28 distinct cells over 64 bookings, range 1..32
+  ok   no per-person DRAW is baked where the engine could index it -- top-level clean; ladder row carries fine_subject
+  ok   what IS baked is the band, which is policy and not a person -- contraband 168.00..210.00 cr = fine_for(contraband)
+  ok   the engine can prove its hash IS consequence._u -- 4 vector(s), u in 0.1029..0.9876
+  ..   a restricted good is sold in 4 place(s), 0 in this build's rooms -- identicard blanks@black_market, Dust@downbelow, forged transit visas@downbelow, weapons parts@ngrath
+  ok   the whole loop closes -- arrest, brig, fine, release, demotion, reload -- rung 2 -> 0, reloaded 0, 206.63 cr, cell 22
+  CONTROLS -- progression
+  FIRED control: reload the purse WITHOUT its record (CAST-05's premise) -- the rung comes back 2 and not 0 -- the demotion lives in the record and nowhere else
+  FIRED control: the same stop with an EMPTY BAG -- rung 2 -> 2: grade 1 is not `ordinary`, so being arrested is not by itself what costs you the rung
+enforcement selftest FAIL -- 21 checked, 1 failed

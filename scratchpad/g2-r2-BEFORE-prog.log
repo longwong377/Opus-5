@@ -1,0 +1,66 @@
+enforcement --ensure -- station/generated/ is gitignored
+  present  the arrival cluster
+  present  the player's purse
+  present  the boot manifest
+  present  the consequence table
+PROGRESSION IN THE ENGINE -- `godot --headless --path godot -- --no-coldstart --arrest-gate --arrest-contraband`
+  the card this run opens: IVANOVA, AMIS, rung 2 transit, 2402.00 cr
+  PASS refused=3 responded=3 arrived=3 moved_on=0 detained=3 searched=3 brig=3/3 floor=-1.00 tier=2->0 walked=9.6m cr=-562.98 clock=+19.2h out=17.4m rate=x40 place=arrival_concourse
+    | bag: took `Dust` -> yes (carrying Dust, identicard, kit_bag)
+    | gate: arrival_concourse, rung 2(transit) against need 2, response 1 s at x40
+    | searched at arrival_concourse -- `Dust` in the bag: this is a contraband docket, not a citation (grade 3)
+    | stopped at arrival_concourse -- David Nakamura* + Bo Rossi notified, 1 s away (customs_north)
+    | David Nakamura* + Bo Rossi arriving 12.0 m away, at 1.30 m/s
+    | arrived -- 2.40 m from the player, 9.6 m of floor covered by a body in the crowd
+    | brig HELD at brig cell 04 of 32 -- (-141.3, -68.9, 6600.0), The brig / holding cells red ring 2 deck 1 206 deg z 6600, in_box=yes, floor=NONE -- red/2/1 is not built in this container, so the hold is an ADDRESS and not a floor
+    |   ESCORTED TO THE BRIG -- 13.7 min on the routed graph
+    |   BOOKED IN CELL 04 OF 32 -- CONTRABAND, 60 min
+    |   HELD TO THE NEXT OMBUDS SITTING -- 17.8 h
+    |   OMBUDS COURT -- one grade-3 conviction; transit withdrawn
+    |   FINE 187.66 CR -- FINE PAID + STATUS REVOKED
+    |   RELEASED -- 19.0 h in custody, STANDING WITHDRAWN: TRANSIT -> NO_STATUS
+    | clock 13.02 -> 08.06 EMT (19.0 h in custody)
+    | fine 187.66 cr paid -- 2214.34 cr left
+    | DEMOTED 2 (transit) -> 0 (no_status) -- one grade-3 conviction; transit withdrawn
+    | booking -- IVANOVA, AMIS, contraband, cell 04 of 32, 187.66 cr, TRANSIT WITHDRAWN
+    | searched at arrival_concourse -- `Dust` in the bag: this is a contraband docket, not a citation (grade 3)
+    | stopped at arrival_concourse -- David Nakamura* + Bo Rossi notified, 1 s away (customs_north)
+    | David Nakamura* + Bo Rossi arriving 12.0 m away, at 1.30 m/s
+    | arrived -- 2.40 m from the player, 9.6 m of floor covered by a body in the crowd
+    | brig HELD at brig cell 04 of 32 -- (-141.3, -68.9, 6600.0), The brig / holding cells red ring 2 deck 1 206 deg z 6600, in_box=yes, floor=NONE -- red/2/1 is not built in this container, so the hold is an ADDRESS and not a floor
+    |   ESCORTED TO THE BRIG -- 13.7 min on the routed graph
+    |   BOOKED IN CELL 04 OF 32 -- CONTRABAND, 60 min
+    |   HELD TO THE NEXT OMBUDS SITTING -- 22.8 h
+    |   OMBUDS COURT -- already at the floor; 4.3 step 6's next disposal is transfer off
+    |   FINE 187.66 CR -- FINE PAID
+    |   RELEASED -- 24.0 h in custody, CARD ENDORSED
+    | clock 08.07 -> 08.12 EMT (24.0 h in custody)
+    | fine 187.66 cr paid -- 2026.68 cr left
+    | tier 0 STANDS -- already at the floor; 4.3 step 6's next disposal is transfer off-station
+    | booking -- IVANOVA, AMIS, contraband, cell 04 of 32, 187.66 cr, card endorsed
+    | searched at arrival_concourse -- `Dust` in the bag: this is a contraband docket, not a citation (grade 3)
+    | stopped at arrival_concourse -- David Nakamura* + Bo Rossi notified, 1 s away (customs_north)
+    | David Nakamura* + Bo Rossi arriving 12.0 m away, at 1.30 m/s
+    | arrived -- 2.40 m from the player, 9.6 m of floor covered by a body in the crowd
+    | brig HELD at brig cell 04 of 32 -- (-141.3, -68.9, 6600.0), The brig / holding cells red ring 2 deck 1 206 deg z 6600, in_box=yes, floor=NONE -- red/2/1 is not built in this container, so the hold is an ADDRESS and not a floor
+    |   ESCORTED TO THE BRIG -- 13.7 min on the routed graph
+    |   BOOKED IN CELL 04 OF 32 -- CONTRABAND, 60 min
+    |   HELD TO THE NEXT OMBUDS SITTING -- 22.8 h
+    |   OMBUDS COURT -- already at the floor; 4.3 step 6's next disposal is transfer off
+    |   FINE 187.66 CR -- FINE PAID
+    |   RELEASED -- 24.0 h in custody, CARD ENDORSED
+    | clock 08.13 -> 08.17 EMT (24.0 h in custody)
+    | fine 187.66 cr paid -- 1839.02 cr left
+    | tier 0 STANDS -- already at the floor; 4.3 step 6's next disposal is transfer off-station
+    | booking -- IVANOVA, AMIS, contraband, cell 04 of 32, 187.66 cr, card endorsed
+    | record -- IVANOVA, AMIS, contraband, cell 04 of 32, 187.66 cr, card endorsed
+    | ledger cr 2402.00 -> 1839.02 (-562.98), convictions 0 -> 3, tier 2 -> 2.0
+    | reload rung=0(no_status) from a clean card at rung 2(transit); revoked=True from=transit; booking=IVANOVA, AMIS/contraband/206.63 cr/cell None
+  ok   TIER 2 -> 0
+  ok   the LEDGER ON DISK carries it: ledger cr 2402.00 -> 1839.02 (-562.98), convictions 0 -> 3, tier 2 -> 2.0
+  ok   RELOADED from the file the engine wrote: reload rung=0(no_status) from a clean card at rung 2(
+  PROGRESSION CONTROLS -- each removes one input; the demotion must stop happening
+    ok   --enforce-no-contraband                        same stop, EMPTY BAG -- grade 1, and nothing is taken -- no verdict
+    ok   --arrest-contraband --enforce-legacy           the node reads no table -- the build before session 4r -- no verdict
+    ok   --arrest-contraband --enforce-no-detain        every stop takes rung 3 -- nobody is booked, so nobody is demoted -- tier 2 -> -99
+  ARREST-PROG PASS
