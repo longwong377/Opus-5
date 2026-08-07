@@ -12,9 +12,17 @@ a specific descriptor rather than about taste.
 ## Why a rubric at all — the termination problem
 
 A sufficiently harsh critic always finds something. That is not a flaw in the critic; it is what
-harshness means. So "keep going until it is AAA" is a loop with no exit, and on a project that
-runs on a 6-hourly trigger with a ~5-agent workflow cap it is the single most expensive failure
-mode available: one subsystem consumes unbounded budget and the other forty never get built.
+harshness means. So "keep going until it is AAA" is a loop with no exit, and it is the single most
+expensive failure mode available to this project: one subsystem consumes unbounded budget and the
+other forty never get built.
+
+**That argument does not depend on the budget being small, and session 4s removed the small
+budget.** The 6-hourly trigger is deleted and the agent cap is lifted; this paragraph used to cite
+both, and a reader could have concluded the termination problem went with them. It did not. An
+unbounded loop with more agents pointed at it fails *faster* — the failure is that a subsystem
+never exits, and forty others are never reached, which is true at any width. The round cap in §3
+is what makes "AAA everywhere" reachable rather than aspirational: **it is the mechanism that
+moves the loop on to item two.**
 
 The rubric exists to make three things true:
 

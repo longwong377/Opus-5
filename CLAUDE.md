@@ -865,15 +865,30 @@ deterministic and unit-testable without an engine at all. The runtime consumes c
 
 ## Scope and cost discipline
 
-This project runs partly on a **6-hourly trigger** (`trig_01JS1VWf6yada5x6maPMAzza`, fires at
-:45) and on background workflows, so an unbounded session compounds. Bounds, in order of importance:
+**THE 6-HOURLY TRIGGER IS GONE AND THE AGENT CAP IS LIFTED — owner, session 4s.** The trigger
+(`trig_01JS1VWf6yada5x6maPMAzza`, `45 */6 * * *`) is **deleted**; nothing fires this project on a
+schedule any more, so "an hourly firing should cost almost nothing" is no longer a constraint on
+anything. And the **2–3 agent cap is withdrawn**: queue as many agents as the work genuinely
+decomposes into.
 
-1. **Stop when the next-session list is empty.** If `STATE.md` has no actionable item — because
-   everything remaining is blocked by `canon/CONFLICTS.md` — then say so and stop. Do not
-   invent work to fill the time. An hourly trigger finding nothing to do should cost almost
-   nothing.
-2. **One coherent increment per firing.** Build the next thing, test it, look at it, commit,
-   update `STATE.md`, stop. Do not chain five subsystems because there is context left.
+**What did NOT change, because it is physics rather than policy:** `nproc` is **4**, and the
+workflow runtime caps *concurrency* at `min(16, nproc - 2)` = **2**. Lifting the cap changes how
+many agents you may *queue*, not how many *run*. A `pipeline()` of 40 items completes all 40; two
+are ever in flight. So the useful move is **deep queues of small, well-scoped agents**, not wide
+fan-outs of vague ones — a 40-item pipeline drains steadily, while 40 simultaneous `parallel()`
+thunks are a 20-deep queue that looks identical from outside and returns nothing for an hour.
+Session 3o's 12-agent fan-out failed for exactly this reason and its lesson survives the cap that
+was written to prevent it.
+
+**The three bounds that remain, and the first one is now about honesty rather than cost:**
+
+1. **Do not invent work to fill the time.** If `STATE.md` has no actionable item because
+   everything is blocked by `canon/CONFLICTS.md`, say so. This used to be a cost rule; with no
+   trigger it is a truthfulness rule — manufactured work is how a project reports progress it did
+   not make.
+2. **One coherent increment, finished, beats five started.** Build it, test it, look at it, push,
+   update `STATE.md`. The reason is no longer budget: it is that this container has recycled
+   **four times in one session**, and an unfinished increment is an increment that gets deleted.
 3. **Workflows are for genuine fan-out**, not for work one agent can do serially. A workflow
    costs roughly its agent count times a normal turn. Five agents to build five independent
    subsystems is worth it; five agents to write one file is not.
@@ -886,21 +901,25 @@ This project runs partly on a **6-hourly trigger** (`trig_01JS1VWf6yada5x6maPMAz
    used agents to build?"*
 
    **"Smartly" is the four rules that follow, and they are what the permission gate was standing
-   in for.** Width is capped by the hardware. File lists must be disjoint, and checked for
-   hidden artefact collisions. The main agent must stay off the cores while they run. And their
-   output is not done until it has been verified and integrated.
+   in for.** Queue depth is free; concurrency is not. File lists must be disjoint, and checked
+   for hidden artefact collisions. The main agent must stay off the cores while they run. And
+   their output is not done until it has been verified and integrated.
 
-   **Cap: 2–3 agents, and that is the HARDWARE, not a preference.** The owner set 2–3 in session
-   3q and it matches the machine exactly: `nproc` is 4, the workflow runtime caps concurrency at
-   `min(16, nproc - 2)`, so **two agents run and everything else queues**. The old guidance here
-   said ~10–14 and it was measured wrong in session 3o: a 12-agent fan-out became a six-deep
-   queue, ran fifteen minutes with two agents still on their first pass, wrote nothing, and was
-   killed. The work was then done serially from the same committed data the agents were being
-   asked to read.
+   **No cap on agent COUNT (owner, 4s). A hard floor on agent QUALITY.** The old rule read
+   *"Cap: 2–3 agents, and that is the HARDWARE"* and it conflated two different things. The
+   hardware limits **how many run at once** — `nproc` 4, runtime concurrency `min(16, nproc-2)` =
+   2 — and nothing limits how many you may queue. What session 3o actually proved is not that 12
+   agents is too many; it is that **12 vague agents are worse than 2 sharp ones**. That run became
+   a six-deep queue, ran fifteen minutes with two agents still on their first pass, wrote nothing,
+   and was killed — then the work was done serially from the same committed data the agents had
+   been asked to read.
 
-   Two agents *is* the useful width. The session-3p run cost 596k subagent tokens over 66
-   minutes, both finished, and it caught two of this agent's own factual claims as wrong plus a
-   camera defect this agent had introduced. Width beyond two buys nothing on this box.
+   So the discriminator is not width, it is **whether each agent has a job it can finish alone**.
+   The session-3p run cost 596k subagent tokens over 66 minutes, both agents finished, and it
+   caught two of this agent's own factual claims as wrong plus a camera defect this agent had
+   introduced — because both had a bounded, checkable deliverable. Prefer `pipeline()` over
+   `parallel()`: a deep pipeline drains at 2-wide and every item that finishes is banked, whereas
+   a wide barrier holds every result hostage to the slowest one and loses all of it to a recycle.
 
    **Give agents disjoint file lists and check for hidden collisions.** `materials.py --export`
    rewrites the `.tscn` files, so an agent owning `materials.py` and an agent owning
