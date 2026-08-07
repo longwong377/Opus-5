@@ -13368,3 +13368,74 @@ floor of 0.90 so it refuses to answer on anything that is not a loft.
 **What would overturn either.** A body part that is not a stack of equal rings at all. Both
 return None for that and the panel falls back to the capped tube, which `--panels` then fails —
 loudly, which is the point.
+
+## INV-1220 — the Zocalo's key light, and the mount offset that lets a lit patch stand for a lamp
+
+**What.** `FIXTURE_LIGHTING["zoc_downlight"]` in `tools/export_scene.py`: a spot at
+(0.694, 0.982, 1.000), 7740 K, `energy_rel` 1.00, range 12.0 m, cone half-angle 50°, shadow on,
+and a new field `mount_m = 7.2` which lifts the emitted source 7.2 m along the room's own UP from
+the geometry it is derived from.
+
+**Why.** Not an invention at the level of the numbers — every one of them is transcribed from
+`docs/layer4-lighting/public_social.json`, fixture record `zoc_downlight_overhead`, space
+`zocalo_concourse`, measured off `reference/04-sector-red/more zocalo.png` (authority 1). What is
+new is that the record now has a consumer. It had two half-consumers and no whole one:
+`station/materials.py`'s `light_market_pool` quotes the same measurement in its `source=` field and
+binds a group name — `light_market_pool` — that `station/zocalo.py` does not emit; and
+`FIXTURE_LIGHTING` had no entry at all. So the concourse's KEY existed as a measurement, a colour
+and a citation, and cast no light. Every photon the room actually cast came from `zoc_rib_lamp`
+(warm, `energy_rel` 0.30) and `zoc_stall_light` (warm, 0.19), and the level was carried by a grey
+ambient — the exact condition the same JSON warns against: *"A B5 social interior has NO neutral
+fill term. Every photon on a dark surface came from a named fitting. A grey ambient will kill these
+rooms."*
+
+**What constrained it.**
+
+* The key is on `zoc_downlight` rather than on a lamp group because there is no lamp group. The
+  JSON is explicit about which object is which: *"kit.downlight_pool() models the POOL, not the
+  lens, so the engine light belongs overhead and the 1.57 m disc is its baked core."* `mount_m` is
+  that sentence expressed as a field, and it keeps CLAUDE.md hard rule 4 — the light is still a
+  function of geometry the module emits, never a hand-written table of 55 lamp positions.
+* The offset is along `-down`, not `+Y`. Inside a spun ring "7.2 m above the deck" is 7.2 m toward
+  the spin axis. `+Y` there would put the whole key rig sideways at every ring angle but one, with
+  the frame still lit — the failure a render cannot show. This is `spots_lighting_the_floor`'s
+  recorded lesson applied one line earlier, to the position instead of the aim.
+* A `mount_m` fitting takes **no** `room_reach` stretch. The stretch exists because most ranges were
+  measured in a room of one size and used in a room of another; this range was measured *with* its
+  own drop, in this room, in this frame. Stretched it would be 26.4 m over a 7.2 m drop — a spot
+  with no falloff left inside the room, and the falloff is the penumbra.
+* Cross-check that could not have copied the source: the emitted positions land at
+  x = ±4.70 m and z = 1.35 / 4.05 / 6.75 / 9.45 m per bay, derived only from the centroids of
+  `station/zocalo.py`'s pool discs — which is the placement string in the JSON, to the centimetre,
+  arrived at from the geometry rather than from the record.
+
+**What would overturn it.** A frame of the Zocalo vault in which the overhead fittings are
+resolvable and are not at 2.7 m spacing; or a lens group appearing in `station/zocalo.py`, at which
+point the light should hang on the lens and `mount_m` should go. Also overturned if
+`materials.light_market_pool` is ever bound to real geometry — the two must not both cast, and
+nothing today asserts that they cannot.
+
+## INV-1221 — a shadow ration counted in cube-map faces
+
+**What.** `OMNI_SHADOW_FACES = 6` and `fixture_lights`' ration spending `shadow_n * 6` map faces,
+charging 6 for an omni caster and 1 for a spot, instead of taking the nearest `shadow_n` casters.
+
+**Why.** The old rule's own justification was about faces and its arithmetic was about lights:
+*"an omni shadow is a cube map, so each one re-renders the scene six times, on a CPU."* A budget in
+lights therefore charged a spot six times what it costs, and that is why the Zocalo's fifty-five
+deck downlights could have no shadow at any setting — two lights is two lights whether they are
+cubes or not.
+
+**What constrained it.** `shadow_n = 2` had to keep meaning exactly what it meant, and it does: an
+all-omni rig spends 6 per caster and takes 2, so the corridor anchor — the frame `RENDER_OFFSET =
+1.40` is defined against — is untouched. `_selftest` asserts that identity, and separately asserts
+that the Zocalo spends the same 12 faces on more than 2 casters. The 4-for-1 the change buys is a
+measured budget rather than a guess: the same JSON's section 4 says *"because ~4 deck downlights
+overlap at any point and the measured shadow depth is 0.74, turning shadows off on three of every
+four costs about 25% of one fitting's contribution."*
+
+**What would overturn it.** A measurement of what a spot shadow map actually costs on the target
+card relative to a cube face — 1:6 is the geometric count, not a timing. If a spot's map is
+allocated at the same resolution as one cube face the ratio holds; if the renderer allocates spot
+maps larger, it does not. Nothing in this container can measure that; see `docs/AAA-STANDARD.md`,
+"What this rubric cannot judge".
