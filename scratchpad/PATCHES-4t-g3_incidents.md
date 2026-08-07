@@ -1,76 +1,108 @@
-# Patches g3_incidents needs in files it does not own
+# PATCHES owed by g3_incidents to files another workflow owns
 
-Written rather than applied: `station/boot.py` and `godot/scripts/main.gd` belong to the
-wf-aaa-4t workflow / are outside this agent's ownership (`station/incident.py`,
-`station/friction.py`). Two agents in one file is the stomped-artefact defect CLAUDE.md records
-three times.
+Written, not applied. `station/boot.py` and `godot/scripts/main.gd` belong to wf-aaa-4t this
+session. Everything below is verified against `station/incident.py` at the commit that carries
+`collapse_gate`, and each one is a one- or two-line change.
 
-## What is already wired, and needs no patch
+---
 
-`station/boot.py::_collapses` -> `incident.visible_bodies(rooms, day, seed)` -> `boot.json`
-`"collapses"` -> `godot/scripts/main.gd::_fire_collapses`. That chain runs today and this session
-did not change its shape. `visible_bodies` now prints, on stderr, on every call:
+## P1 — `station/boot.py:295` — the baked collapses are unconditionally the ABSENT day
 
-    incident.visible_bodies: N collapse row(s) over M place(s), observer=none (absent)
-
-and every row gained two additive keys, `"stance"` (what the day was resolved in — `"absent"`
-until an observer is passed) and `"if_helped"` (whether this body would still be on the deck had
-the player helped, resolved through the class's own HELPS branch, not tabulated).
-
-## What is NOT wired, and the patch for it
-
-The player's *choice* does not reach the engine. Nothing in `godot/scripts/` reads `if_helped`.
-
-### 1. `station/boot.py`, in `_collapses`
-
-Nothing is required for correctness — the ABSENT bake is the right default, because at bake time
-the player has chosen nothing. If a live player is wanted at bake time:
+**Now:**
 
 ```python
         import incident as ic                                   # noqa: PLC0415
-        obs = ic.Observer(rooms[0], policy="citizen") if rooms else None
+        return ic.visible_bodies(rooms, day=day, seed=seed)
+```
+
+**Wanted:**
+
+```python
+        import incident as ic                                   # noqa: PLC0415
+        # THE PLAYER IS IN THE ROOM. `visible_bodies` resolves every row under
+        # the ABSENT stance when no observer is passed, which is what the deck
+        # does when nobody intervenes -- correct for a bake that runs before the
+        # player has chosen anything, and wrong the moment the deck it is baking
+        # is the deck the player spawns on. The observer is built from the
+        # deck's own spawn room, so a row's `stance` is what a player standing
+        # there would have produced.
+        obs = None
+        try:
+            obs = ic.Observer(rooms[0], policy="citizen")
+        except Exception:                                       # noqa: BLE001
+            pass
         return ic.visible_bodies(rooms, day=day, seed=seed, observer=obs)
 ```
 
-**Do not apply this without deciding it deliberately.** It changes a shipped artefact's contents
-for every deck, and "the player helped everyone all day" is as much a lie as "the player was never
-there". The honest runtime version is 2.
+`visible_bodies` already takes `observer=` and already prints which one it used
+(`observer=none (absent)` today). Nothing else changes.
 
-### 2. `godot/scripts/main.gd`, in `_fire_collapses`
+**Caveat, and it is why this is P1 and not P0.** On the shipped deck the array is empty either
+way — see P2. The patch stops the rows being *unconditionally* absent; it does not by itself put
+a body on the deck.
 
-The row already says whether helping would have stopped the body hitting the deck. The runtime
-piece is: when the player is inside `COLLAPSE_SIGHT_M` of the place at the row's hour AND presses
-the interact verb before the promotion fires, skip the promotion and log the assist:
+---
 
-```gdscript
-	if bool(row.get("if_helped", false)) and _player_assisted(row):
-		_helped += 1
-		continue
+## P2 — `station/boot.py` — the shipped bake asks for day 1, and day 1 is empty
+
+**The finding, measured by running the shipped bake** (`python3 station/boot.py --bake`) and
+reading its own stderr:
+
+```
+incident.visible_bodies: 0 collapse row(s) over 3 place(s), observer=none (absent);
+  0.232 expected a day from 1 ragdoll class(es) here, so P(a day like this one is empty) = 0.79
+incident.visible_bodies: EMPTY -- and it is a RATE, not a break: INC-SICK 0.2323/day.
+  The first day in 1..10 that puts a body on this deck is day 5
 ```
 
-`_player_assisted` does not exist and is the actual work; it wants `interact.gd`'s verb set to
-carry HELP/REPORT, which is G2's surface rather than G3's.
+The committed `station/generated/scene/boot.json` carries `"collapses": []`. So
+`main.gd::_fire_collapses` has never fired on the shipped build, and `_collapse_gate` has nothing
+to pick from. It is not a break — the shipped deck is `arrival_concourse`, `customs_north`,
+`customs_south`, the only ragdoll class reachable in those three is INC-SICK at 0.2323/day, and
+`_collapses(rooms)` asks for **day 1 only**.
 
-### 3. The measurement that should follow it
+Three ways out, in order of honesty. **Do not raise INC-SICK's rate** — that is tuning content
+until a number goes green.
 
-`incident.absence()` already answers the question a runtime fork would need to be judged against
-— same seed, same stream, two worlds — so the engine side needs no second model, only a call.
+1. **Bake a horizon, not a day.** `_collapses` gains `days=` and concatenates, tagging each row
+   with its day; `main.gd` already carries a clock and could fire only the current day's rows.
+   `incident.collapse_first_day(rooms, seed="b5", max_days=10)` returns **5** for this deck, so a
+   five-day horizon is the smallest one that is not empty and a ten-day one has P(empty) = 0.098.
+2. **Widen the baked scope to the deck's PROBE rather than its rooms.**
+   `incident.Probe("customs_north").places` reaches `docking_bays`, where INC-SICK and INC-STRAY
+   are common: **49.620 expected a day, first day 1**. The cost is that some rows land in a place
+   this deck has no geometry for, which `main.gd:1193` already guards against.
+3. **Leave it and say so.** `incident.py --collapses` now prints both numbers on every run, so
+   the emptiness is legible rather than silent. This is what shipped.
 
-### 4. `station/compress.py` — the cheapest live runtime hook in the project, and it is 2 lines
+---
 
-This is the one worth doing first. `godot/scripts/interact.gd`'s SLEEP/WAIT verb calls
-`compress.advance(now_h, wake_h, at_place=...)`, which runs `incident.simulate(..., scope=[at_place])`
-one station-hour at a time — **the player is demonstrably standing (lying) in `at_place` and every
-incident during the night still resolves ABSENT.** `simulate` now takes `observer=`:
+## P3 — `godot/scripts/main.gd` — nothing reads `if_helped` or `stance`
 
-```python
-    obs = inc.Observer(at_place, policy="absent")   # asleep: present, cannot act
-    ...
-        world, f = inc.simulate(ctx, world, start_h=prev, window_min=window,
-                                scope=[at_place], observer=obs)
+`visible_bodies` bakes two fields no GDScript reads:
+
+* `stance` — `"absent"` / `"helps"` / `"reports"`, what the row was resolved under.
+* `if_helped` — whether this body would still be on the deck had the player helped, resolved
+  through the class's own HELPS branch rather than guessed.
+
+`_fire_collapses` (main.gd:1065) drops the body and ignores both. The smallest thing that makes
+the fork live at runtime: when the player is within `COLLAPSE_SIGHT_M` and presses the interact
+verb before the ragdoll settles, re-fire the row with `if_helped == true` meaning the body gets
+up. That is the runtime half of P1/G3's *"absent / helps / reports produces 3 distinct world
+states"*; the simulation half is done and provable —
+`python3 station/incident.py --three-outcomes INC-CONTRA --at cargo_bays` gives three distinct
+fingerprints with the diffs named.
+
+---
+
+## Not a patch — a note for whoever owns `docs/spec`
+
+`spec_check --red`'s INC-CONTRA finding is **closed and the spec was not edited to close it**.
+`--selftest` asserts the class covers every place `docs/spec/PLACES.md` names for it including
+`cargo_bays`, that the `stock` write into `black_market` actually happens there, and the control
+that at a hall which SCANS the same class still ends in a seizure and a custody row with nothing
+reaching the black market. Run:
+
 ```
-
-`policy="absent"` is the correct policy for a sleeping player and is byte-identical to today, which
-is the point: it makes the observer *present in the call graph* with no behaviour change, so the
-day WAIT (`interruptible=True`, awake) can then pass `policy="citizen"` and the change is one
-argument rather than a new code path. `incident.absence()` is the A/B that judges it.
+python3 station/incident.py --three-outcomes INC-CONTRA --at cargo_bays
+```

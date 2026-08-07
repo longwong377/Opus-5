@@ -4389,6 +4389,7 @@ STEP_TOLERANCE = 0.10
 # 13.  Gate
 # ===========================================================================
 _FAILED = []
+_SELFTEST_CHECKS = 0
 
 
 def check(ok, name, detail=""):
@@ -4737,6 +4738,56 @@ def _shipped_rooms():
             return tuple(json.load(f).get("rooms") or ())
     except Exception:                                        # pragma: no cover
         return ()
+
+
+def accept(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
+           cid="INC-CONTRA", place="cargo_bays"):
+    """P1/G3's ACCEPTANCE, all of it, in one process and one exit code.
+
+    Deliberately ONE PROCESS. Every number below is also obtainable from its own
+    flag, and until this session those two ways of getting it did not agree --
+    `absence()` was not hermetic, so whichever run reached a place-hour first
+    fixed the cast for everything after it. Running the whole acceptance in one
+    interpreter, in an order nothing else in the module uses, is the strongest
+    statement of the fix that can be made: if the fingerprints here differ from
+    the ones `--absence` prints alone, the module is lying.
+
+      1. --selftest      everything answerable without simulating (29 checks)
+      2. THREE OUTCOMES  one seeded incident, absent / helps / reports, three
+                         distinct world states with the diffs named
+      3. THE RATE        >=2 meaningful incidents a station-hour near the
+                         player, denominator printed, asserted against the
+                         NARROWEST reading of "near"
+      4. ABSENCE         a player-absent day differs from a player-present one
+                         in the same seed, same incident stream, and the world
+                         is a function of the seed and nothing else
+      5. COLLAPSES       and a body can actually fall over where the player
+                         stands, within a stated horizon
+    """
+    del _FAILED[:]
+    n = 0
+    out("=" * 74)
+    out("P1/G3 ACCEPTANCE -- the incident generator, and the player mattering "
+        "to one")
+    out("=" * 74)
+    _selftest(out=out)
+    n += _SELFTEST_CHECKS
+    out("")
+    out("ONE SEEDED INCIDENT, THREE WAYS")
+    nd = stance_report(cid, out=out, place=place, seed=seed)
+    n += 1
+    check(nd == 3,
+          f"{cid} at {place} resolves into THREE distinct world states -- not "
+          f"two, and not a log line that differs",
+          f"{nd} of 3")
+    n += near_gate(out=out, at=at, seed=seed, step_min=step_min)
+    n += absence_gate(out=out, at=at, seed=seed, step_min=step_min)
+    n += collapse_gate(out=out, at=at, seed=seed)
+    out("")
+    for f in _FAILED:
+        out(f"  FAIL {f}")
+    out(f"{n - len(_FAILED)}/{n} P1/G3 acceptance checks passed")
+    return not _FAILED
 
 
 def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
@@ -5574,6 +5625,8 @@ def _selftest(out=print):                                       # noqa: C901
         for f in _FAILED:
             out(f"  FAIL {f}")
     out(f"{n - len(_FAILED)}/{n} passed (offline)")
+    global _SELFTEST_CHECKS
+    _SELFTEST_CHECKS = n
     return not _FAILED
 
 
@@ -5588,6 +5641,9 @@ def main(argv=None):                                         # pragma: no cover
                          "three worlds are not three")
     ap.add_argument("--absence", action="store_true",
                     help="the same seeded day with and without a player")
+    ap.add_argument("--accept", action="store_true",
+                    help="P1/G3's whole acceptance in one process, one exit "
+                         "code")
     ap.add_argument("--collapses", action="store_true",
                     help="can a body fall over where the player stands, "
                          "and in how many days")
@@ -5655,6 +5711,8 @@ def main(argv=None):                                         # pragma: no cover
         for f in _FAILED:
             print(f"  FAIL {f}")
         return 0 if not _FAILED else 1
+    if a.accept:
+        return 0 if accept(at=a.at, seed=a.seed, step_min=a.step) else 1
     if a.collapses:
         del _FAILED[:]
         collapse_gate(at=a.at, seed=a.seed)
