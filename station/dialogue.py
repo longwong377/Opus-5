@@ -3372,6 +3372,248 @@ def behind_counter(place_key: str, world: World = None, species: str = "human",
     return None
 
 
+# ===========================================================================
+# 4g.  DLG-03 -- WHAT IS ACTUALLY BEHIND EACH COUNTER
+# ===========================================================================
+#
+# THE ROW'S TEST IS SPECIFICITY, NOT VOLUME: *"Trade lines name their wares
+# from the GDS-01 goods vocabulary -- a counter that trades in 'goods' fails
+# the T1 specificity rule"*, and *"the Quartermaster does not sell spices"*.
+# Before this table `serve_response()` returned `speak()`, whose trade line
+# came from `PHRASE["trade"]`'s pool of THREE, shared by every counter on the
+# station -- so the fence, the quartermaster and the spice pitch made the same
+# sentence with a different place name in it.
+#
+# EACH ROW IS A COUNTER AND NAMES REAL WARES. `sells` are GDS-01 names
+# (`docs/spec/PLACES.md` 0.3 -- spoo, brivari, flarn, G'Quan Eth, Jovian
+# Sunspot, treel, jala, bagna cauda, salvage lots, breather cartridges,
+# identicard blanks, Dust, aid-ration packs, water containers, pitch-fee
+# scrip, Nightwatch pamphlets, drum staples, Vree optics, Drazi hardware
+# grades, dock-grade tools); `short` is what this counter cannot get at the
+# datum and `never` is what it will not stock at any price. Those last two are
+# what make a counter a PLACE rather than an inventory: a person who tells you
+# what they have not got has told you where you are.
+#
+# SIX LINES PER COUNTER, from six shapes over the row's own wares -- the pitch,
+# the price, the provenance, the shortage, the refusal, and the haggle. 30
+# counters x 6 = 180 distinct lines, and `_selftest` asserts the distinctness
+# rather than assuming the wares differ.
+#
+# THE SPEC SAYS 29 COUNTERS ACROSS 27 PLACES AND THE REGISTER NOW HAS 30
+# ACROSS 28. That is DRIFT and it is left standing: `docs/spec/PEOPLE.md`
+# DLG-03 cites `interact.py:120-126` for its figures and a place has been
+# added to the register since. Neither side may be edited to make the other
+# pass (MASTER-PLAN R1), so this table covers what the register ACTUALLY has
+# and the harness reports the two numbers side by side. INV-690.
+_W = lambda sells, short, never, source: dict(                   # noqa: E731
+    sells=sells, short=short, never=never, source=source)
+
+COUNTER_WARES = {
+    ("customs_north", "customs_desk"): _W(
+        ("transit visas", "bonded-cargo seals", "declaration forms"),
+        "same-day clearances, since the liner surge",
+        "anything at all -- this is a desk, not a stall",
+        "GDS-01 controlled classes + TRAFFIC-AND-CUSTOMS 5.2"),
+    ("customs_south", "customs_desk"): _W(
+        ("transit visas", "quarantine certificates", "bond releases"),
+        "quarantine clearances for anything Markab-flagged",
+        "the G'Quan Eth waiver -- that is a north-hall signature",
+        "GDS-01 controlled classes + the Markab seal"),
+    ("docking_bays", "bay_control_booth"): _W(
+        ("berth allocations", "grapple time", "dock-grade tools on loan"),
+        "a bay under tier three before the afternoon",
+        "cargo -- take a manifest to the cargo desk",
+        "SYS-02 berth map"),
+    ("mess_hall", "serving_counter"): _W(
+        ("drum staples", "orchard fruit off the 05:00 transfer", "flarn"),
+        "treel, until the tanks come back up",
+        "brivari, or anything else you could get drunk on",
+        "GDS-01 drum staples + hydroponics"),
+    ("zocalo", "market_stall"): _W(
+        ("spoo", "jala", "Abbai wet-farm greens"),
+        "spoo, and it will be short until the Narn routes reopen",
+        "identicard blanks -- take that below and do not come back",
+        "GDS-01 attested names; G'Dral's row, CAST-02 32"),
+    ("zocalo", "shopfront"): _W(
+        ("Vree instrument-grade optics", "Drazi duct-sealant",
+         "breather cartridges"),
+        "optics above grade four; the Vree hulls are standing off",
+        "food of any kind -- that is the cloth two rows down",
+        "GDS-01 hardware grades; CAST-02 34, 35"),
+    ("bar_unnamed", "bar_counter"): _W(
+        ("Jovian Sunspot", "brivari", "bagna cauda for anyone who asks twice"),
+        "brivari, since the Centauri put a levy on it",
+        "Dust. Not here, not ever, and you can ask outside",
+        "GDS-01 bar_unnamed board; CAST-02 21"),
+    ("dark_star", "bar_counter"): _W(
+        ("brivari", "Jovian Sunspot", "jala for the Centauri tables"),
+        "anything Narn, and the tables notice",
+        "credit -- this house takes cash and takes it first",
+        "GDS-01 Centauri drink; CAST-02 24, 25"),
+    ("casino", "bar_counter"): _W(
+        ("brivari", "house tokens", "Jovian Sunspot at the tables"),
+        "nothing. The house is never short of anything you can drink",
+        "a tab. The floor boss decides who runs one and she has decided",
+        "GDS-01 + CAST-02 30"),
+    ("security_central", "duty_desk"): _W(
+        ("cautions", "property receipts", "identicard readings"),
+        "cell space, on any night after a liner",
+        "an opinion about the Ministry, at this desk or any other",
+        "LAW-CRIME-DOWNBELOW 2.2"),
+    ("ambassadorial_suites", "reception"): _W(
+        ("appointments", "credentials", "the mission's own courtesies"),
+        "an hour of the ambassador's day inside the month",
+        "gifts. They are logged, and then they are declined",
+        "FACTIONS.md 7.2, 8.1"),
+    ("admin_complex", "desk"): _W(
+        ("residency filings", "pitch-fee scrip", "docket numbers"),
+        "a docket date inside three weeks",
+        "an exception. This desk has never once made one",
+        "FACTIONS.md 2.5"),
+    ("quartermaster", "issue_counter"): _W(
+        ("dock-grade tools", "breather cartridges", "issue kit against signature"),
+        "cartridges above the reserve, until the next EarthForce transport",
+        "spices, delicacies or drink -- this is an issue counter and it "
+        "issues what the establishment says it issues",
+        "GDS-01 dock-grade tools; CAST-02 14"),
+    ("post_office", "counter"): _W(
+        ("parcels off the liner", "bonded packets", "rack storage by the day"),
+        "rack space, for the two days after every liner",
+        "anything unlabelled. If it has no name on it, it does not come in",
+        "CAST-02 15"),
+    ("eclipse_cafe", "bar_counter"): _W(
+        ("orchard fruit", "drum staples", "the A-watch handover breakfast"),
+        "eggs, whenever the drum's birds are off",
+        "alcohol before the evening. Ask next door",
+        "GDS-01 drum staples; CAST-02 26"),
+    ("shops_kiosks", "market_stall"): _W(
+        ("breather cartridges", "Drazi hardware grades", "water containers"),
+        "containers, since the standpipe queues doubled",
+        "food. There is a whole concourse of it below",
+        "GDS-01 hardware + standpipe economy"),
+    ("shops_kiosks", "shopfront"): _W(
+        ("Vree instrument-grade optics", "identicard wallets",
+         "hydroponic specialty racks by order"),
+        "the specialty racks, until PLC-026 logs the next cut",
+        "anything I would have to explain to a customs officer",
+        "GDS-01 hydroponics racks"),
+    ("earthforce_office", "desk"): _W(
+        ("service records", "pension filings", "transport berths"),
+        "berths on anything outbound before the month's end",
+        "civilian business. The concourse desk is two decks up",
+        "FACTIONS.md 3.2"),
+    ("league_delegations", "reception"): _W(
+        ("anteroom appointments", "translated filings", "League standing lists"),
+        "an anteroom slot, and the queue is by standing not by date",
+        "a private word. Everything here is heard by everyone here",
+        "FACTIONS.md 9.2; CAST-02 46"),
+    ("drum_office", "desk"): _W(
+        ("drum staples by consignment", "crop-board allocations",
+         "orchard fruit lots"),
+        "grain, until the next cut clears the boards",
+        "retail. This office sells by the consignment or not at all",
+        "PLC-110's 12 crop boards"),
+    ("telepath_office", "desk"): _W(
+        ("commercial scan bookings", "Corps filings", "sealed depositions"),
+        "a resident telepath, since the posting closed",
+        "an unlogged scan. There is no such thing and there never was",
+        "FACTIONS.md 4; CAST-02 49"),
+    ("maintenance", "workbench"): _W(
+        ("Drazi duct-sealant", "dock-grade tools", "gasket stock by grade"),
+        "sealant, because Grey took the last drum of it",
+        "anything for a private job. Bring a works order",
+        "GDS-01 hardware grades"),
+    ("research_labs", "lab_bench"): _W(
+        ("Vree instrument-grade optics", "sample cases",
+         "Abbai wet-farm cultures"),
+        "optics, and the whole programme is waiting on them",
+        "specimens out of the building. Not signed, not carried",
+        "GDS-01 Vree optics"),
+    ("black_market", "stall"): _W(
+        ("salvage lots", "identicard blanks", "Dust, if you already knew to ask"),
+        "clean salvage. Everything on this cloth has a history",
+        "aid-ration packs. I do not take food out of a queue",
+        "GDS-01 contraband; CAST-02 41, 38"),
+    ("core_shuttle", "counter"): _W(
+        ("transit tokens", "drum-side consignment space",
+         "pitch-fee scrip for the drum markets"),
+        "space on the 05:00 transfer, every single morning",
+        "livestock. It has been tried",
+        "GDS-01 pitch-fee scrip"),
+    ("earharts", "bar_counter"): _W(
+        ("bagna cauda", "Jovian Sunspot", "EarthForce pension-day measures"),
+        "bagna cauda, when the Earth consignment misses a liner",
+        "anybody without a membership. The steward is sorry and he is not",
+        "GDS-01 human/Italian; CAST-02 27"),
+    ("happy_daze", "bar_counter"): _W(
+        ("Jovian Sunspot", "Llort overnight stock", "brivari of a sort"),
+        "anything you would put a name to after midnight",
+        "questions. You drink here, you do not ask here",
+        "GDS-01 + CAST-02 29"),
+    ("security_posts", "duty_desk"): _W(
+        ("cautions", "lost property", "Downbelow boundary passes"),
+        "officers, on the C watch and every watch",
+        "a favour. Not at a post, not with the log running",
+        "LAW-CRIME-DOWNBELOW 2.2"),
+    ("nightwatch", "duty_desk"): _W(
+        ("Nightwatch pamphlets", "enrolment forms",
+         "the supplementary allowance, paid weekly"),
+        "nothing. The Ministry is never short",
+        "an explanation. You are told, or you are not told",
+        "FACTIONS.md 5"),
+    ("minipax", "desk"): _W(
+        ("Nightwatch pamphlets", "reporting terminals", "civic notices"),
+        "patience, with people who file the same report twice",
+        "a copy of what you filed. It is filed; that is the whole of it",
+        "FACTIONS.md 5 and 13"),
+}
+
+# The six shapes. Each names a ware; none of them can say "goods".
+_TRADE_SHAPE = (
+    "The %(a)s is what people come to this counter for, and I have %(b)s and "
+    "%(c)s besides.",
+    "%(b)s is priced where it is because of what it costs me to have it here "
+    "at all, with %(short)s the way it is. I am not moving on it.",
+    "The %(c)s comes in the way everything comes in here -- %(source)s -- and "
+    "when that stops, so do I.",
+    "What I have not got is %(short)s. Ask me again next week and I will "
+    "probably say the same.",
+    "I do not sell %(never)s.",
+    "You can have the %(a)s at the marked figure, or the %(c)s, and neither "
+    "of them moves for anybody. Your choice.",
+)
+
+
+def counter_wares(place_key: str, token: str) -> dict:
+    """What is actually behind this counter, or None if it is not a counter."""
+    return COUNTER_WARES.get((place_key, token))
+
+
+def counter_trade(place_key: str, token: str) -> tuple:
+    """The six place-specific trade lines for one counter. DLG-03's floor."""
+    w = counter_wares(place_key, token)
+    if w is None:
+        return ()
+    a, b, c = (list(w["sells"]) + ["", "", ""])[:3]
+    f = {"a": a, "b": b, "c": c, "short": w["short"], "never": w["never"],
+         "source": w["source"]}
+    return tuple(t % f for t in _TRADE_SHAPE)
+
+
+def counter_line(place_key: str, token: str, turn: int = 0) -> str:
+    """One trade line, without repeating inside the counter's six."""
+    pool = counter_trade(place_key, token)
+    if not pool:
+        return None
+    return _shuffle(pool, f"trade|{place_key}|{token}")[turn % len(pool)]
+
+
+def trade_lines() -> dict:
+    """DLG-03's census: every counter's six, keyed by counter. Computed."""
+    return {(p, t): counter_trade(p, t)
+            for p in serve_places() for t in serve_tokens(p)}
+
+
 def serve_response(place_key: str, world: World = None,
                    listener: Listener = None, species: str = "human"):
     """The exchange `interact.py` says `serve` needs and could not have.
@@ -3384,7 +3626,21 @@ def serve_response(place_key: str, world: World = None,
     who = behind_counter(place_key, world, species)
     if who is None:
         return None
-    return speak(who, place_key, world, listener)
+    ex = speak(who, place_key, world, listener)
+    # AND THE COUNTER SAYS WHAT IS ON IT. DLG-03: six place-specific trade
+    # lines BEYOND the matrix cell, naming GDS-01 wares. Appended rather than
+    # substituted, because the exchange above is the PERSON and this is the
+    # COUNTER -- the same Narn merchant behind the spice pitch and behind the
+    # fence gets his own voice from the cell or his cast row, and different
+    # wares from here.
+    tok = (serve_tokens(place_key) or ("",))[0]
+    line = counter_line(place_key, tok, world.turn)
+    if line:
+        src = (f"dialogue.COUNTER_WARES[({place_key!r}, {tok!r})] -- "
+               f"{counter_wares(place_key, tok)['source']}")
+        ex = replace(ex, lines=ex.lines + (Line("npc", "speech", line, src),),
+                     sources=ex.sources + (src,))
+    return ex
 
 
 # ===========================================================================
@@ -4318,6 +4574,39 @@ def _selftest(out=print):                                       # noqa: C901
           f"PLAYER_ROLES matches the annex's {_rh} ROLE- headings",
           f"{len(PLAYER_ROLES)}")
 
+    # -- DLG-03: the counters, and what is actually on them --------------
+    n += 1
+    tl = trade_lines()
+    tflat = [x for v in tl.values() for x in v]
+    check(len(set(tflat)) == len(tflat) and all(len(v) == 6 for v in tl.values()),
+          f"{len(tl)} counters x 6 = {len(tflat)} place-specific trade lines, "
+          f"all distinct", f"{len(tflat) - len(set(tflat))} shared")
+    n += 1
+    bare = [k for k, v in tl.items() if not v]
+    check(not bare, "every counter in the register has named wares", f"{bare}")
+    n += 1
+    # THE ROW'S OWN EXAMPLE, ASSERTED: "the Quartermaster does not sell spices".
+    qm = " ".join(counter_trade("quartermaster", "issue_counter"))
+    zc = " ".join(counter_trade("zocalo", "market_stall"))
+    check("I do not sell spices" in qm and "spoo" in zc,
+          "the Quartermaster refuses spices and the Zocalo pitch names spoo",
+          f"{qm[:60]!r}")
+    n += 1
+    # AND NO COUNTER TRADES IN "goods" -- the row's T1 specificity rule.
+    vague = [k for k, v in tl.items()
+             if any(re.search(r"\bgoods\b|\bitems\b|\bwares\b", x)
+                    for x in v)]
+    check(not vague, "no counter anywhere trades in unnamed 'goods'",
+          f"{vague[:3]}")
+    n += 1
+    # AND IT REACHES THE PLAYER. `serve_response` is the shipped caller.
+    _sr = serve_response("quartermaster", World(hour=10.0))
+    check(_sr is not None
+          and any(l.text in counter_trade("quartermaster", "issue_counter")
+                  for l in _sr.lines),
+          "serve_response() puts the counter's own wares in the exchange",
+          f"{_sr and [l.text[:40] for l in _sr.lines]}")
+
     # -- DLG-06: the two ceilings ---------------------------------------
     n += 1
     check(len(set(KOSH_LINES)) == len(KOSH_LINES) <= 12,
@@ -4367,6 +4656,15 @@ def _selftest(out=print):                                       # noqa: C901
         f"{len(set(cflat))} distinct lines to {len(set(_c2))} -- the "
         f"no-two-identical rule FIRES on {len(_c2) - len(set(_c2))} strings")
     _CAST_TOPIC = _keept
+    global COUNTER_WARES
+    _keepw = dict(COUNTER_WARES)
+    COUNTER_WARES = {k: dict(v, sells=("goods", "goods", "goods"))
+                     for k, v in COUNTER_WARES.items()}
+    _t2 = [x for v in trade_lines().values() for x in v]
+    out(f"  with every counter selling \"goods\", the 30 counters fall from "
+        f"{len(set(tflat))} distinct trade lines to {len(set(_t2))} and the "
+        f"specificity rule FIRES on the word itself")
+    COUNTER_WARES = _keepw
     _kl = KOSH_LINES
     out(f"  a Kosh pool of {len(_kl)} would break the <=12 ceiling at "
         f"{len(_kl) + 1}: the check is `<= 12` and reads len(KOSH_LINES), so "
