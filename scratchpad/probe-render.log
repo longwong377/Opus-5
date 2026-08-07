@@ -1,0 +1,39 @@
+--- assemble ---
+hull LOD: lod1 -- nearest hull point 6,320 m; lod1 = 32 segments / z-stride 1 / greeble 1, from 3,997 m (binding schedule: silhouette at 3,997 m); drawing sub-pixel greeble/longitudinal detail at its far end (hull_lod1.obj missing -- fell back to hull.obj; run `python3 station/lod.py --build`)
+{
+ "shot": "exterior",
+ "scene": "res://scenes/exterior.tscn",
+ "glb": [
+  "station/generated/scene/exterior/hull.glb"
+ ],
+ "triangles": 387630,
+ "lights": 0,
+ "scene_json": "station/generated/scene/exterior/scene.json"
+}
+--- warming the texture import cache (first render in this checkout) ---
+--- render exterior 640x360 -> /home/user/Opus-5/scratchpad/probe-exterior.png ---
+Godot Engine v4.4.stable.custom_build.4c311cbee (2025-03-02 23:31:23 UTC) - https://godotengine.org
+Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)
+libpulse.so.0: cannot open shared object file: No such file or directory
+libpulse.so.0: cannot open shared object file: No such file or directory
+ALSA lib confmisc.c:855:(parse_card) cannot find card '0'
+ALSA lib conf.c:5204:(_snd_config_evaluate) function snd_func_card_inum returned error: No such file or directory
+ALSA lib confmisc.c:422:(snd_func_concat) error evaluating strings
+ALSA lib conf.c:5204:(_snd_config_evaluate) function snd_func_concat returned error: No such file or directory
+ALSA lib confmisc.c:1342:(snd_func_refer) error evaluating name
+ALSA lib conf.c:5204:(_snd_config_evaluate) function snd_func_refer returned error: No such file or directory
+ALSA lib conf.c:5727:(snd_config_expand) Evaluate error: No such file or directory
+ALSA lib pcm.c:2721:(snd_pcm_open_noupdate) Unknown PCM default
+ERROR: Condition "status < 0" is true. Returning: ERR_CANT_OPEN
+   at: init_output_device (drivers/alsa/audio_driver_alsa.cpp:90)
+WARNING: All audio drivers failed, falling back to the dummy driver.
+     at: initialize (servers/audio_server.cpp:246)
+
+render_shot: lighting day
+render_shot: 41 mesh instances over 1 files
+render_shot: geometry 1098 ms
+render_shot: camera at (-7253.8465878143, 2842.95634824952, -869.781303349116) looking at (0.0, 0.0, 4023.0)
+captured /home/user/Opus-5/scratchpad/probe-exterior.png  640x360
+--- exterior finished in 27s (exit 0) ---
+renderer: Vulkan 1.4.318 - Forward+ - Using Device #0: Unknown - llvmpipe (LLVM 20.1.2, 256 bits)
+-rw-r--r-- 1 root root 36546 Aug  7 02:01 /home/user/Opus-5/scratchpad/probe-exterior.png
