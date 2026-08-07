@@ -989,7 +989,31 @@ func _physics_process(delta: float) -> void:
 		var which := int((n - 1) / leg)
 		if which >= 4:
 			_phase = 1
-			_best_yaw = _yaw_of_leg
+			# -- PICK THE HEADING FROM THE FINISHED LEGS ---------------------
+			# It used to be picked frame by frame, comparing each frame's
+			# distance against a running maximum held ACROSS legs: a later
+			# heading could only take the lead by beating an earlier one
+			# STRICTLY, and two unobstructed headings finish within a float of
+			# each other, so the tie went to whichever ran first. A coin flip,
+			# not a choice.
+			#
+			# It never showed, because `_best_yaw` is read by exactly one path
+			# -- the traverse with neither `--goto` nor `--arc-walk` -- and
+			# nothing had ever run it. The first run that did, session 4z on
+			# blue/0/0, got `legs=0.73/4.20/4.20/4.20`: three headings tied at
+			# exactly `speed_m_s * 1 s`, because a one-second leg is
+			# SPEED-limited rather than OBSTACLE-limited and cannot tell 4.2 m
+			# of clearance from 400. The winner was an AXIAL heading and the
+			# body walked across the corridor into the far wall at 6.47 m,
+			# `sweep_deg=0.00`.
+			#
+			# Now: argmax over the completed legs, lowest index on a tie, and
+			# `--steps` is long enough that geometry decides it.
+			var best_i := 0
+			for i in range(1, 4):
+				if _leg_m[i] > _leg_m[best_i] + LEG_TIE_M:
+					best_i = i
+			_best_yaw = float(best_i) * PI * 0.5
 			_player.global_position = _rest
 			_player.velocity = Vector3.ZERO
 			_player.set_yaw(_best_yaw)
@@ -1011,9 +1035,14 @@ func _physics_process(delta: float) -> void:
 			_trace_line("walk%d" % which)
 		var d := _player.global_position.distance_to(_leg_from)
 		_leg_m[which] = maxf(_leg_m[which], d)
-		if d > _moved_1s:
-			_moved_1s = d
-			_yaw_of_leg = float(which) * PI * 0.5
+		# `moved_1s` STAYS ONE SECOND, whatever the leg length is. It backs
+		# `deck_verdict`'s "walked %.2f m in a second" assertion, and letting it
+		# drift to mean "the best leg's total" would have made that check pass
+		# more easily every time the probe got longer -- a bar that loosens
+		# itself when something unrelated changes. Sampled at one second into
+		# each leg, or at the end of a leg shorter than that.
+		if n - which * leg == mini(SECOND_FRAMES, leg):
+			_moved_1s = maxf(_moved_1s, d)
 		return
 
 	# TRAVERSE. Four one-second nudges prove a body is not wedged; they do not
@@ -1182,11 +1211,17 @@ func _try_use() -> void:
 
 
 var _moved_1s := 0.0
+## Physics frames in one second, for the `moved_1s` sample.
+const SECOND_FRAMES := 60
+## How much further one heading has to get than another to be preferred. Two
+## unobstructed legs finish within a float of each other and the difference is
+## meaningless; 0.10 m is well under the 0.73 m separating a blocked heading
+## from a clear one on blue/0/0 and well over the noise.
+const LEG_TIE_M := 0.10
 var _heading := -1
 var _leg_from := Vector3.ZERO
 var _leg_m := [0.0, 0.0, 0.0, 0.0]
 var _phase := 0
-var _yaw_of_leg := 0.0
 var _best_yaw := 0.0
 var _t_traverse := 0
 var _traverse_from := Vector3.ZERO

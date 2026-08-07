@@ -73,6 +73,31 @@ MAX_DROP_M = 3.0
 # that only lets a body cover 60 m of a 126 m walk has something in it.
 TRAVERSE_FRAMES = 1800
 MIN_TRAVERSE_M = 63.0
+
+# -- THE HEADING PROBE HAS TO OUTRUN THE CORRIDOR'S WIDTH ------------------
+# `walk.gd` tries four headings before the traverse and keeps the best, and it
+# scored them over `steps/2` frames -- 60, which is ONE SECOND, which at
+# `PLAYER_SPEED_M_S` is 4.2 m. The probe was therefore SPEED-LIMITED rather
+# than OBSTACLE-LIMITED: every heading with more than 4.2 m in front of it
+# returned exactly 4.2, and `_best_yaw` fell to whichever tied leg won on float
+# noise in the third decimal.
+#
+# It never mattered, because `_best_yaw` is used by exactly ONE code path --
+# the traverse with no `--goto` and no `--arc-walk` -- and until 4z nothing had
+# ever run it. Measured on blue/0/0 the moment something did:
+#
+#   legs=0.73/4.20/4.20/4.20  traverse_m=6.47 net_m=6.47 sweep_deg=0.00
+#
+# Three headings tied, the winner was an AXIAL one -- zero degrees round the
+# ring -- and the body walked across the corridor into the far wall.
+#
+# So the leg has to be long enough that GEOMETRY decides it. A corridor's
+# clearance ACROSS is bounded by the widest cross-section a heading could be
+# confused by; ALONG it, a corridor runs for hundreds of metres. `walk.gd`
+# spends `steps/2` frames on each of four legs, so this is 240 frames a leg --
+# 4 seconds, 16.8 m -- comfortably past the 6.47 m of axial clearance measured
+# above, and 16 s of probe in a run that already takes six minutes.
+PROBE_FRAMES = 480
 # How close to the middle of a room counts as being in it. A body that stops in
 # the doorway is not inside; one standing anywhere in the far half is.
 ARRIVED_M = 1.5
@@ -530,7 +555,7 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
               goto_key=None, no_doors=False, z_m=None, bump=False,
               no_npc_collision=False, use=False, strip=None,
               build_only=False, stream_deg=None, no_stream=False,
-              no_goto=False):
+              no_goto=False, steps=None):
     """Assemble a deck, put a body on it, and walk it.
 
     The render mesh and the collision shell are exported separately and BOTH are
@@ -724,7 +749,8 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
            "res://scenes/walk.tscn", "--"]
     cmd += engine_args(out, stem, crowd, spawn=(sx, sy, sz))
     cmd += ["--walk-test",
-            f"--traverse={traverse if traverse is not None else TRAVERSE_FRAMES}"]
+            f"--traverse={traverse if traverse is not None else TRAVERSE_FRAMES}",
+            f"--steps={steps if steps is not None else PROBE_FRAMES}"]
     # Walking INTO a named place is the claim W2 actually makes, and it is a
     # strictly harder question than "did the body move": it fails when the route
     # is blocked, not only when the body is wedged. The body steers straight at
@@ -1220,6 +1246,10 @@ def main():
                     help="assemble the deck and write godot/play.json, then "
                          "stop. This is what tools/play.sh runs before handing "
                          "the station to a person instead of to a test")
+    ap.add_argument("--steps", type=int, default=None,
+                    help="frames for the four-heading probe (half each leg). "
+                         "The control for --no-goto: at the old 120 the legs "
+                         "are speed-limited and tie")
     ap.add_argument("--no-goto", action="store_true",
                     help="walk one heading for the whole traverse instead of "
                          "steering at a room. The strong form of the distance "
@@ -1270,7 +1300,7 @@ def main():
         sector, ring, deck = (a.deck or "blue/0/0").split("/")
         d = walk_deck(sector, int(ring), int(deck), godot,
                       traverse=a.traverse, no_doors=a.no_doors, z_m=a.z,
-                      no_goto=a.no_goto)
+                      no_goto=a.no_goto, steps=a.steps)
         drum = (sector, int(ring)) in D.NOT_RING_DECKS
         if drum:
             import drum_walk as DW                              # noqa: PLC0415
