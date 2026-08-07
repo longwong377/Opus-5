@@ -699,6 +699,29 @@ FABRICS = {f.key: f for f in (
                 "the one robe measurement the project owns, taken down to a "
                 "working community's undyed cloth. Overturned by any frame of "
                 "the order."),
+
+    # ---- Not a garment: what the station leaves on one --------------------
+    Fabric("garment_soil", "Deck grime -- what a hem, a cuff and a boot top "
+                           "pick up off Babylon 5",
+           _MZ, "derived: the mean of the four measured civilian garment "
+                "values, desaturated to S 0.08",
+           (0.048, 0.045, 0.041), roughness=0.96, authority=5, declared=True,
+           note="EXTRAPOLATED, and deliberately ONE fabric rather than a "
+                "soiled twin per garment. Grime is a property of the DECK, not "
+                "of the coat: the same dust settles on a Minbari's black robe "
+                "and on a dock worker's drab, so a single measured value is "
+                "the honest model and it costs the library one material "
+                "instead of thirty. Its value sits at the middle of the "
+                "measured civilian floor (`civ_cool_dark` 0.029 to "
+                "`civ_worker_drab` 0.156, four samples off `more zocalo.png`) "
+                "with the chroma taken out, by the same argument "
+                "`civ_lurker` records. On a dark garment it reads as dust and "
+                "on a light one as dirt, which is the direction both go in "
+                "life. WHAT IT IS FOR: `Costume.wear` has existed since this "
+                "file was written, is drawn per individual from the set's own "
+                "range, and reached NOTHING -- no mesh, no material, no group. "
+                "`_construct` spends it here. Overturned by any frame that "
+                "resolves the bottom 100 mm of a garment on this station."),
 )}
 
 
@@ -941,31 +964,85 @@ SILHOUETTES = {s.key: s for s in (
 # ---------------------------------------------------------------------------
 # 7. Attachments -- the only triangles clothing spends
 # ---------------------------------------------------------------------------
+# THE BAND HEIGHTS THE FITTINGS ARE ACTUALLY BUILT AT, hoisted out of
+# `_build_mesh` so the table below can price a fitting off the geometry that
+# gets built rather than off a second number written beside it. Fractions of
+# stature, which is the unit every other anchor in this file uses. Hard rule 4
+# at the scale of a belt: widen the belt and its culling distance moves with it.
+COLLAR_HALF_H_F = 0.024
+EPAULETTE_HALF_H_F = 0.014
+BELT_HALF_H_F = 0.016
+ARMBAND_HALF_H_F = 0.030
+BALDRIC_HALF_W_F = 0.020
+
+
+def _band_m(half_h_f):
+    """The full height of a band written as a stature fraction, in metres."""
+    return 2.0 * half_h_f * body.HUMAN_STATURE_M
+
+
 @dataclass(frozen=True)
 class Attachment:
     key: str
     title: str
     error_m: float        # how far it moves the silhouette
+    # THE WIDTH OF THE CONTRASTING BAND IT PAINTS. 0.0 means "the same value as
+    # what it sits on, so it can only ever read as silhouette" -- see
+    # `honest_from_m`.
+    value_m: float = 0.0
     note: str = ""
 
     def honest_from_m(self):
-        """Beyond this, dropping it is inside the 1.5 px deviation budget."""
-        return body.honest_from_m(self.error_m)
+        """Beyond this, dropping the fitting is inside budget.
+
+        TWO BUDGETS, AND THE MISSING ONE IS THE ONE THAT MATTERS IN A DARK
+        CORRIDOR. `error_m` prices a fitting by how far it moves the
+        SILHOUETTE, against `body.PIXEL_BUDGET`. That is the right question for
+        a bulge and the wrong one for a black leather belt across a coat of
+        albedo 0.06: the belt barely changes the outline and it is the only
+        horizontal in forty centimetres of unbroken value. Priced by silhouette
+        alone a belt is honest to drop at **5.5 m** -- so on the shipped deck,
+        whose corridor crowd is baked at chain level 4
+        (`populace.corridor_lod` returns 4 for a Blue ring, switch distance
+        23.6 m), NOT ONE OF THE FORTY WALKERS CARRIED A BELT, A BALDRIC OR AN
+        EPAULETTE. Measured by group census over
+        `station/generated/scene/deck/shot_blue_0_0.obj`: four groups a person,
+        `npc_skin` / `npc_hair` / `npc_cloth__*` / `npc_leather__civ_boot`, and
+        nothing else. `armband`'s own note in this table already made the
+        argument -- "the DECAL it carries stays legible to 16.4 m and visible
+        as a dark band far beyond" -- and then priced the strap by silhouette
+        anyway.
+
+        So a fitting that CONTRASTS is also priced by the distance at which its
+        band stops being resolvable as a band at all: `body.aliases_beyond_m`,
+        the same one-pixel shading rate `body.py` uses to decide when a whole
+        figure stops being a figure. The larger of the two wins, because either
+        reason alone is a reason to keep it. INV-471.
+        """
+        sil = body.honest_from_m(self.error_m)
+        val = body.aliases_beyond_m(self.value_m) if self.value_m > 0.0 else 0.0
+        return max(sil, val)
 
 
 ATTACHMENTS = {a.key: a for a in (
     Attachment("standing_collar", "Standing collar", 0.040,
+               value_m=_band_m(COLLAR_HALF_H_F),
                note="Fills the notch between jaw and shoulder, which is a "
                     "silhouette change of about the collar's height. Both "
                     "EarthForce patterns have one; body.py's FIGURE table "
                     "already corrected its chin measurement FOR one."),
     Attachment("epaulettes", "Epaulette straps", 0.014,
+               value_m=_band_m(EPAULETTE_HALF_H_F),
                note="Leather straps over both shoulders. body.py's biacromial "
                     "ratio was corrected from 0.249 to 0.235 because the "
                     "measurement crossed these -- so this attachment puts back "
                     "exactly what that correction removed, which is a nice "
                     "closed loop and a real cross-check."),
-    Attachment("belt", "Waist belt", 0.008),
+    Attachment("belt", "Waist belt", 0.008,
+               value_m=_band_m(BELT_HALF_H_F),
+               note="Dark leather across a coat: 8 mm of silhouette and 56 mm "
+                    "of value. It is the value that keeps it -- see "
+                    "`honest_from_m`."),
     Attachment("armband", "Nightwatch armband strap", 0.005,
                note="FACTIONS 5.3 calls the armband 'one decal and one strap "
                     "mesh'. The strap is 5 mm proud of a sleeve, so it is "
@@ -973,7 +1050,8 @@ ATTACHMENTS = {a.key: a for a in (
                     "legible to 16.4 m and visible as a dark band far beyond. "
                     "Pricing them together would have kept 24 triangles alive "
                     "three times further than they earn."),
-    Attachment("baldric", "Diagonal baldric", 0.014),
+    Attachment("baldric", "Diagonal baldric", 0.014,
+               value_m=_band_m(BALDRIC_HALF_W_F)),
     Attachment("cowl", "Cowl rising over the shoulders", 0.070,
                note="pak'ma'ra and League delegate dress. body.py's own note on "
                     "the pak'ma'ra neck records that what stands above the "
@@ -992,6 +1070,110 @@ ATTACHMENTS = {a.key: a for a in (
 
 # The one attachment that is never culled, for the reason in its note.
 NEVER_CULLED = frozenset({"skirt"})
+
+
+# ---------------------------------------------------------------------------
+# 7b. Garment construction -- and why it is PARTS and not spans
+# ---------------------------------------------------------------------------
+# THE YOKE REACHED NOBODY. `YOKE_TOP_FRACTION`'s own note below is proud of the
+# fact that the two-tier torso "costs zero triangles: the torso is emitted as
+# two SPANS of one closed solid, not as two solids" -- and that is exactly why
+# no inhabitant of the station has ever worn it. Every person a player meets is
+# POSED, and posing goes through `npc/animation.py::rig`, whose
+# `_groups_for_parts` resolves ONE material group per PART, by the triangle
+# offset the part starts at. Its own docstring says so. A second span inside a
+# part is unreachable through that door: the part starts in the first span and
+# takes the first span's group.
+#
+# Measured rather than argued, on the built deck:
+#
+#     grep -o '^g .*npc_[a-z_]*' station/generated/scene/deck/shot_blue_0_0.obj
+#       40 npc_skin   38 npc_leather__civ_boot   34 npc_hair
+#       28 npc_cloth__civ_worker_drab   ...   0 npc_cloth_trim__*
+#
+# Zero of forty walkers carry a trim group. Unposed, `build_dressed` emits the
+# yoke at every chain level including the coarsest (38 triangles at level 4) --
+# so the span is built, is correct, is tested, and is thrown away by the only
+# consumer that ships. That is the ninth-instance defect CLAUDE.md enumerates,
+# arriving through a table nobody had checked the other end of.
+#
+# So garment construction is built the way ATTACHMENTS already are: as its own
+# CLOSED SOLID, sitting proud of the surface it is sewn to. That survives the
+# part->group mapping, it survives `dressed_parts`' per-part closure check, and
+# it gives the thing relief -- which is the half of the craft-4 clause
+# ("lighting response varies across the surface") that an albedo split can
+# never deliver. It costs triangles and the exchange is stated in `--construct`.
+#
+# The fractions below are of the part's OWN measured extent, read back off the
+# built mesh by `_axis_at`, never off `body.FIGURE`. Same reason the collar is:
+# a pak'ma'ra's sleeve and a Minbari's are not the same sleeve.
+CUFF_YF = 0.055           # of the arm part's height, from the wrist end
+CUFF_HALF_H_F = 0.013     # of stature
+CUFF_R = 1.075            # of the sleeve radius there
+YOKE_PANEL_HALF_H_F = 0.045
+YOKE_PANEL_R = 1.012
+HEM_YF = 0.045
+HEM_HALF_H_F = 0.012
+HEM_R = 1.028
+BOOT_TOP_YF = 0.185
+BOOT_TOP_HALF_H_F = 0.011
+BOOT_TOP_R = 1.070
+PLACKET_HALF_W_F = 0.016  # of stature: a 56 mm closure strip
+PLACKET_THICK_F = 0.004
+PLACKET_LO_YF = 0.10      # of the torso's height
+PLACKET_HI_YF = 0.90
+
+CONSTRUCTION = {a.key: a for a in (
+    Attachment("yoke_panel", "Shoulder yoke panel", 0.007,
+               value_m=_band_m(YOKE_PANEL_HALF_H_F),
+               note="The seam `YOKE_TOP_FRACTION` was measured for, built as "
+                    "the panel it is instead of as a span of the torso. Same "
+                    "measurement, same fabric, same place -- the only change "
+                    "is that a posed body can now carry it."),
+    Attachment("cuff", "Sleeve cuff", 0.009,
+               value_m=_band_m(CUFF_HALF_H_F),
+               note="AUTHORITY 2 AND ALREADY IN THIS FILE: the `ef_command` "
+                    "set's note records, off `Sheridan.jpg`, that 'the CUFF "
+                    "carries a brown leather band with crimson piping on BOTH "
+                    "its edges', corroborated on a second subject in `Zach "
+                    "Allan in security uniform.jpg`. It was written down and "
+                    "never built. Extrapolated to civilian outerwear at "
+                    "authority 5: a sleeve that ends in nothing is a tube, and "
+                    "every garment in `more zocalo.png` whose wrist is "
+                    "resolvable shows a turned cuff."),
+    Attachment("placket", "Front closure", 0.006,
+               value_m=2.0 * PLACKET_HALF_W_F * body.HUMAN_STATURE_M,
+               note="EXTRAPOLATED, authority 5, and the argument is that a "
+                    "closed loft is not a garment: a coat has to open to be "
+                    "put on, and where it opens is the one vertical line on "
+                    "the largest surface a player sees. Suppressed on robed "
+                    "and plastron sets, which have their own front."),
+    Attachment("hem", "Coat hem", 0.008,
+               value_m=_band_m(HEM_HALF_H_F),
+               note="Where a coat stops. `civ_ordinary` and `civ_visitor` wear "
+                    "`heavy_coat`, and the silhouette module already flares "
+                    "the torso for it; the hem is the edge that flare needs in "
+                    "order to read as cloth rather than as a widening body."),
+    Attachment("boot_top", "Boot shaft top", 0.008,
+               value_m=_band_m(BOOT_TOP_HALF_H_F),
+               note="`civ_boot` is measured leather at 0.055 against a "
+                    "trouser at 0.09-0.16, and until now the boundary between "
+                    "them was wherever body.py's `foot` part happened to end "
+                    "-- at the ankle, under the trouser break `body.FIGURE` "
+                    "records. The shaft top is where the value actually "
+                    "changes on a walking figure."),
+)}
+
+
+def _fitting(key):
+    """Look a fitting up in either table. One rule, two tables.
+
+    `ATTACHMENTS` is what a costume SET declares; `CONSTRUCTION` is what every
+    garment has by virtue of being a garment. They are priced, culled and
+    reported by the same code, deliberately: the last time this file had two
+    ways of deciding whether a piece of cloth exists, one of them was a span.
+    """
+    return ATTACHMENTS.get(key) or CONSTRUCTION[key]
 
 
 # ---------------------------------------------------------------------------
@@ -1561,6 +1743,36 @@ def _part_axis(verts):
     return cx, cz
 
 
+def _front_at(verts, yf, band=0.05):
+    """(cx, z_front, y) of a part at height fraction `yf` of its own extent.
+
+    `_axis_at` returns the MAXIMUM radius in the ring, which on a torso is the
+    half-breadth across the shoulders -- 0.206 m on a nominal human against a
+    chest half-depth of 0.136. A placket sewn at that radius floats 70 mm off
+    the chest. The front is its own measurement and is taken as such.
+    """
+    ys = [v[1] for v in verts]
+    y0, y1 = min(ys), max(ys)
+    y = y0 + (y1 - y0) * yf
+    h = max((y1 - y0) * band, 1e-4)
+    sel = [v for v in verts if abs(v[1] - y) <= h]
+    while len(sel) < 3 and h < (y1 - y0):
+        h *= 2.0
+        sel = [v for v in verts if abs(v[1] - y) <= h]
+    if not sel:
+        sel = list(verts)
+    cx = sum(v[0] for v in sel) / len(sel)
+    # The front is +Z: `body.build_humanoid` faces +Z, which is the convention
+    # `_build_mesh`'s own plastron predicate (`cz > 0.0`) already relies on.
+    # Taken over the vertices NEAREST the centreline rather than over the whole
+    # ring, because the deepest point of an ellipse is on its minor axis and a
+    # placket runs down the centre.
+    near = [v for v in sel if abs(v[0] - cx) <= 0.25 * max(
+        (max(p[0] for p in sel) - min(p[0] for p in sel)), 1e-6)]
+    z_front = max(v[2] for v in (near or sel))
+    return cx, z_front, y
+
+
 def _apply_silhouettes(part_name, verts, stature, mods):
     """Radial scale about the part's own axis. Strictly positive by assertion."""
     active = [SILHOUETTES[m] for m in mods
@@ -1613,6 +1825,114 @@ def _band(m, cx, cz, y, r, half_h, group, part, seg, taper=1.0):
              body._ring(cx, y + half_h, cz, r * taper, r * taper, seg)]
     v, t = body._loft(rings)
     m.add(v, t, group, part)
+
+
+# Above this much wear, the hem, the cuffs and the boot tops are cut from
+# `garment_soil` instead of from the garment. 0.30 is the 40th percentile of
+# the wear a station-mix draw produces (`--construct` prints the measured
+# distribution), so it separates the crowd rather than colouring all of it or
+# none of it: `civ_business` (0.02-0.15) and `ef_command` (0.02-0.10) never
+# reach it, `civ_worker` (0.35-0.85) and `civ_lurker` (0.65-1.00) always do,
+# and `civ_ordinary` (0.10-0.40) is split -- which is what a resident
+# population looks like.
+WEAR_SOIL_MIN = 0.30
+
+
+def _soil_group():
+    """The one grime material. See FABRICS['garment_soil'].
+
+    Written as a literal two-argument `group_name` call, in one place, because
+    `_selftest` greps this file's source for exactly that shape and asserts the
+    result is declared in `BUILDER_FABRICS`. A computed slot would be invisible
+    to that grep, which is how three groups reached a deck unresolved before.
+    """
+    return group_name("npc_cloth_trim", "garment_soil")
+
+
+# A distance beyond every fitting's honest range, so a probe can ask for the
+# GARMENT alone -- the silhouette modifiers and the two-value torso split --
+# with no construction on it. `_selftest` uses it to keep the "the split costs
+# zero triangles" assertions measuring the split, which is what they claim, now
+# that a dressed figure also carries pieces that are not free.
+FITTINGS_NONE_M = 1.0e6
+
+
+def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
+    """The seams, cuffs, hem and closure that make a loft a garment.
+
+    Every piece is its own CLOSED SOLID sewn proud of the surface under it, for
+    the reason section 7b gives: `animation.rig` resolves one material group
+    per PART, so a span split inside a part is unreachable by every posed
+    figure on the station -- which is all of them.
+
+    Returns the list of pieces actually built, so `--construct` can assert
+    against what happened rather than against what this function intends.
+    """
+    made = []
+    soiled = c.wear >= WEAR_SOIL_MIN
+    cloth_g = group_name("npc_cloth", c.cloth)
+    trim_g = group_name("npc_cloth_trim", c.trim or c.cloth)
+    leather_g = group_name("npc_leather", c.leather or c.cloth)
+    dirty_g = _soil_group()
+    # A tailored uniform ends its sleeve in leather; a civilian coat ends it in
+    # the yoke cloth. The discriminator is the standing collar, which is what
+    # every tailored set in `SETS` declares and no civilian working set does --
+    # read off the table rather than listed a second time here.
+    tailored = "standing_collar" in c.attachments
+
+    def on(key):
+        return _attachment_active(key, distance_m)
+
+    # --- the yoke, as the panel it was measured as -------------------------
+    if (on("yoke_panel") and c.trim and c.trim != c.cloth
+            and c.split != "plastron" and torso_verts):
+        cx, cz, r, y = _axis_at(torso_verts, YOKE_TOP_FRACTION, band=0.05)
+        _band(out, cx, cz, y + 0.55 * YOKE_PANEL_HALF_H_F * H,
+              r * YOKE_PANEL_R, YOKE_PANEL_HALF_H_F * H, trim_g, "yoke_panel",
+              _att_seg(r * YOKE_PANEL_R, distance_m, cap=16), taper=1.03)
+        made.append("yoke_panel")
+
+    # --- the front closure -------------------------------------------------
+    # Not on a robe (it has no front to close) and not on a plastron set (the
+    # bib IS the front, and running a placket down it would be a seam through
+    # the middle of an authority-2 uniform detail).
+    if (on("placket") and torso_verts and not c.robed
+            and c.split != "plastron"):
+        cx, z_lo, y_lo = _front_at(torso_verts, PLACKET_LO_YF, band=0.04)
+        _cx2, z_hi, y_hi = _front_at(torso_verts, PLACKET_HI_YF, band=0.04)
+        thick = PLACKET_THICK_F * H
+        body._blade(out, trim_g, "placket", cx, y_lo, z_lo + 0.45 * thick,
+                    PLACKET_HALF_W_F * H, max(y_hi - y_lo, 1e-3), thick,
+                    _att_seg(PLACKET_HALF_W_F * H, distance_m, cap=8),
+                    sweep=(z_lo - z_hi), taper=1.0)
+        made.append("placket")
+
+    # --- the hem -----------------------------------------------------------
+    if on("hem") and torso_verts and not c.robed:
+        cx, cz, r, y = _axis_at(torso_verts, HEM_YF, band=0.05)
+        _band(out, cx, cz, y, r * HEM_R, HEM_HALF_H_F * H,
+              dirty_g if soiled else cloth_g, "hem",
+              _att_seg(r * HEM_R, distance_m, cap=16), taper=1.02)
+        made.append("hem")
+
+    # --- the cuffs ---------------------------------------------------------
+    if on("cuff"):
+        for av in arm_parts:
+            cx, cz, r, y = _axis_at(av, CUFF_YF, band=0.06)
+            _band(out, cx, cz, y, r * CUFF_R, CUFF_HALF_H_F * H,
+                  dirty_g if soiled else (leather_g if tailored else trim_g),
+                  "cuff", _att_seg(r * CUFF_R, distance_m, cap=10), taper=1.04)
+            made.append("cuff")
+
+    # --- the boot tops -----------------------------------------------------
+    if on("boot_top") and not c.robed:
+        for lv in leg_parts:
+            cx, cz, r, y = _axis_at(lv, BOOT_TOP_YF, band=0.05)
+            _band(out, cx, cz, y, r * BOOT_TOP_R, BOOT_TOP_HALF_H_F * H,
+                  dirty_g if soiled else leather_g, "boot_top",
+                  _att_seg(r * BOOT_TOP_R, distance_m, cap=10), taper=0.97)
+            made.append("boot_top")
+    return made
 
 
 def _skirt(m, torso_verts, stature, group, seg, dist=0.0, flare=1.85,
@@ -1705,7 +2025,7 @@ def _add_split(m, verts, tris, pred, group_lo, group_hi, part):
 def _attachment_active(key, distance_m):
     if key in NEVER_CULLED:
         return True
-    return distance_m <= ATTACHMENTS[key].honest_from_m()
+    return distance_m <= _fitting(key).honest_from_m()
 
 
 def group_name(slot, fabric):
@@ -1896,7 +2216,11 @@ def material_specs():
 # source for two-literal `group_name(...)` calls and asserts the list covers
 # every one -- so a second such garment cannot be added without this list
 # noticing, which is the only way a hand-kept list stays honest.
-BUILDER_FABRICS = frozenset({("npc_cloth_trim", "nightwatch_black")})
+BUILDER_FABRICS = frozenset({("npc_cloth_trim", "nightwatch_black"),
+                             # `_soil_group`: one grime material for the whole
+                             # station, worn on the hem, the cuffs and the
+                             # boot tops of anybody past `WEAR_SOIL_MIN`.
+                             ("npc_cloth_trim", "garment_soil")})
 
 
 def _era_datum_for(event):
@@ -2082,31 +2406,31 @@ def _build_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
             base = neck_verts if neck_verts else torso_verts
             cx, cz, r, y = _axis_at(base, 0.50 if neck_verts else 0.985,
                                     band=0.06 if neck_verts else 0.03)
-            _band(out, cx, cz, y + 0.022 * H, r * 1.15, 0.024 * H,
+            _band(out, cx, cz, y + 0.022 * H, r * 1.15, COLLAR_HALF_H_F * H,
                   group_name("npc_leather", c.leather), "collar",
                   _att_seg(r * 0.92, distance_m), taper=1.06)
         elif key == "epaulettes":
             for av in arm_parts:
                 cx, cz, r, y = _axis_at(av, 0.97, band=0.06)
-                _band(out, cx, cz, y - 0.012 * H, r * 1.22, 0.014 * H,
+                _band(out, cx, cz, y - 0.012 * H, r * 1.22, EPAULETTE_HALF_H_F * H,
                       group_name("npc_leather", c.leather), "epaulette",
                       _att_seg(r * 1.22, distance_m, cap=12), taper=0.88)
         elif key == "belt":
             cx, cz, r, y = _axis_at(torso_verts, 0.30, band=0.05)
-            _band(out, cx, cz, y, r * 1.03, 0.016 * H,
+            _band(out, cx, cz, y, r * 1.03, BELT_HALF_H_F * H,
                   group_name("npc_leather", c.leather), "belt",
                   _att_seg(r * 1.03, distance_m))
         elif key == "baldric":
             cx0, cz0, r0, y0 = _axis_at(torso_verts, 0.86, band=0.05)
             cx1, cz1, r1, y1 = _axis_at(torso_verts, 0.38, band=0.05)
             rings = []
-            bseg = _att_seg(0.020 * H, distance_m, cap=8)
+            bseg = _att_seg(BALDRIC_HALF_W_F * H, distance_m, cap=8)
             for k in range(4):
                 t = k / 3.0
                 rings.append(body._ring(
                     cx0 + (r0 * 0.6) * (1 - 2 * t), y0 + (y1 - y0) * t,
                     cz0 + (r0 + r1) * 0.5 * 0.62,
-                    0.020 * H, 0.011 * H, bseg))
+                    BALDRIC_HALF_W_F * H, 0.011 * H, bseg))
             v, t = body._loft(rings)
             out.add(v, t, group_name("npc_cloth_trim", c.trim), "baldric")
         elif key == "armband":
@@ -2117,7 +2441,7 @@ def _build_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
             if arm_parts:
                 av = min(arm_parts, key=lambda vs: _part_axis(vs)[0])
                 cx, cz, r, y = _axis_at(av, 0.22, band=0.08)
-                _band(out, cx, cz, y, r * 1.10, 0.030 * H,
+                _band(out, cx, cz, y, r * 1.10, ARMBAND_HALF_H_F * H,
                       group_name("npc_cloth_trim", "nightwatch_black"),
                       "armband", _att_seg(r * 1.10, distance_m, cap=12))
         elif key == "cowl":
@@ -2131,6 +2455,12 @@ def _build_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
         elif key == "skirt":
             _skirt(out, torso_verts, H, group_name("npc_cloth", c.cloth),
                    seg, distance_m)
+
+    # --- garment construction ---------------------------------------------
+    # AFTER the attachments, so a belt sits under a placket rather than through
+    # it, and so `_construct` can read the parts the loop above emitted.
+    leg_parts = [v for n, v, _t in out.parts if n == "leg"]
+    _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m)
     return out
 
 
@@ -2637,7 +2967,7 @@ def _selftest():
           f"a coat is measurably wider than the body under it "
           f"({w_bare:.4f} -> {w_dress:.4f} m)")
     check(len(bare) == len(build_dressed("human", "w-9", 0, chain, costume=cc,
-                                         distance_m=0.0)[1]),
+                                         distance_m=FITTINGS_NONE_M)[1]),
           "and it costs zero triangles to be wider")
 
     # -- the shoulder yoke: two values on one solid, zero triangles ---------
@@ -2647,7 +2977,7 @@ def _selftest():
                                        "civ_dark_warm", "civ_collar_yoke",
                                        "civ_boot", "ef_gold", (), (), (),
                                        False, 0.2, 1.0, False),
-                                   distance_m=0.0)
+                                   distance_m=FITTINGS_NONE_M)
     yoke_spans = [g for g, _lo, _hi in yspans if g.endswith("civ_collar_yoke")]
     check(len(yoke_spans) == 1,
           f"exactly one yoke span is emitted (got {len(yoke_spans)})")
@@ -2655,7 +2985,7 @@ def _selftest():
         "human", "w-8", 0, chain,
         costume=Costume("human", "w-8", "civ_ordinary", "civ_dark_warm",
                         "civ_dark_warm", "civ_boot", "ef_gold", (), (), (),
-                        False, 0.2, 1.0, False), distance_m=0.0)
+                        False, 0.2, 1.0, False), distance_m=FITTINGS_NONE_M)
     check(len(yt) == len(plaint) and len(yv) == len(plainv),
           f"and the split costs zero triangles and zero vertices "
           f"({len(yt)} vs {len(plaint)})")
@@ -2663,7 +2993,7 @@ def _selftest():
         "human", "w-8", 0, chain,
         costume=Costume("human", "w-8", "civ_ordinary", "civ_dark_warm",
                         "civ_dark_warm", "civ_boot", "ef_gold", (), (), (),
-                        False, 0.2, 1.0, False), distance_m=0.0)[2]
+                        False, 0.2, 1.0, False), distance_m=FITTINGS_NONE_M)[2]
     check(len(yspans) == len(plain_spans) + 1,
           f"and it adds exactly one span, not one part "
           f"({len(plain_spans)} -> {len(yspans)})")
@@ -2691,7 +3021,7 @@ def _selftest():
                    1.0, False, pc.split)
     check(pc.split == "plastron", "the command uniform is cut as a plastron")
     pv, pt, psp = build_dressed("human", "pl-1", 0, chain, costume=pcos,
-                                distance_m=0.0)
+                                distance_m=FITTINGS_NONE_M)
     trim_tris = [t for g, lo, hi in psp if g.endswith("ef_command_leather")
                  and "cloth_trim" in g for t in pt[lo:hi]]
     all_torso = [p for n, vv, _t in
@@ -2919,16 +3249,28 @@ def _selftest():
     r = costume_triangles("human", "cost-probe", chain, set_key="ef_command")
     check(r["rows"][-1]["delta"] == 0,
           "the costume costs nothing at the impostor level")
-    check(r["rows"][0]["delta"] < 260,
-          f"and under 260 triangles at LOD0, where at most one figure is in "
-          f"frame (got {r['rows'][0]['delta']})")
+    # AS A FRACTION OF THE BODY IT IS SEWN TO, not as an absolute count, and
+    # the absolute count is what these two checks used to be (260 and 100).
+    # They were set when clothing was silhouette modifiers plus zero-triangle
+    # span splits, and garment construction -- the yoke panel, placket, hem,
+    # cuffs and boot tops of section 7b -- is not free and is not meant to be.
+    # A fraction is also the more honest rule: every piece is sized by
+    # `_att_seg` off its own radius, so its cost already scales with the level,
+    # and an absolute cap would tighten as the level coarsens for no reason.
+    # Measured on this build: 412 of 7,304 at LOD0 (5.6%) and 140 of 1,236 at
+    # lod3 (11.3%). The caps are the next round number up from each, so adding
+    # a sixth construction piece fails them.
+    check(r["rows"][0]["delta"] < 0.060 * r["rows"][0]["bare"],
+          f"and under 6.0% of the body's own triangles at LOD0, where at most "
+          f"one figure is in frame (got {r['rows'][0]['delta']} of "
+          f"{r['rows'][0]['bare']})")
     # The number that actually matters: lod3 carries 74 of the Zocalo's 84
     # visible figures, so the marginal cost there is the crowd's clothing bill.
     lod3 = costume_triangles("human", "cost-probe", chain,
                              set_key="ef_command")["rows"][3]
-    check(lod3["delta"] < 100,
-          f"and under 100 at lod3, which carries 88% of a Zocalo crowd "
-          f"(got {lod3['delta']})")
+    check(lod3["delta"] < 0.120 * lod3["bare"],
+          f"and under 12.0% at lod3, which carries 88% of a Zocalo crowd "
+          f"(got {lod3['delta']} of {lod3['bare']})")
 
     # -- cross-module -------------------------------------------------------
     check(set(SET_FOR_ROLE) <= set(body.SPECIES),
