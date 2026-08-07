@@ -3914,9 +3914,9 @@ def absence(at="customs_north", policy="citizen", day=1, seed="b5",
     rather than convenient: an Observer can only change an incident it
     witnesses, and it witnesses nothing outside the probe, so every place beyond
     it contributes the same facts to both worlds by construction. `--absence
-    --full` runs the whole register and prints that the extra 126 places moved
-    nothing, which is the control on this paragraph rather than a restatement
-    of it.
+    --full` runs the identical comparison over the whole register, for anyone
+    who would rather have that argument CHECKED than reasoned; it costs three
+    station-days of CPU and is deliberately not what `--gate` runs.
     """
     obs = Observer(at, policy=policy, radius_m=radius_m, hours=awake)
     scope = obs.probe.places if scope is None else scope
