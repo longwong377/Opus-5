@@ -199,8 +199,39 @@ def _cell_coverage():
     cannot defend -- the exact move this project's own history warns about when
     a gate's bar is picked for convenience. Print the fraction, name the
     command, and let whoever settles the target put it in the exit code.
+
+    IT WAS LOOKING IN ONE OF THE TWO PLACES CELLS ARE WRITTEN (session 4t).
+    `cells_*` under `scene/deck/` is where a SINGLE-CLUSTER bake lands --
+    `boot.py --bake`, and the gates in `docs/streaming-4g.md`. The whole-station
+    baker writes somewhere else entirely: `tools/bake_station.py` passes
+    `--cells-out=station/generated/scene/station/cells`, one flat directory,
+    `<stem>_cells.json` per deck. So the 955-cell / 70-deck bake this docstring
+    cites as the last full one would have been reported by this function as
+    `no cell set at all`.
+
+    `boot.py::_cell_candidates` has known about both locations all along and
+    lists them in preference order. This function did not, which is the shape
+    R6 names: a thing was built, a consumer read a different representation,
+    and no gate compared them -- here with the two consumers being two
+    functions three files apart that answer the same question.
+
+    THE THIRD DENOMINATOR, and it is the one a reader most often wants. 251 is
+    every deck in every ring stack, most of which the register places nothing
+    on; `directory.PLACES` addresses **71**, and `tools/export_station.py`'s
+    own work list is those same 71. So the honest report is three numbers with
+    their sources, not a fraction against whichever is convenient. Still not in
+    the exit code, for the reason above and unchanged.
     """
-    have = len(glob.glob(os.path.join(GEN, "scene", "deck", "cells_*")))
+    have_deck = glob.glob(os.path.join(GEN, "scene", "deck", "cells_*"))
+    # The whole-station bake: one flat directory, one manifest per deck.
+    have_stn = glob.glob(os.path.join(GEN, "scene", "station", "cells",
+                                      "*_cells.json"))
+    # DECKS, NOT DIRECTORIES OR FILES. The two layouts count differently -- one
+    # directory per deck against one manifest per deck -- so both are reduced
+    # to the deck stem before the union, and a deck baked BOTH ways counts once.
+    stems = {os.path.basename(d)[len("cells_"):] for d in have_deck}
+    stems |= {os.path.basename(f)[:-len("_cells.json")] for f in have_stn}
+    have = len(stems)
     want = 0
     p = os.path.join(GEN, "cell_manifest.json")
     if os.path.exists(p):
@@ -209,7 +240,17 @@ def _cell_coverage():
                 want = len(json.load(f).get("deck_table", []))
         except Exception:                                        # noqa: BLE001
             want = 0
-    return have, want
+    # The register's own deck count -- the third denominator. Computed, never
+    # quoted: a copy of "71" here would be stale the first time a place moves.
+    placed = 0
+    try:
+        sys.path.insert(0, os.path.join(ROOT, "station"))
+        import directory as _dr                                  # noqa: PLC0415
+        placed = len({(q["sector"], q["ring"], q["deck"]) for q in _dr.PLACES})
+    except Exception:                                            # noqa: BLE001
+        placed = 0
+    return have, want, placed, len(stems & {
+        os.path.basename(f)[:-len("_cells.json")] for f in have_stn})
 
 
 # Things this does NOT build, with the command that does. Reported by --check so
@@ -247,19 +288,34 @@ def main():
 
     # COMPLETENESS, SEPARATELY FROM PRESENCE. See `_cell_coverage`. A count
     # rather than a word, because "present" was true on 1 deck of 251.
-    have, want = _cell_coverage()
+    have, want, placed, stn = _cell_coverage()
     if have == 0:
-        print("  %-16s MISSING  no cell set at all -- run: python3 "
-              "station/boot.py --bake   # needs Godot" % "streaming cells")
-    elif want and have < want:
-        print("  %-16s PARTIAL  %d of %d decks in cell_manifest.json have a "
-              "baked cell set" % ("streaming cells", have, want))
-        print("  %-16s          a recycled container loses these; the last "
-              "full bake was 70 decks / 955 cells" % "")
-        print("  %-16s          rebuild: python3 station/boot.py --bake  "
-              "# needs Godot" % "")
+        print("  %-16s MISSING  no cell set at all, in EITHER location -- run: "
+              "python3 station/boot.py --bake   # needs Godot" % "streaming cells")
     else:
-        print("  %-16s present  %d cell set(s)" % ("streaming cells", have))
+        # THREE DENOMINATORS, NAMED, AND NO CHOICE MADE BETWEEN THEM. See
+        # `_cell_coverage`. Whoever settles which is the streaming target puts
+        # it in the exit code; until then this prints what is measurable and
+        # says plainly that the target is unstated.
+        state = "present" if (placed and have >= placed) else "PARTIAL "
+        print("  %-16s %-8s %d deck(s) have a baked cell set"
+              % ("streaming cells", state, have))
+        print("  %-16s          %d of %d decks in cell_manifest.json "
+              "deck_table (every deck in every ring stack)" % ("", have, want))
+        print("  %-16s          %d of %d decks the register addresses "
+              "(directory.PLACES -- what export_station.py builds)"
+              % ("", have, placed))
+        print("  %-16s          %d in scene/station/cells (whole-station bake),"
+              " %d in scene/deck/cells_* (single-cluster bake)"
+              % ("", stn, have - stn))
+        print("  %-16s          NOTHING IN THE REPOSITORY STATES WHICH "
+              "DENOMINATOR IS THE TARGET, so none of these is in the exit "
+              "code" % "")
+        if placed and have < placed:
+            print("  %-16s          a recycled container loses these; the last "
+                  "full bake recorded in STATE.md was 70 decks / 955 cells" % "")
+            print("  %-16s          rebuild: python3 tools/bake_station.py  "
+                  "# whole station, needs Godot" % "")
 
     # FRESHNESS, SEPARATELY FROM PRESENCE. See `_sidecars_carry`.
     ok_side, why_side = _sidecars_carry("counter")

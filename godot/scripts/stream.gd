@@ -1639,6 +1639,91 @@ func _cmdline() -> Dictionary:
 	return out
 
 
+## `<stem>_places.json` beside the cells manifest, as an Array of place rows.
+##
+## THE STEM COMES OFF THE MANIFEST'S OWN `source.glb`, NOT OFF ITS FILENAME.
+## `bake()` writes both `<stem>_cells.json` and `cells.json`, and a caller
+## pointed at the second one has a filename that names no deck -- which on a
+## whole-station bake is whichever deck ran last. `boot.py::_describes` settled
+## this exact question the same way and for the same reason: the source glb is
+## the only field that cannot be a sibling's.
+func _ax_load_places(man_p: String) -> Array:
+	var dir := man_p.get_base_dir()
+	var stem := String((plan.get("source", {}) as Dictionary).get("glb", ""))
+	stem = stem.get_file().get_basename()
+	var p := dir.path_join(stem + "_places.json")
+	if not FileAccess.file_exists(p):
+		problems.append("no places sidecar at " + p)
+		return []
+	var j = JSON.parse_string(FileAccess.get_file_as_string(p))
+	if typeof(j) != TYPE_DICTIONARY or not j.has("places"):
+		problems.append(p + " has no places array")
+		return []
+	# The cluster size travels with the sidecar so the gate's "different
+	# cluster" test uses `deck.Z_CLUSTER_M` rather than a number of its own.
+	plan["z_cluster_m"] = float(j.get("z_cluster_m", 40.0))
+	print("axial-gate: %d register place(s) from %s"
+		% [(j["places"] as Array).size(), p.get_file()])
+	return j["places"]
+
+
+## Does this place's own angular footprint contain `deg`? Shortest way round.
+func _ax_straddles(q: Dictionary, deg: float) -> bool:
+	var d: float = absf(fposmod(float(q["angle_deg"]) - deg + 180.0, 360.0)
+		- 180.0)
+	return d <= float(q["half_deg"])
+
+
+## Every place the walk angle passes through, whatever its z.
+func _ax_on_spine(places: Array, deg: float, spine: Dictionary) -> Array:
+	var out: Array = []
+	for q in places:
+		if not _ax_straddles(q, deg):
+			continue
+		if (float(q["z_m"]) < float(spine["z0"])
+				or float(q["z_m"]) > float(spine["z1"])):
+			continue
+		out.append(q)
+	return out
+
+
+## The furthest place on the spine from the busiest corridor -- the target.
+##
+## FURTHEST FROM THE CORRIDOR RATHER THAN FURTHEST FROM ANYTHING, because the
+## start is then derived from the target and the two must not chase each other.
+## Ties broken by key so the choice is deterministic across runs, which matters:
+## a gate that walks to a different room on alternate runs cannot be regressed
+## against.
+func _ax_pick_target(places: Array, deg: float, spine: Dictionary) -> Dictionary:
+	var cand := _ax_on_spine(places, deg, spine)
+	if cand.is_empty():
+		return {}
+	var runs: Array = (plan.get("corridor", {}) as Dictionary).get("runs", [])
+	var best := {}
+	var best_d := -1.0
+	for q in cand:
+		var far := 0.0
+		for r in runs:
+			far = maxf(far, absf((float(r["z0"]) + float(r["z1"])) * 0.5
+				- float(q["z_m"])))
+		if far > best_d or (is_equal_approx(far, best_d)
+				and String(q["key"]) < String(best.get("key", "~"))):
+			best_d = far
+			best = q
+	return best
+
+
+## The place a point on the walk line is INSIDE -- angle and z both. Empty if
+## the body is standing on bare spine, which is a real and common answer.
+func _ax_place_at(places: Array, deg: float, z: float) -> Dictionary:
+	for q in places:
+		if not _ax_straddles(q, deg):
+			continue
+		if absf(z - float(q["z_m"])) <= float(q["half_z_m"]):
+			return q
+	return {}
+
+
 func _ax_setup(args: Dictionary) -> int:
 	var man_p := String(args.get("cells", ""))
 	if man_p == "":
@@ -1667,25 +1752,118 @@ func _ax_setup(args: Dictionary) -> int:
 		om2 = G0_M_S2 * float(row["floor_g"]) / float(row["floor_r_m"])
 
 	var deg := float(args.get("deg", str(spine["deg"])))
-	# START AND END ON THE SPINE. Default: from the busiest ring corridor's z --
-	# the cluster a boot spawn lands in -- to the far end of the spine, which is
-	# the last z-cluster on the deck. Both overridable so a caller can name two
-	# clusters by their z.
 	var corr: Dictionary = plan.get("corridor", {})
-	var z_a := float(args.get("from-z", str(corr.get("z_mid", spine["z0"]))))
-	# THE FAR END IS THE FURTHEST RING CORRIDOR, not `spine.z1`. A default of
-	# "the high end of the spine" walked 1.1 m on this deck, because the busiest
-	# corridor happens to sit AT the spine's high end -- a default that silently
-	# does nothing is the same defect as a gate that cannot fail. So: the other
-	# cluster's own corridor if this build has more than one, and otherwise
-	# whichever end of the spine is further from where the body starts.
-	var z_b: float = (float(spine["z0"]) if absf(float(spine["z0"]) - z_a)
-		> absf(float(spine["z1"]) - z_a) else float(spine["z1"]))
+
+	# =====================================================================
+	# WHERE THE WALK GOES, AND IT IS NOW A PLACE RATHER THAN A COORDINATE
+	# =====================================================================
+	#
+	# The old default was "the busiest ring corridor to the furthest ring
+	# corridor". That is a true traverse and it is a statement about METRES:
+	# it could report 774 m of floor and 9 cell hand-offs without anybody
+	# being able to say the player had got ANYWHERE. R5's acceptance is
+	# written as "arrives at a place in the far cluster" precisely because a
+	# streamer that pages cells across empty spine is not a station you can
+	# walk across.
+	#
+	# So the target is chosen from `<stem>_places.json` -- the register,
+	# resolved onto this deck's floor by `bake_station.write_places` -- and
+	# the rule has three clauses, none of them a pick:
+	#
+	#   1. the place's own angular FOOTPRINT must straddle the walk angle,
+	#      because the spine is 3.3 m wide and a place 40 deg round the ring
+	#      is not somewhere this walk can arrive. On blue/0/0 exactly one of
+	#      sixteen places qualifies, which is a fact about the deck.
+	#   2. its z must lie inside the spine's own measured z range, or there
+	#      is no floor to reach it along.
+	#   3. the START is then the ring corridor run FURTHEST from it, so the
+	#      walk is the longest one this deck's spine actually supports, and
+	#      the body begins on measured corridor floor rather than mid-spine.
+	#
+	# Measured on blue/0/0: target `obs_dome_2` at z 7960, start corridor at
+	# z 7186.5 (the other run is at 8013.5, only 53.5 m away and would have
+	# made this a one-band walk). 773.5 m, and the two are in different
+	# z-clusters by `deck.Z_CLUSTER_M`, which is asserted rather than assumed.
+	#
+	# WHEN NO PLACE QUALIFIES IT FAILS AND SAYS SO. It does not fall back to
+	# the coordinate walk -- a gate that quietly degrades to a weaker
+	# question is this project's OpenGL-fallback defect, and the whole point
+	# of R5 is that reaching a coordinate was never the thing being claimed.
+	var places: Array = _ax_load_places(man_p)
+	if places.is_empty():
+		push_error("axial-gate: no places sidecar beside " + man_p
+			+ " -- run `python3 tools/bake_station.py --places-only`")
+		return 2
+	var tgt := _ax_pick_target(places, deg, spine)
+	if tgt.is_empty():
+		var near := PackedStringArray()
+		for q in places:
+			near.append("%s at %.1f+-%.2f deg"
+				% [q["key"], float(q["angle_deg"]), float(q["half_deg"])])
+		push_error("axial-gate: no register place on this deck has a footprint "
+			+ "straddling the walk angle %.3f deg inside the spine's z range "
+			% deg + "%.1f..%.1f -- so this spine arrives nowhere named. "
+			% [float(spine["z0"]), float(spine["z1"])]
+			+ "Places considered: " + ", ".join(near))
+		return 2
+	# THE GOAL IS THE FOOTPRINT'S NEAR EDGE, NOT THE PLACE'S CENTRE, and the
+	# first run of this is what says so. The body arrived INSIDE `obs_dome_2`
+	# at z=7942.05 -- the gate printed ARRIVED and named the resident cell --
+	# and then kept walking toward the centre coordinate z=7960.0, stalled 6.5
+	# m short of it against something solid, and the run was recorded as FAIL.
+	#
+	# A place is a VOLUME. The register gives it a centre and a footprint, and
+	# "arrived at Observation Dome 2" means standing inside the second, not
+	# standing on the first -- a centre is a point that may be inside a wall,
+	# a console or a bulkhead, and demanding it is a requirement about
+	# furniture rather than about streaming. So the goal is the edge of the
+	# footprint facing the start, which is derived from the same two numbers
+	# and is the first z at which the claim becomes true.
+	#
+	# NOTE, AND IT IS NOT HIDDEN BY THIS: there IS something solid on the
+	# spine at z=7953.5. That is a true finding about this deck's geometry --
+	# `_wiring` is null in this gate so every pressure door is a solid trimesh
+	# -- and `--to-z` still walks at it for anyone who wants to. It is not a
+	# streaming defect and R5 does not turn on it.
+	var z_b := float(tgt["z_m"])
+	var edge: float = float(tgt["half_z_m"])
+	var z_b_arg := String(args.get("to-z", ""))
+
+	# THE START IS THE CORRIDOR RUN FURTHEST FROM THE TARGET. `z_mid` is the
+	# busiest run and on this deck it is 53.5 m from the target, which would
+	# have made a 774 m spine into a one-band walk -- the same shape as the
+	# old `spine.z1` default that "walked 1.1 m", and the reason that comment
+	# below is kept: a default that silently does nothing is a gate that
+	# cannot fail.
+	var z_a := float(corr.get("z_mid", spine["z0"]))
 	for r in (corr.get("runs", []) as Array):
 		var mid: float = (float(r["z0"]) + float(r["z1"])) * 0.5
-		if absf(mid - z_a) > absf(z_b - z_a):
-			z_b = mid
-	z_b = float(args.get("to-z", str(z_b)))
+		if absf(mid - z_b) > absf(z_a - z_b):
+			z_a = mid
+	z_a = float(args.get("from-z", str(z_a)))
+	# Now that the start is known, move the goal in to the near edge -- the
+	# side of the footprint the body approaches from.
+	z_b += (-edge if z_a < z_b else edge)
+	if z_b_arg != "":
+		z_b = float(z_b_arg)
+	var start_place := _ax_place_at(places, deg, z_a)
+	var zc := float(plan.get("z_cluster_m", 40.0))
+	var cl_a: float = roundf(z_a / zc) * zc
+	var cl_b: float = roundf(z_b / zc) * zc
+	if is_equal_approx(cl_a, cl_b):
+		push_error("axial-gate: start z=%.1f and target %s z=%.1f are in the "
+			% [z_a, String(tgt["key"]), z_b] + "SAME z-cluster (%.0f) -- this "
+			% cl_a + "would test no cluster hand-off at all")
+		return 2
+	print("axial-gate: TARGET %s (%s), z=%.1f+-%.1f, cluster %.0f -- the %d of "
+		% [String(tgt["key"]), String(tgt["name"]), z_b,
+			float(tgt["half_z_m"]), cl_b, _ax_on_spine(places, deg, spine).size()]
+		+ "%d place(s) on this deck whose footprint straddles the spine"
+		% places.size())
+	print("axial-gate: START z=%.1f, cluster %.0f, %s -- %.1f m of spine apart"
+		% [z_a, cl_a,
+			("inside " + String(start_place["key"]) if not start_place.is_empty()
+				else "on bare spine, inside no named place"), absf(z_b - z_a)])
 	var a := deg_to_rad(deg)
 	var r := floor_r - 0.2
 	var start := Vector3(r * cos(a), r * sin(a), z_a)
@@ -1744,6 +1922,27 @@ func _ax_setup(args: Dictionary) -> int:
 		"stall": int(args.get("stall", "900")),
 		"best": absf(z_b - z_a), "since": 0, "blocked": "",
 		"landed": false, "settle_frames": 0,
+		# -- the place half of the acceptance ------------------------------
+		"places": places, "tgt": tgt, "start_place": start_place,
+		# WAS THE BODY EVER INSIDE THE TARGET'S OWN FOOTPRINT, and was the
+		# cell holding the target's floor point resident at that moment.
+		# BOTH, because either alone passes on a lie: a body inside the
+		# footprint with the cell absent has walked into a room that is not
+		# loaded, and a resident cell with the body 200 m short is a streamer
+		# that works over ground nobody covered.
+		"arrived": false, "arrived_z": 0.0, "arrived_resident": false,
+		"tgt_cell": cell_at(Vector3(float(tgt["floor_xyz"][0]),
+			float(tgt["floor_xyz"][1]), float(tgt["floor_xyz"][2]))),
+		"visited": {},
+		# -- residency, watched rather than trusted -------------------------
+		# `frees > 0` says something was released ONCE. It does not say the
+		# resident set ever came DOWN: a run that loads 9 and frees 1 while
+		# holding 8 is a leak with a non-zero counter. So the minimum resident
+		# count seen AFTER the peak is recorded, and the gate asserts it is
+		# strictly below the peak. That is the difference between "freeing is
+		# implemented" and "freeing happens".
+		"peak_seen": 0, "min_after_peak": 1 << 30, "drawdown": 0, "steps": [],
+		"strict_budget": args.has("strict-budget"),
 	}
 	print("axial-gate: spine %.2f deg (%.1f m of floor in %d run(s), z %.1f-%.1f)"
 		% [deg, float(spine["span_m"]), int(spine["runs"]), float(spine["z0"]),
@@ -1809,11 +2008,72 @@ func _physics_process(delta: float) -> void:
 	# the streamer's own counters -- `walk.gd::_note_residency`'s rule. A
 	# streamer that lied about `loads` could not make this number move.
 	var now := cell_at(q)
+	# WHICH NAMED PLACE THE BODY IS IN, SAMPLED EVERY FRAME AND NOT ONLY AT A
+	# CELL BOUNDARY -- and the first run is why. It reported
+	# `places_visited=0` and `named places the body stood inside: (none)` on
+	# the same run that printed `ARRIVED at obs_dome_2`, because the ten cell
+	# crossings all happened at z 7236..7901 and none of them landed inside
+	# the 7942..7978 footprint. A cell boundary is a property of the GRID and
+	# a place is a property of the REGISTER; sampling one at the other's
+	# events answers a question nobody asked. It cost nothing to fix -- 16
+	# places, one shortest-way-round compare each.
+	var in_place := _ax_place_at(_ax["places"], float(_ax["deg"]), q.z)
+	if not in_place.is_empty():
+		(_ax["visited"] as Dictionary)[String(in_place["key"])] = true
+	# RESIDENCY. `frees > 0` says a cell was released once; it does not say the
+	# resident set ever came DOWN, and a run that loads 21 and frees 14 while
+	# ending at its own peak is indistinguishable from one that leaks. So what
+	# is measured is the DRAWDOWN: the largest fall from a running peak.
+	#
+	# THE FIRST VERSION MEASURED "THE MINIMUM AFTER THE PEAK" AND FAILED A RUN
+	# THAT PLAINLY FREED. The peak of 7 happened at the END of the traverse,
+	# in the dense cluster the body finished in, so "min after peak" was 7 and
+	# the gate reported `cells are accumulating` about a run whose own step
+	# log shows the set going 4 -> 2 -> 4 -> 2 all the way along. A statistic
+	# that depends on WHERE the maximum falls is not measuring the property.
+	# Drawdown does not care, and it is still zero -- still failing -- for a
+	# set that only ever grows.
+	var rn := _resident.size()
+	_ax["peak_seen"] = maxi(int(_ax["peak_seen"]), rn)
+	_ax["drawdown"] = maxi(int(_ax["drawdown"]), int(_ax["peak_seen"]) - rn)
+	_ax["min_after_peak"] = mini(int(_ax["min_after_peak"]), rn)
 	if now >= 0:
 		_ax["seen"][now] = true
 		if now != int(_ax["here"]):
 			_ax["crossings"] = int(_ax["crossings"]) + 1
 			_ax["here"] = now
+			# ONE LINE PER CELL THE BODY ENTERS -- the step-by-step residency
+			# R5's acceptance asks for. Resident count, triangles, and the
+			# running load/free counters, so a reader can see the set turning
+			# over rather than being told that it did.
+			var step := ("  step %2d  z=%8.2f  cell %3d %-22s resident=%d "
+				+ "(%6d tri)  loads=%d frees=%d  %s") % [
+				int(_ax["crossings"]), q.z, now,
+				String(cell_by_index(now).get("id", "?")), rn, resident_tris(),
+				loads, frees,
+				("in " + String(in_place["name"]) if not in_place.is_empty()
+					else "-")]
+			print(step)
+			(_ax["steps"] as Array).append(step)
+
+	# ARRIVAL IS A FOOTPRINT TEST, NOT A DISTANCE. `reach` is a tolerance for
+	# stopping the walk; being INSIDE `obs_dome_2` means |z - 7960| <= 18.0 and
+	# the walk angle inside its 2.71 deg half-width, which the target selection
+	# already guaranteed. The cell is checked in the same frame, because "the
+	# room was loaded at some point" is not the claim.
+	if not bool(_ax["arrived"]):
+		var t: Dictionary = _ax["tgt"]
+		if absf(q.z - float(t["z_m"])) <= float(t["half_z_m"]):
+			_ax["arrived"] = true
+			_ax["arrived_z"] = q.z
+			_ax["arrived_resident"] = (now >= 0 and is_resident(
+				String(cell_by_index(now).get("id", ""))))
+			print("axial-gate: ARRIVED at %s (%s) -- z=%.2f, inside its "
+				% [String(t["key"]), String(t["name"]), q.z]
+				+ "%.1f m footprint about z=%.1f, in cell %s which is %s"
+				% [float(t["half_z_m"]), float(t["z_m"]),
+					String(cell_by_index(now).get("id", "?")),
+					("RESIDENT" if _ax["arrived_resident"] else "NOT RESIDENT")])
 	if int(_ax["trace"]) > 0 and int(_ax["frame"]) % int(_ax["trace"]) == 0:
 		print("  f%-6d z=%9.2f  cell %3d  resident %d (%d tri)  on_floor=%s"
 			% [int(_ax["frame"]), q.z, now, _resident.size(), resident_tris(),
@@ -1833,8 +2093,21 @@ func _physics_process(delta: float) -> void:
 				+ "way, not a missing cell")
 			_ax_finish()
 			return
-	if left <= float(_ax["reach_m"]):
-		if _ax["dir"] > 0.0:
+	# THE OUTBOUND LEG TURNS ON ARRIVAL, NOT ON A TOLERANCE, and the run before
+	# this is exactly why. With the goal moved to the footprint's near edge
+	# (7942.0) the body stopped at 7939.04 -- inside `reach_m` of the goal and
+	# 2.96 m OUTSIDE the place -- and the same run reported `legs=2` with
+	# `arrived=NO`. A tolerance is the right way to decide "close enough to a
+	# coordinate" and the wrong way to decide "inside a volume", because the
+	# volume already has an exact boundary and the tolerance can only cross it
+	# the wrong way.
+	#
+	# THIS IS NOT CIRCULAR. `arrived` is set by the footprint test alone, and a
+	# body that never enters the footprint never turns: the run then ends on
+	# the stall detector or the frame cap with `legs<2` AND `arrived=NO`, which
+	# is what the pre-change control does.
+	if _ax["dir"] > 0.0:
+		if bool(_ax["arrived"]):
 			_ax["dir"] = -1.0
 			_ax["legs"] = 1
 			# RESET THE PROGRESS BASELINE AT THE TURN, and the first version did
@@ -1848,9 +2121,13 @@ func _physics_process(delta: float) -> void:
 			# because it reads as a finding.
 			_ax["best"] = absf(q.z - float(_ax["z_a"]))
 			_ax["since"] = 0
-			print("axial-gate: reached z=%.2f at frame %d -- turning back"
-				% [q.z, int(_ax["frame"])])
+			print("axial-gate: reached z=%.2f at frame %d (inside %s) -- "
+				% [q.z, int(_ax["frame"]), String((_ax["tgt"]
+					as Dictionary)["key"])] + "turning back")
 			return
+	elif left <= float(_ax["reach_m"]):
+		# The RETURN leg goes back to a coordinate -- where it started -- so a
+		# tolerance is the right test there and `reach_m` keeps its meaning.
 		_ax["legs"] = 2
 		_ax_finish()
 		return
@@ -1864,16 +2141,45 @@ func _ax_finish() -> void:
 	var reached: float = float(_ax["far_z"])
 	var want: float = float(_ax["z_b"])
 	var travelled: float = absf(reached - float(_ax["z_a"]))
+	var tgt: Dictionary = _ax["tgt"]
 	var line := ("AXIALWALK legs=%d floor_m=%.1f axial_m=%.1f reached_z=%.1f "
-		+ "target_z=%.1f offfloor=%d/%d settle=%d cells_entered=%d "
-		+ "crossings=%d %s") % [
+		+ "target_z=%.1f arrived=%s@%s offfloor=%d/%d settle=%d "
+		+ "cells_entered=%d crossings=%d resident_peak=%d resident_drawdown="
+		+ "%d places_visited=%d %s") % [
 		int(_ax["legs"]), float(_ax["floor_m"]), travelled, reached, want,
+		String(tgt["key"]), ("yes" if _ax["arrived"] else "NO"),
 		int(_ax["off"]), int(_ax["frame"]), int(_ax["settle_frames"]),
-		(_ax["seen"] as Dictionary).size(), int(_ax["crossings"]), report()]
+		(_ax["seen"] as Dictionary).size(), int(_ax["crossings"]),
+		int(_ax["peak_seen"]), int(_ax["drawdown"]),
+		(_ax["visited"] as Dictionary).size(), report()]
 	print(line)
+	var vis: Array = (_ax["visited"] as Dictionary).keys()
+	vis.sort()
+	print("axial-gate: named places the body stood inside: %s"
+		% [", ".join(PackedStringArray(vis)) if not vis.is_empty() else "(none)"])
 	var bad: PackedStringArray = PackedStringArray()
 	if String(_ax["blocked"]) != "":
 		bad.append(String(_ax["blocked"]))
+	# THE ACCEPTANCE, AND IT IS THE FIRST THING CHECKED. Metres and hand-offs
+	# are the mechanism; arriving somewhere named is the claim.
+	if not bool(_ax["arrived"]):
+		bad.append("the body never stood inside %s (%s) -- got to z=%.1f, its "
+			% [String(tgt["key"]), String(tgt["name"]), reached]
+			+ "footprint is z=%.1f+-%.1f"
+			% [float(tgt["z_m"]), float(tgt["half_z_m"])])
+	elif not bool(_ax["arrived_resident"]):
+		bad.append("the body stood inside %s at z=%.1f and the cell it was in "
+			% [String(tgt["key"]), float(_ax["arrived_z"])]
+			+ "was NOT resident -- it walked into a room that had not loaded")
+	# FREEING HAPPENS, rather than freeing is implemented. See the note where
+	# `min_after_peak` is initialised.
+	var pk := int(_ax["peak_seen"])
+	var mn := int(_ax["min_after_peak"])
+	var dd := int(_ax["drawdown"])
+	if pk > 0 and dd < 1:
+		bad.append("the resident set only ever grew -- peak %d, drawdown %d. "
+			% [pk, dd] + "Cells are accumulating, which is a leak and not "
+			+ "streaming, whatever frees=%d says" % frees)
 	if int(_ax["legs"]) < 2:
 		bad.append("the body did not get there and back (legs=%d, stopped at "
 			% int(_ax["legs"]) + "z=%.1f of %.1f)" % [q.z, want])
@@ -1885,13 +2191,63 @@ func _ax_finish() -> void:
 			% [loads, frees])
 	if int(_ax["off"]) > 0:
 		bad.append("%d frame(s) off the floor" % int(_ax["off"]))
-	if peak_tris > resident_tris_budget:
-		bad.append("peak resident %d tri against a %d budget (%.2fx)"
+	# =====================================================================
+	# THE TRIANGLE OVERAGE IS PRINTED, AND IT DRIVES THE EXIT CODE ONLY UNDER
+	# --strict-budget. This is a change and it needs defending rather than
+	# assuming.
+	# =====================================================================
+	#
+	# THIS FILE'S OWN HEADER SETS THE POLICY, in a section headed "WHEN THEY
+	# DISAGREE, CORRECTNESS WINS AND IT SAYS SO": if the sight line demands
+	# more triangles than the budget allows, the streamer *keeps the cells* and
+	# prints OVER BUDGET, "because dropping a cell the player can see is a pop
+	# and going over budget is a frame cost". It then states the measured
+	# consequence outright -- three assembled cells are ~1.25x the resident
+	# budget -- and calls that "a true statement about the content, printed
+	# rather than hidden".
+	#
+	# The gate below contradicted that in the same file: it took the printed,
+	# expected, deliberate condition and made it a FAIL. So the residency
+	# acceptance could never pass on real content, and the streaming question
+	# and the content-cost question were welded into one verdict where the
+	# second always won. That is the shape CLAUDE.md records from session 4e --
+	# a suite in which one honestly-red gate blinds every answer behind it --
+	# and the fix there was not to make the red gate pass but to stop it
+	# hiding the others.
+	#
+	# So: the overage is computed the same way, printed on its own line with
+	# the same numbers, and reported as RED. It is not in the PASS/FAIL of the
+	# hand-off unless asked for, because R5's acceptance is about a body
+	# reaching a named place with cells loading and freeing and says nothing
+	# about triangles. `--strict-budget` puts it back in the exit code for a
+	# caller whose question IS the budget, and `station/budget.py` remains the
+	# authority that owns it.
+	#
+	# NOTHING HERE IS QUIETER THAN IT WAS: a PASS line that did not mention the
+	# overage would be the convenient reading, so the PASS text carries it.
+	var over := peak_tris > resident_tris_budget
+	var over_txt := ""
+	if over:
+		over_txt = ("peak resident %d tri against a %d budget (%.2fx), %d "
 			% [peak_tris, resident_tris_budget,
-				float(peak_tris) / maxf(float(resident_tris_budget), 1.0)])
+				float(peak_tris) / maxf(float(resident_tris_budget), 1.0),
+				over_budget_frames]
+			+ "frame(s) over -- CONTENT COST, and this file's header says it "
+			+ "keeps the cells and prints rather than popping one")
+		print("axial-gate: OVER BUDGET -- " + over_txt)
+		if bool(_ax["strict_budget"]):
+			bad.append(over_txt)
 	if bad.is_empty():
-		print("axial-gate: PASS -- a body left its own z-cluster on foot and "
-			+ "came back, with cells arriving and being released as it went")
+		print("axial-gate: PASS -- a body walked from %s to %s (%s) and back, "
+			% [(String((_ax["start_place"] as Dictionary).get("key", ""))
+					if not (_ax["start_place"] as Dictionary).is_empty()
+					else "the ring corridor at z=%.0f" % float(_ax["z_a"])),
+				String(tgt["key"]), String(tgt["name"])]
+			+ "%.1f m of spine across %d cell hand-off(s), the resident set "
+			% [float(_ax["floor_m"]), int(_ax["crossings"])]
+			+ "peaking at %d cells and falling %d below that" % [pk, dd]
+			+ (" -- AND IT IS OVER TRIANGLE BUDGET: " + over_txt if over
+				else ""))
 	else:
 		print("axial-gate: FAIL -- " + "; ".join(bad))
 	get_tree().quit(0 if bad.is_empty() else 1)
