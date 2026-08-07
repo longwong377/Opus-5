@@ -10,7 +10,7 @@
 # worst it can do is publish a build agent's own checkpoint -- which is exactly
 # what we want to survive a recycle.
 cd /home/user/Opus-5 || exit 1
-B=claude/continue-full-steam-rrzn0t
+B=claude/aaa-game-development-j6y2ml
 last=""
 while true; do
   head=$(git rev-parse HEAD 2>/dev/null)
