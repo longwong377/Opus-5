@@ -13145,3 +13145,107 @@ apart without reading the exit code, which is the property a CI summary strips.
 
 **What would overturn it.** A CI runner with Godot and a bake, at which point the step drops
 `--allow-unbaked` and the state stops being reachable there.
+## INV-1120 — a place is 12 m of the nearest body who lives there
+
+**What.** `godot/scripts/journal.gd::PLACE_R_M = 12.0`. A player is standing IN one of the
+deck's named places when the nearest of that place's own cast is within 12 m; otherwise they
+are in the corridor between two of them.
+
+**Why.** The journal has to know where the player is before it can write down a leg, and the
+boot manifest carries the room NAMES with no coordinates at all. The only thing on the deck
+that says where a named room is in world space is `<deck>_actors.json`, which is where
+`populace.py` put the people who work there.
+
+**What constrained it.** The boot deck's own rows: `arrival_concourse`, `customs_north` and
+`customs_south` hold 27, 28 and 28 bodies each, spread 33 m along the axis and 4–10 m across
+the arc, so a body anywhere inside a room is within a few metres of somebody. The nearest body
+of the NEXT room is 44.3 m of arc away and the one after that 620 m. Anything from roughly
+10 m to 40 m reads identically, which is what makes this a threshold rather than a knob.
+
+**What would overturn it.** A place whose cast is sparser than its own extent — a 60 m hall
+with four people in it would read as corridor down the middle. The cure is a footprint from
+`rooms.tiling`, not a bigger radius.
+
+## INV-1121 — 0.55 m in one frame is a placement, not a step
+
+**What.** `journal.gd::STEP_TOL_M = 0.55`. A frame in which the player's body moves further
+than this is recorded as a PLACEMENT: the leg's odometer is reset to zero and a counter is
+incremented, so nothing walked can be claimed for it.
+
+**Why.** `walked_leg` may only mint a route time for ground the player actually covered. Without
+this a fast-travel, a debug teleport or a `global_position =` in a harness would buy the porter's
+knowledge for nothing — and this file's own `_continuous()` already makes the identical argument
+about the CLOCK, where a step the clock could not have ticked is a jump.
+
+**What constrained it.** `player.gd::sprint_m_s` is 8.0 m/s and a physics frame is 1/60 s, so
+the fastest honest frame is 0.133 m. 0.55 is four of those, which is the same stutter allowance
+`JUMP_TOL = 4.0` gives the clock. The teleport the gate's own control performs is 44 m, which is
+330× the bound; the two are not close and nothing needs them to be.
+
+**What would overturn it.** A vehicle, a lift or a tram the player rides. Those are not walking
+and should raise their own kind of fact, not loosen this one.
+
+## INV-1122 — a third of the derived arc, under your own feet
+
+**What.** `journal.gd::LEG_FRACTION = 0.35`. A `route_time` fact for `a -> b` is refused unless
+the body covered at least 35% of the metres `transit.py` derives for that pair, continuously.
+
+**Why.** Arrival alone is not evidence of a walk: a body placed one metre outside a room and
+nudged in has "arrived". The fraction is what makes the fact about the journey.
+
+**What constrained it.** `PLACE_R_M` is eaten off BOTH ends of any leg — the odometer starts
+when the body leaves the first place's radius and stops when it enters the second's — so a fully
+walked 44.3 m leg registers about 20 m of travel, which is 45%. A third is the honest floor
+under that with room for a longer leg's proportionally smaller bite. A teleport registers 0.0 m
+and fails by the whole margin.
+
+**What would overturn it.** A pair whose two radii overlap, where a legitimate walk registers
+nearly nothing. Then the measurement is wrong, not the threshold.
+
+## INV-1123 — which CAST-05 ledger the person in front of you sits on
+
+**What.** `station/journal.py::STANDING_FOR`, a `"species/role" -> block` table with `*` as a
+wildcard on either side, resolved most-specific-first, emitted in the manifest and read by
+`journal.gd::_block_for`. Species decides for Narn, Centauri and Minbari and for the nine League
+species; role decides for everyone else; the catch-all is `civil_admin`.
+
+**Why.** `journal.gd` now moves a standing ledger when a player takes a line in a conversation,
+and something has to say that a Narn dockworker's goodwill is the Narn regime's rather than the
+Guild's. That decision may not live in GDScript: this file's contract with `journal.gd` is that
+the engine decides nothing.
+
+**What constrained it.** `STANDING_BLOCKS`' own descriptions, row by row — "EarthForce, customs,
+the Ombuds" takes security and customs; "FAC-06 — the Guild's own count" takes the dockworkers;
+"the Zocalo traders' association" takes the merchants and financiers; "standing among the
+underclass" takes the lurkers and refugees; "medlab and the free clinic" takes the clerics; and
+`civil_admin`'s row names "housing, maintenance, traffic control, hospitality licensing. ONE
+block for four counterparties", which is where service, engineering, hydroponics, industry and
+waste land. Species beats role for the three governments because those blocks are named for the
+governments — which is the entire reason `narn` and `dockers_guild` are two ledgers and not one
+reputation.
+
+**What would overturn it.** A Narn who is credibly a Guild member first — a dock steward, say.
+Then the table needs a `narn/dockworker` row, which the most-specific-first resolution already
+supports and nothing else has to change.
+
+## INV-1124 — what a stance costs, on the ledger's own scale
+
+**What.** `station/journal.py::STANCE_FAVOUR` = `let_go +1.0`, `ask +0.5`, `press −1.0`, in
+CAST-05 ledger points, applied by `journal.gd::_watch_stance` when a player picks one of
+`dialogue.py::STANCES`.
+
+**Why.** `dialogue.gd`'s own header argues that a menu whose options are three ways of saying
+"go on" is not a choice. It made the three differ in what they GET; this makes them differ in
+what they COST, which is the other half.
+
+**What constrained it.** The ORDERING is read off `dialogue.py`'s own stance table rather than
+chosen: `ask` is "always answered", `press` "CAN BE REFUSED" because it demands the number that
+decided the topic's salience, and `let_go` is "nothing, and the farewell — you do not learn the
+number". So letting somebody off costs you the fact and buys their goodwill; pressing buys the
+fact and spends it. The SCALE is chosen, and it is taken from the ledger instead of from taste:
+`STANDING_MAX / 100`, so a hundred pressed conversations move a block from neutral to hostile
+and one conversation is legible without being decisive.
+
+**What would overturn it.** A scene in which a single exchange visibly changes a faction's
+posture toward the player. Then the scale is wrong by an order of magnitude — and the ordering
+still is not.

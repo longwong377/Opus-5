@@ -1011,15 +1011,23 @@ func _phase_learn(host) -> void:
 	var to_pos := _partner_pos()
 	if to_pos == Vector3.ZERO:
 		to_pos = _place_pos(pair[1])
-	# START WHERE A BODY ALREADY STANDS, on the side of the room facing the
-	# destination. A room's CENTROID is a point nothing occupies and can be
-	# inside a counter; every actor row is a spot the station itself put
-	# somebody, so it is floor by construction.
-	var from_pos := _nearest_body_in(pair[0], to_pos)
-	# THE START IS A PLACEMENT AND THE JOURNEY IS NOT. Standing the body in
-	# `pair[0]` costs nothing -- no leg is open yet -- and `_watch_feet` starts
-	# counting the moment it leaves.
-	body.global_position = from_pos + (to_pos - from_pos).normalized() * -1.0
+	# START WHERE THE STATION ITSELF STARTS A PLAYER, and that is a MEASURED
+	# finding rather than a preference. Two earlier versions of this stood the
+	# body inside `pair[0]` -- at the room's centroid, then at the actor row
+	# nearest the destination -- and both WEDGED, covering 6.3 m in 3,000
+	# frames, which is exactly the "a capsule dropped on that wedges on an
+	# internal edge" symptom `station/collision.py` was written for.
+	# `station/boot.py` derives its spawn off the collision shell's own floor
+	# and asserts the two agree, so it is the one point on this deck known to
+	# be standable. From there the walk runs down the ring corridor and passes
+	# THROUGH `pair[0]` on its way to `pair[1]` -- which is how a player
+	# reaches either of them anyway.
+	var from_pos := _spawn_pos()
+	if from_pos == Vector3.ZERO:
+		from_pos = _nearest_body_in(pair[0], to_pos)
+	# THE START IS A PLACEMENT AND THE JOURNEY IS NOT. No leg is open yet, and
+	# `_watch_feet` starts counting the moment the body leaves a named place.
+	body.global_position = from_pos
 	await _settle(6)
 	var walked := 0.0
 	var frames := 0
@@ -1041,27 +1049,40 @@ func _phase_learn(host) -> void:
 		# tangent is the direction a corridor actually runs -- and it is
 		# derived from the two positions rather than written down, so it holds
 		# for any pair on any ring.
-		var probe := 0.0
 		var stuck := 0
 		var side := 1.0
-		while frames < 4000 and _here_place != pair[1]:
+		var z0: float = from_pos.z
+		# THE WALK ENDS AT THE PERSON, NOT AT THE ROOM. Stopping the moment
+		# `_here_place` became `pair[1]` left the body 12 m out -- `PLACE_R_M`
+		# -- and `dialogue.gd` offers nobody at that range, so the leg was
+		# earned and the conversation was not. The leg closes en route.
+		while frames < 6000:
 			var pos: Vector3 = body.global_position
 			var dir: Vector3 = to_pos - pos
-			if dir.length() < 1.5:
+			if dir.length() < 1.4:
 				break
-			var up := Vector3(pos.x, pos.y, 0.0).normalized()
-			var tan := Vector3(-up.y, up.x, 0.0)
+			var out := Vector3(pos.x, pos.y, 0.0).normalized()
+			var tan := Vector3(-out.y, out.x, 0.0)
 			if tan.dot(dir) < 0.0:
 				tan = -tan
-			# Axial error is corrected directly; the ring is walked round.
-			var steer := (tan + Vector3(0, 0, dir.z * 0.05)).normalized()
-			# A BODY THAT HAS STOPPED IS AGAINST SOMETHING, and a corridor has
-			# two sides. Fifteen frames of no progress is a quarter of a
-			# second at a walk, which no open floor produces.
+			# The ring is walked round; the axial error is trimmed, gently,
+			# because a corridor is 33 m long and only a few metres wide.
+			var steer := (tan + Vector3(0, 0, clampf(dir.z, -1.0, 1.0)
+				* 0.15)).normalized()
+			# A BODY THAT HAS STOPPED IS AGAINST SOMETHING, and a ring corridor
+			# has two sides -- both along the station's AXIS, because the
+			# corridor's length is the ring. Fifteen frames of no progress is a
+			# quarter of a second at a walk, which no open floor produces. The
+			# sidestep is BLENDED and BOUNDED: an earlier version steered
+			# straight along +Z, walked the body off the 33 m end of the deck
+			# and let it fall, which read as 55 km "walked" in 2,000 frames.
 			if stuck > 15:
-				steer = (steer + up.cross(Vector3(0, 0, 1)) * 0.0
-					+ Vector3(0, 0, side)).normalized()
-				if stuck > 90:
+				var z_off: float = pos.z - z0
+				var s: float = side
+				if absf(z_off) > 6.0:
+					s = -signf(z_off)
+				steer = (steer * 0.6 + Vector3(0, 0, s) * 0.8).normalized()
+				if stuck > 120:
 					side = -side
 					stuck = 16
 			body.step(d, Vector2(0, 1), false, false, steer)
@@ -1071,11 +1092,10 @@ func _phase_learn(host) -> void:
 			stuck = (0 if moved > 0.02 else stuck + 1)
 			last = body.global_position
 			frames += 1
-			if frames % 400 == 0:
+			if frames % 600 == 0:
 				print("JOURNAL: ...%d frames, %.1f m, %.1f m to go, in %s"
 					% [frames, walked, dir.length(),
 						(_here_place if _here_place != "" else "the corridor")])
-				probe = walked
 		print("JOURNAL: WALKED %s -> %s, %.1f m under its own feet in %d "
 			% [pair[0], pair[1], walked, frames]
 			+ "frames, standing in %s" % (_here_place if _here_place != ""
@@ -1443,6 +1463,26 @@ func _place_pos(place: String) -> Vector3:
 			float(a.get("z", 0.0)))
 		n += 1
 	return (sum / float(n) if n > 0 else Vector3.ZERO)
+
+
+## THE ONE POINT ON THIS DECK KNOWN TO BE STANDABLE. `station/boot.py` derives
+## it off the collision shell's own floor and prints the two derivations
+## agreeing to 4 mm; anything else here would be a second guess at a thing
+## already measured.
+func _spawn_pos() -> Vector3:
+	var root := _repo_root()
+	var boot := root.path_join("station/generated/scene/boot.json")
+	if not FileAccess.file_exists(boot):
+		return Vector3.ZERO
+	var f := FileAccess.open(boot, FileAccess.READ)
+	var d = JSON.parse_string(f.get_as_text())
+	f.close()
+	if typeof(d) != TYPE_DICTIONARY:
+		return Vector3.ZERO
+	var s = d.get("spawn", [])
+	if typeof(s) != TYPE_ARRAY or s.size() < 3:
+		return Vector3.ZERO
+	return Vector3(float(s[0]), float(s[1]), float(s[2]))
 
 
 ## Where the deck's first talkable body stands. The destination of the walk,
