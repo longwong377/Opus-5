@@ -12042,3 +12042,94 @@ extreme x or y can fall at the centre of the span, not only at its ends.
 `floor` term becomes a real number instead of `NONE`, and the box should be checked against
 `places.gd::boxes` rather than replaced by it — a disagreement between the two would be a finding
 about the deck builder, which is the reason to keep both.
+
+## INV-850 — the front door: which launches get a title screen, and what is on it
+
+**What.** `godot/scripts/main_menu.gd` and `main.gd::_front_door`. A launch shows the title
+screen if and only if it has a **display and no user arguments at all**; `--menu-gate` forces it
+on headlessly and `--no-menu` forces it off. The screen carries four entries in this order —
+NEW GAME (mode `arrival`), CONTINUE (slot `auto`), WALK THE STATION (mode `station`), QUIT — and
+every entry that cannot run prints the reason on screen instead of being hidden.
+
+**Why.** `docs/MASTER-PLAN.md` A2's definition of done opens *"a stranger downloads ONE FILE, runs
+it at 60 fps, arrives at Babylon 5 as a person with papers"*. Measured at the start of session 4t:
+`godot/export_presets.cfg` did not exist, `tools/` had no packaging path, and the strings "menu",
+"title" and "new game" appeared nowhere in 25,000 lines of GDScript. There was no way for a person
+to start this at all, and a stranger who launched the shipped build without the generated world got
+`push_error` on a console they cannot see and exit 2 — a black flash and nothing.
+
+**What constrained it.** The predicate is deliberately the narrowest one that captures
+double-clicking and nothing else, because every gate in this repository launches the same scene:
+`station/coldstart.py --g1` runs it headless with no arguments and must still get a body on a
+floor, `tools/render_godot.sh` passes a scene path, and every developer command line passes
+`--mode=`. A title screen that appeared for any of those would eat the gates. The ORDER of the
+entries is `docs/THE-GAME.md` §1 — the card is the spine, so the entry that issues one comes
+first, and the free-walk entry every developer here has used for eight sessions is second and
+labelled as what it is. The COLOURS and the drawn-rather-than-assembled construction are
+`arrival.gd::Face`'s, taken from that file so the title screen and the identicard a player is
+about to be handed read as one object.
+
+**What would overturn it.** A decision that the shipped build should open in the station and
+offer arrival as a menu item rather than the reverse; a settings or accessibility surface, which
+would make a drawn `_draw()` the wrong construction and force real Control nodes; any evidence
+that a player expects CONTINUE first.
+
+## INV-851 — the shipped layout, and why the "one file" is a tarball rather than an executable
+
+**What.** `tools/package.sh` writes
+
+```
+Babylon5/
+  Babylon5              the launcher a player runs
+  game/Babylon5.x86_64  the double-precision engine
+  game/Babylon5.pck     scripts, scenes, materials
+  station/generated/…   the world
+```
+
+and tars it to `dist/Babylon5-linux-x86_64.tar.gz`. **113 MB** as measured, of which 112 MB is the
+engine-plus-pack and 66 MB is one deck's world.
+
+**Why.** Two measured facts, not preferences. **(1)** Every mesh, collision shell, interactables
+sidecar, arrival sequence, cell set and audio bank is read at runtime from `<root>/station/…`,
+which is OUTSIDE `res://`; Godot's exporter walks `res://` and nothing above it, so **no export
+preset can pack the world**. The staged layout exists so that `res://..` resolves in the shipped
+tree exactly as it does in the source tree. **(2)** There are no export templates on this box, and
+the published ones would be wrong anyway: `project.godot` declares `Double Precision` because the
+station is 8,047 m long (`docs/adr/0001-engine-choice.md`), and Godot's stock templates are single
+precision. So the default is `--export-pack` — which needs no template — plus this project's own
+double-precision binary renamed beside the pack, which Godot auto-loads.
+
+**What constrained it.** The rule that a tool which can substitute a lesser mode must say which one
+it used, on every run: `package.sh` names `mode=pack+engine` or `mode=export-release` in its own
+output, greps the exporter's own `savepack: end` rather than trusting exit 0, and **launches the
+finished artefact** and reads its first lines back — deleting the staged build if it does not
+reach `MENUGATE … verdict=PASS`. `GODOT_TEMPLATE=<path>` switches it to a single self-contained
+binary if a double-precision template ever exists.
+
+**What would overturn it.** A double-precision export template (then the executable really can be
+one file, though the world still cannot live in it); moving `station/generated/` reads behind a
+`res://` mount or a custom pack, which would make the whole staging step unnecessary; a decision
+to ship a launcher/installer instead of an archive.
+
+## INV-852 — `main.gd::_root()` was editor-only, and an exported build looked for its world in the wrong place
+
+**What.** `_root()` now falls back to `OS.get_executable_path().get_base_dir()` when
+`ProjectSettings.globalize_path("res://")` is empty, and `--data=<dir>` overrides both.
+
+**Why.** Measured in session 4t on the first packaged build: **`globalize_path("res://")` returns
+the EMPTY STRING in an exported game**, because `res://` lives inside a `.pck` and has no
+filesystem path. The old body — `globalize_path("res://").path_join("..").simplify_path()` — then
+evaluated to the literal `".."`, resolved against the process working directory, so the packaged
+game hunted for `station/generated/` one level above wherever the player's shell happened to be
+and reported `no boot manifest`.
+
+**What constrained it.** It is the nine-times defect one layer down: the function was correct,
+tested and had **never been run on the path that ships**, because until this session nothing had
+ever been exported. No static scan could have found it — `tools/wiring.py` asks whether a caller
+exists, and this caller existed and ran. What found it was `package.sh` LAUNCHING the artefact and
+reading its own output back, on the first run it ever did. The executable's directory is the right
+anchor precisely because it does not depend on the working directory, which is what `".."` did.
+
+**What would overturn it.** An embedded-pck build, where the executable and the pack are one file
+(the base directory is still right); a platform where `get_executable_path()` is not the install
+location — macOS `.app` bundles put the binary two levels down and will need their own case.
