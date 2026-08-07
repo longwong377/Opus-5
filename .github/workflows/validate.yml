@@ -211,6 +211,17 @@ jobs:
       - name: A pressed object is the whole object
         run: python3 station/walkable.py --reach --deck blue/0/0 --control
 
+      # AND A BODY CAN CROSS THE DECK WITH NOBODY STEERING IT. The step above
+      # and `--bump` both steer the body at a target 6.3 m away, so it arrives
+      # and mills: 125.93 m of PATH and 0.35 m of DISPLACEMENT. `--no-goto`
+      # walks the best of four probed headings for thirty seconds and asserts
+      # both -- 125.87 m covered and 123.95 m from where it set off, 34 deg
+      # round the ring. The displacement bar carries its own control, fed the
+      # goto walk's own 0.35 m, and `deck_verdict` is a pure function so it
+      # costs no engine time.
+      - name: A body crosses the deck unaided
+        run: python3 station/walkable.py --deck blue/0/0 --deck-only --no-goto
+
       # AND THE WHOLE STATION, not six rooms of it. `--sweep` is the only gate
       # here that asks a whole-station question: every deck assembles, every
       # room has a door, and no doorway has a hole in the floor.

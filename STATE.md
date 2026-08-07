@@ -1,6 +1,129 @@
 # Project State
 
-**Last updated:** 2026-08-06 · **Session 4y** — **press a bay door and all 536 triangles move: 7.1% → 100.0%** · **4x** — **the draw-call objection was stale; material resolution is the real blocker** · **4w** — **when you press a bay door, 12 of its 536 triangles move** · **4v** — **the distance bar had never run, and path length was never progress** · **4u** — **nobody stands in the doorway any more** · **4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+**Last updated:** 2026-08-06 · **Session 4z** — **a body crosses the deck with nobody steering it: 0.35 m → 123.95 m** · **4y** — **press a bay door and all 536 triangles move: 7.1% → 100.0%** · **4x** — **the draw-call objection was stale; material resolution is the real blocker** · **4w** — **when you press a bay door, 12 of its 536 triangles move** · **4v** — **the distance bar had never run, and path length was never progress** · **4u** — **nobody stands in the doorway any more** · **4t** — **the cast are solid, and one of them is standing in the doorway** · **4s** — **a sidestep that begins on contact is not a sidestep; and the bump gate was reporting an empty sample** · **4r** — **the thing blocking the corridor was a person, and I put them there: 28 m → 238 m** · **4q** — **the free path has a gate, and it found the corridor is blocked 27 m from the spawn** · **4p** — **the deck streams: 657,880 resident triangles become 127,204** · **4o** — **a cell boundary was cutting doors and people in half** · **4n** — **the deck cuts into loadable cells, and the loader's real obstacle is named** · **4m** — **the streaming cell budget met a real deck, and the design survives** · **4l** — **the resident-triangle gate was about the deck; the build also loads 321,664 triangles of people** · **4k** — **every walker on the station was bald, for 188 triangles** · **4j** — **the 21 exposure frames describe the code again, and the verdict did not move** · **4i** — **every curved surface in the project was flat-shaded, and the crease angle is measured off the station** · **4h** — **IT IS PLAYABLE: press Play and you are standing in Blue Sector** · **4g** — **the Babcom terminal is a built device, and it shipped a logged mistake once before the log caught it** · **4f** — a per-token verb override · **4e** — **the naming-mismatch class is CLOSED: built-but-misnamed 26 → 0, resolving 302/357** · **4d** — **the bespoke rooms' interactables were never unbuilt, they were unnamed: 259/357 → 284/357** · **4c** — **the station is INTERACTABLE, the port is on a wall, and the 24-minute suites were one bad cache key** · **4b** — a police force, friction in metres, the plated shell, the fitting-reach fix
+
+## Session 4z — A BODY CROSSES THE DECK WITH NOBODY STEERING IT: 0.35 m → 123.95 m
+
+4v left this on the next list: *"`--deck`'s `traverse_m` bar is live but weak under a goto — a
+deck run with no goto would exercise the strong form."* It does, and the strong form was broken
+in three places, none of them the station.
+
+### 1. The mode nothing had ever run
+
+`walk.gd`'s traverse has three modes: tangent (`--arc-walk`), toward a target (`--goto`), and —
+with neither — `step(delta, Vector2(0, 1))`, **the body walking its own best heading with nobody
+steering it.** That third one is what `walkable.py`'s own docstring has always described as the
+deck assertion: *"distance covered walking one heading for thirty seconds"*.
+
+`walk_deck` appended `--goto` unconditionally, so it was unreachable, and `deck_verdict`'s
+no-goto branch was dead code measuring nothing. `--no-goto` reaches it. First run:
+
+```
+FAIL  deck blue/0/0  covered 6.5 m of corridor, under the 63 m bar
+      legs=0.73/4.20/4.20/4.20 traverse_m=6.47 net_m=6.47 sweep_deg=0.00 offfloor=0/1800
+```
+
+### 2. THE HEADING PROBE WAS SPEED-LIMITED, SO THE WINNER WAS A COIN FLIP
+
+`walk.gd` tries four headings and keeps the best. It scored them over `steps/2` frames — **60,
+one second, which at `speed_m_s` is 4.2 m** — so the probe was SPEED-limited rather than
+OBSTACLE-limited and could not tell 4.2 m of clearance from 400. Three headings tied at exactly
+4.20.
+
+The winner was then picked **frame by frame**, comparing each frame's distance against a running
+maximum held ACROSS legs, so a later heading could only take the lead by beating an earlier one
+STRICTLY. Two unobstructed legs finish within a float of each other, so the tie went to whichever
+ran first. It picked an **axial** heading — `sweep_deg=0.00`, zero degrees round the ring — and
+the body walked across the corridor into the far wall at 6.47 m. `net_m` equalled `traverse_m`:
+it did not mill, it went in a straight line and stopped.
+
+**`_best_yaw` is read by exactly one code path** — the traverse with neither `--goto` nor
+`--arc-walk`. Under either of those the yaw is ignored entirely, because the direction is passed
+in as a world vector. So the defect sat in a variable that nothing consumed.
+
+### 3. What the fix is, and BE PRECISE ABOUT WHICH PART FIXED IT
+
+- the heading is now an **argmax over the completed legs**, lowest index on a tie, with a stated
+  0.10 m margin instead of float noise
+- `--steps` defaults to **480** — 240 frames a leg, 4 s, 16.8 m — past the 6.47 m of axial
+  clearance measured above, so geometry decides it
+- `moved_1s` is **sampled at one second** rather than tracking the best leg's total. It backs
+  `deck_verdict`'s *"walked %.2f m in a second"* bar, and letting it follow the probe length would
+  have loosened that bar every time the probe grew
+
+**The control says the tie-break alone fixed blue/0/0, not the probe length.** Re-run at the old
+`--steps 120` with the deterministic tie-break in place and the deck PASSES: the legs still tie at
+0.73/4.20/4.20/4.20 and lowest-index picks leg 1, which on a ring deck happens to be tangential.
+
+What the probe length buys is **evidence instead of luck**, and the two leg arrays say it plainly:
+
+| `--steps` | legs | what the winner was chosen on |
+|---|---|---|
+| 120 | 0.73 / **4.20 / 4.20 / 4.20** | nothing — three headings indistinguishable |
+| 480 | 0.73 / **16.80** / **6.47** / 16.65 | a 10× separation; the axial hall is visibly not the corridor |
+
+A deck whose axial hall runs longer than its corridor is open would still be picked wrongly at
+120, and no lowest-index rule can save it.
+
+### 4. The strong form, measured
+
+```
+PASS  deck blue/0/0  6 rooms over 345 deg; a body spawns at docking_bays, walks 125.9 m
+      with nobody steering it, ends 124.0 m away (34 deg round the ring) and never leaves
+      the floor
+      legs=0.73/16.80/6.47/16.65 traverse_m=125.87 net_m=123.95 sweep_deg=34.07
+      offfloor=0/1800 drop=0.043 moved_1s=4.200 on_floor=true
+```
+
+**98.5% of the path is progress.** The same deck steered at a room 6.3 m away reports
+`traverse_m=125.93 net_m=0.35` — 126 m of walking that ends where it started. That is a **354×**
+difference in displacement on identical geometry, and it is the whole reason the bar under a goto
+was weak.
+
+So the no-goto branch asserts **displacement**, at the same 63 m: covered 63 m *and* ended 63 m
+away. 34.07° is **1.7 streaming cells**, so the body provably left the one it spawned in.
+
+### 5. THE CONTROL COSTS NO ENGINE TIME, BECAUSE THE VERDICT IS A PURE FUNCTION
+
+`deck_verdict` takes a dict and returns a verdict, so the negative case can be fed to the real
+function rather than argued about in a comment — and the negative case is not invented, it is the
+0.35 m the same deck reports under a goto:
+
+```
+subject : (True,  '... walks 125.9 m with nobody steering it, ends 124.0 m away (34 deg ...)')
+control : (False, 'covered 125.9 m of corridor but ended 0.3 m from where it set off,
+                   under the 63 m bar -- it walked without going anywhere')
+```
+
+It runs inside `--no-goto` on every invocation, so the bar cannot go inert unnoticed.
+
+### 6. And a failing deck run no longer costs a second one
+
+`--deck` is six minutes and reported *"something is snagging"* while holding `legs`,
+`traverse_m`, `net_m`, `sweep_deg`, `offfloor`, `drop` and `moved_1s` in a dict it did not print.
+It prints them now, on every run. The whole diagnosis above came from one line that already
+existed.
+
+### 7. Gates
+
+| gate | result |
+|---|---|
+| `walkable.py --deck blue/0/0 --deck-only --no-goto` | **PASS** — 125.87 m walked, 123.95 m net, 34.07° |
+| its displacement control | **fires** — the same verdict at the goto walk's 0.35 m FAILS |
+| probe control, `--steps 120` | legs tie 4.20/4.20/4.20; deck still passes on the tie-break |
+| `walkable.py --deck blue/0/0 --use` | **PASS**, control firing (4y) |
+
+`--no-goto` is now a CI step. It is the only gate that asserts a body can cross a deck unaided.
+
+### 8. NEXT
+
+- The near figure's silhouette is 32-gon faceted at 1 m; the affordable fix is runtime skinning,
+  and `budget.py` has already priced the alternatives.
+- The probe's discriminating power is asserted by nothing. `legs` is in the verdict; a deck where
+  the winner and the runner-up are both at the speed cap is one where the choice was arbitrary,
+  and that is checkable.
+- `--no-goto` has run on one deck. `deck.py --sweep` says 128 locations assemble; how many can be
+  crossed is a different number and nobody has it.
 
 ## Session 4y — PRESS A BAY DOOR AND ALL 536 TRIANGLES MOVE: 7.1% → 100.0%
 

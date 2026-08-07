@@ -97,7 +97,25 @@ MIN_TRAVERSE_M = 63.0
 # spends `steps/2` frames on each of four legs, so this is 240 frames a leg --
 # 4 seconds, 16.8 m -- comfortably past the 6.47 m of axial clearance measured
 # above, and 16 s of probe in a run that already takes six minutes.
+#
+# BE PRECISE ABOUT WHICH CHANGE FIXED THIS DECK, because the control says it
+# was not this one. Re-run at the old `--steps 120` with the deterministic
+# tie-break in place, blue/0/0 PASSES: the legs still tie at 0.73/4.20/4.20/
+# 4.20, and lowest-index-wins picks leg 1, which on a ring deck happens to be
+# tangential. The TIE-BREAK is what fixed blue/0/0. The probe length is what
+# makes the choice EVIDENCE rather than luck -- at 480 the same four headings
+# read 0.73/16.80/6.47/16.65 and the axial one is measurably distinct from the
+# corridor; at 120 three of them are indistinguishable and "best" means
+# nothing. A deck whose axial hall is longer than its corridor is open would
+# still be picked wrongly at 120, and no lowest-index rule can save it.
 PROBE_FRAMES = 480
+
+# What the WEAK form of the distance bar reports on this same deck: 125.93 m of
+# path and this much displacement, because the body is steered at a room 6.3 m
+# away and mills about once it arrives. Kept as a named constant because it is
+# the negative case the no-goto run's displacement bar is controlled against --
+# a measured number from a real run, not one invented to fail.
+GOTO_NET_M = 0.35
 # How close to the middle of a room counts as being in it. A body that stops in
 # the doorway is not inside; one standing anywhere in the far half is.
 ARRIVED_M = 1.5
@@ -1100,9 +1118,30 @@ def deck_verdict(d):
     if got < MIN_TRAVERSE_M:
         return False, (f"covered {got:.1f} m of corridor, under the "
                        f"{MIN_TRAVERSE_M:.0f} m bar -- something is snagging")
+    # -- AND IT ENDED SOMEWHERE ELSE ---------------------------------------
+    # THE STRONG FORM, and it is the whole reason this branch was made
+    # reachable. Path length is not progress: the same deck steered at a room
+    # 6.3 m away reports `traverse_m=125.93 net_m=0.35` -- 126 m of walking
+    # that ends where it started, because the body arrives and mills. A body
+    # pacing on the spot satisfies a distance-covered bar exactly as well as
+    # one crossing the deck, which is 3v's lesson ("report DISTANCE COVERED,
+    # not 'did it move'") one level up.
+    #
+    # The bar is the same 63 m, applied to DISPLACEMENT. Measured with nobody
+    # steering: `traverse_m=125.87 net_m=123.95 sweep_deg=34.07` -- 98.5% of
+    # the path is progress, 34 degrees of ring, 1.7 streaming cells. So 63 m
+    # leaves half the measurement in hand while rejecting the 0.35 m that the
+    # weak form passes.
+    net = float(d.get("net_m", 0))
+    if net < MIN_TRAVERSE_M:
+        return False, (f"covered {got:.1f} m of corridor but ended {net:.1f} m "
+                       f"from where it set off, under the {MIN_TRAVERSE_M:.0f} "
+                       f"m bar -- it walked without going anywhere")
     return True, (f"{d['rooms']} rooms over {float(d['arc_deg']):.0f} deg; a "
-                  f"body spawns at {d['spawn_at']}, walks {got:.1f} m and "
-                  f"never leaves the floor")
+                  f"body spawns at {d['spawn_at']}, walks {got:.1f} m with "
+                  f"nobody steering it, ends {net:.1f} m away "
+                  f"({float(d.get('sweep_deg', 0)):.0f} deg round the ring) "
+                  f"and never leaves the floor")
 
 
 def use_verdict(d):
@@ -1319,6 +1358,24 @@ def main():
                 ("legs", "traverse_m", "net_m", "sweep_deg", "offfloor",
                  "drop", "moved_1s", "on_floor", "goto_best_m")
                 if k in d))
+        # -- THE CONTROL FOR THE DISPLACEMENT BAR ---------------------------
+        # It costs NO engine time, because `deck_verdict` is a pure function of
+        # the verdict dict -- so the negative case can be fed to the real
+        # function rather than argued about in a comment. And the negative case
+        # is not invented: 0.35 m is what the SAME deck reports under a goto,
+        # walking the same 126 m of path and ending where it started. If a
+        # verdict carrying that displacement still passes, the bar is inert.
+        if good and a.no_goto and not drum:
+            wok, wwhy = deck_verdict(dict(d, net_m=f"{GOTO_NET_M:g}"))
+            if wok:
+                print(f"  FAIL  the displacement bar is inert -- this run's "
+                      f"verdict with the goto walk's {GOTO_NET_M} m of "
+                      f"displacement substituted still passed")
+                good = False
+            else:
+                print(f"        control: the same verdict carrying the goto "
+                      f"walk's {GOTO_NET_M} m of displacement FAILS -- "
+                      f"\"{wwhy}\"")
 
         # THE NEGATIVE CONTROL, and it is the whole reason the door claim means
         # anything. A body that reaches the room proves the route is open; it
