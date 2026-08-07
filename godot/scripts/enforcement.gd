@@ -98,6 +98,34 @@ var _data: Dictionary = {}
 var _places: Dictionary = {}
 var _looked := false
 
+## WHERE THE BRIG IS, AND THE ENGINE COMPUTED NONE OF IT. `enforcement.py::
+## brig_address` resolves the register's (sector, ring, deck, angle, z) through
+## `interior.place_floor_radius` and `deck.room_half_w_m` and hands over a point
+## and a world box in metres. This file does not know that a deck's floor is a
+## radius; if it did, that would be a second description of the fact, and the
+## two would disagree the first time a ring stack moved.
+var _brig: Dictionary = {}
+var _cell := 0
+
+## What a search FINDS. `economy.GOODS`' own `contraband` class, baked. The
+## engine holds no opinion about which goods are illegal.
+var _restricted: Array = []
+var _demoting := "contraband"
+
+## Which offence THIS stop is. Set at `_open` from what is in the bag, and it
+## selects which baked ladder the disposal comes out of -- `detention` (the card
+## did not read: grade 1, a citation, `Record.ordinary()` does not count it and
+## NOTHING IS TAKEN) or `search` (the bag held contraband: grade 3, and
+## `consequence.REVOKE_ON_SERIOUS = 1` withdraws a conditional permission on
+## the first one).
+##
+## THIS IS THE HALF THAT WAS MISSING AND IT IS ONE LINE OF ARITHMETIC. Before
+## it, the whole engine path carried `id_check_fail` and nothing else, so the
+## build could not demote anybody -- and `enforcement.py --selftest` check 4
+## asserted "a refusal at a door never withdraws a permission, at ANY rung",
+## which was TRUE and was also the reason. A rule with one of its two rows.
+var _offence := ""
+
 ## How many times this player has been stopped at each place. The index into the
 ## baked fork and into the conviction ladder -- a second stop is a second draw
 ## and, if it detains, a second conviction.
@@ -128,6 +156,17 @@ var hour_before := -1.0
 var hour_after := -1.0
 var last_line := ""
 var last_why := ""
+
+# -- the progression half: the rung, the cell, the record ------------------
+var tier_before := -99
+var tier_after := -99
+var searched := 0                    ## stops where the bag was the offence
+var brig_held := 0                   ## times the player was PUT IN the brig
+var brig_in_box := 0                 ## and was inside its own register box
+var brig_floor_m := -1.0             ## metres to the floor under them, or -1
+var brig_at := Vector3.ZERO
+var booking := ""                    ## the readable record, one line
+var _return_to := Vector3.ZERO       ## where they were taken from
 
 
 func _ready() -> void:
@@ -164,6 +203,15 @@ func _load() -> void:
 		return
 	_data = d
 	_places = d.get("places", {})
+	_brig = d.get("brig_address", {})
+	_cell = int(d.get("brig_cell", 0))
+	_restricted = d.get("restricted", [])
+	_demoting = String(d.get("demoting_offence", "contraband"))
+	print("enforcement: brig at %s %s ring %d deck %d, %d cells, %d restricted "
+		% [String(_brig.get("place", "?")), String(_brig.get("sector", "?")),
+			int(_brig.get("ring", -1)), int(_brig.get("deck", -1)),
+			int(_brig.get("cells", 0)), _restricted.size()]
+		+ "good(s); a search finds `%s`" % _demoting)
 	print("enforcement: %d place(s) carry a consequence, for %s (rung %d %s), "
 		% [_places.size(), String((d.get("player", {}) as Dictionary).get(
 			"name", "?")), int((d.get("player", {}) as Dictionary).get(
@@ -285,10 +333,25 @@ func _physics_process(delta: float) -> void:
 ## reacts to the sentence. A second evaluation of "does this place admit me"
 ## here would be exactly the duplication that made two halves of one crowd
 ## disagree about which way round a person is.
+## TWO THINGS CAN OPEN A STOP, AND THEY ARE DIFFERENT RULES ON PURPOSE.
+##
+##   THE CARD. `hud.gd::_boundary` refuses you and this reacts to the sentence,
+##   exactly as before. A second evaluation of "does this place admit me" here
+##   would be the duplication that made two halves of one crowd disagree about
+##   which way round a person is.
+##
+##   THE BAG. A place that READS A CARD is a place that searches, and what a
+##   customs line finds in a bag is not a fact about the card -- an accepted
+##   card and a bag full of Dust is the ordinary shape of THE-GAME section 4's
+##   Broker shortcut, and it is the only stop on this deck that a tier-2 player
+##   can meet, because `arrival_concourse` needs exactly rung 2 and therefore
+##   ADMITS them. Without this trigger the demotion path is unreachable by the
+##   only card that has anything to lose, which is the same defect as machinery
+##   with no caller, one level up.
 func _watch() -> void:
 	var txt := String(_hud.get("check_text"))
 	var here := String(_hud.get("_check_place"))
-	if not txt.begins_with("IDENTICARD REFUSED"):
+	if not txt.begins_with("IDENTICARD"):
 		if state == DONE and here == "":
 			state = IDLE               # stepped back into the corridor: re-armed
 		return
@@ -296,12 +359,77 @@ func _watch() -> void:
 		return
 	if state == DONE and here == _place:
 		return
-	_open(here)
+	var found := _contraband()
+	if not txt.begins_with("IDENTICARD REFUSED") and found == "":
+		return
+	if not bool((_places[here] as Dictionary).get("reads_card", false)) \
+			and found != "":
+		return                          # nobody searches you in a corridor
+	_open(here, found)
 
 
-func _open(key: String) -> void:
+## A DEFECT FOUND BY RUNNING IT, AND IT MADE THIS WHOLE GATE UNRUNNABLE ON A
+## BUILD WITH GEOMETRY. Every place lookup in this file read `hud.gd::_boxes`
+## -- and `hud.gd::bind` fills `_boxes` from the interact sidecar ONLY IF
+## `_place_boxes` (the real mesh extents, via `places.gd::boxes`) came back
+## empty. So on any build where the deck geometry loads, `_boxes` is `{}`,
+## `_pick()` returns "", and the run prints
+##
+##     ARREST gate=FAIL -- nothing on this deck refuses a tier-0 card
+##
+## which is a sentence about the CARD and sent the reader to the wrong half of
+## the system entirely. The gate could only ever pass on a build whose places
+## had no meshes. That is the ninth-instance defect one level down: a caller
+## that exists, runs, and reads the branch that is not taken.
+##
+## The two are different SHAPES -- `_place_boxes` is key -> AABB and `_boxes` is
+## key -> [lo, hi] -- so this normalises rather than picking one, and prefers
+## the geometry for the same reason `hud.gd` does: a room is bigger than its
+## furniture, and the two disagreed by 31.6 m when that was tested.
+func _box_of(key: String) -> Array:
+	var pb = _hud.get("_place_boxes")
+	if typeof(pb) == TYPE_DICTIONARY and (pb as Dictionary).has(key):
+		var a: AABB = (pb as Dictionary)[key]
+		return [a.position, a.position + a.size]
+	var b = _hud.get("_boxes")
+	if typeof(b) == TYPE_DICTIONARY and (b as Dictionary).has(key):
+		return (b as Dictionary)[key]
+	return []
+
+
+func _has_box(key: String) -> bool:
+	return not _box_of(key).is_empty()
+
+
+## What is in the bag that the baked list calls contraband, or "".
+func _contraband() -> String:
+	if _player == null or _restricted.is_empty():
+		return ""
+	if _args().has("enforce-no-contraband"):
+		return ""
+	var bag = _player.get("carrying")
+	if typeof(bag) != TYPE_ARRAY and typeof(bag) != TYPE_PACKED_STRING_ARRAY:
+		return ""
+	for item in bag:
+		for bad in _restricted:
+			if String(item) == String(bad):
+				return String(item)
+	return ""
+
+
+func _open(key: String, found: String = "") -> void:
 	_place = key
 	_row = _places[key]
+	_offence = (_demoting if found != ""
+		else String((_row.get("detention", {}) as Dictionary).get("offence",
+			"id_check_fail")))
+	if found != "":
+		searched += 1
+		print("ARREST searched at %s -- `%s` in the bag: this is a %s docket, "
+			% [key, found, _demoting]
+			+ "not a citation (grade %d)"
+			% int((_data.get("offence", {}) as Dictionary).get(
+				_demoting, {}).get("grade", 0)))
 	refused += 1
 	var n := int(_stops.get(key, 0))
 	_stops[key] = n + 1
@@ -309,8 +437,9 @@ func _open(key: String) -> void:
 	_t = 0.0
 	state = CALLED
 	var who := _pair()
-	print("ARREST refused at %s -- %s notified, %.0f s away (%s)"
-		% [key, who, float(_row.get("respond_s", 0.0)),
+	print("ARREST %s at %s -- %s notified, %.0f s away (%s)"
+		% [("stopped" if found != "" else "refused"), key, who,
+			float(_row.get("respond_s", 0.0)),
 			String(_row.get("respond_from", "?"))])
 	_say("SECURITY NOTIFIED\n%s -- %s, %s"
 		% [who.to_upper(), String(_row.get("respond_from_name", "")).to_upper(),
@@ -392,9 +521,9 @@ func _spawn() -> void:
 ## recorded mistake from session 3v.
 func _out_dir() -> Vector3:
 	var up: Vector3 = _player.body_up()
-	var b = (_hud.get("_boxes") as Dictionary).get(_place)
+	var b := _box_of(_place)
 	var p: Vector3 = _player.global_position
-	if typeof(b) != TYPE_ARRAY:
+	if b.is_empty():
 		# No box for this place: leave along the deck's own tangent, which is
 		# the corridor, rather than guessing a compass direction.
 		return up.cross(Vector3(0, 0, 1)).normalized()
@@ -517,6 +646,12 @@ func _verdict() -> void:
 	# than either answer. Cycling reuses the same draws in the same order, so it
 	# stays deterministic and keeps the one-in-five over a long session.
 	var will := (not det.is_empty() and bool(det[nth % det.size()]))
+	# A SEARCH THAT FINDS SOMETHING IS NOT A COIN TOSS. `DETAIN_ON_FAIL` prices
+	# rung 3 -- "move on, no arrest, no record" -- for a card that did not read.
+	# Nobody is waved through a customs line with Dust in their bag, and
+	# `consequence.arrest` has no branch that would: grade 3 goes to the brig.
+	if _offence == _demoting:
+		will = true
 	if _args().has("enforce-no-detain"):
 		will = false
 	if not will:
@@ -536,6 +671,7 @@ func _verdict() -> void:
 	_t = 0.0
 	_shot()
 	credits_before = float(_player.get("credits"))
+	tier_before = int(_player.get("tier"))
 	hour_before = (float(_clock.call("hour")) if _clock != null else -1.0)
 	state = CUSTODY
 	_say("DETAINED\n%s" % String(_legs[0]).to_upper())
@@ -545,15 +681,33 @@ func _verdict() -> void:
 ## it was routed by `consequence.arrest` on the graph a resident commutes on;
 ## nothing here adds anything up except the hour index, which is the one leg
 ## that moves with the clock.
+## WHICH BAKED LADDER THIS STOP COMES OUT OF. `detention` is the card; `search`
+## is the bag. The hold is NOT duplicated between them -- only the disposal
+## differs by offence, so `hold_s_h`/`total_s_h` are read from `detention` in
+## both branches, which is `enforcement.py`'s own note on the key.
+func _branch() -> Dictionary:
+	if _offence == _demoting and _row.has("search"):
+		return _row.get("search", {})
+	return _row.get("detention", {})
+
+
+## The leg at which the player is actually PUT IN THE BRIG, by index into the
+## list `_chain()` returns. Named rather than counted at the call site, because
+## a magic 1 in `_custody` would silently move if a line were inserted.
+const BRIG_LEG := 1
+const RELEASE_LEG := 6
+
+
 func _chain() -> Array:
-	var d: Dictionary = _row.get("detention", {})
+	var d: Dictionary = _branch()
+	var hold_src: Dictionary = _row.get("detention", {})
 	var legs: Dictionary = d.get("legs", {})
 	var h := 13
 	if _clock != null:
 		h = int(floor(fposmod(float(_clock.call("hour")), 24.0)))
-	var hold: Array = d.get("hold_s_h", [])
+	var hold: Array = hold_src.get("hold_s_h", [])
 	var hold_s := (float(hold[h]) if h < hold.size() else 0.0)
-	var total: Array = d.get("total_s_h", [])
+	var total: Array = hold_src.get("total_s_h", [])
 	var total_s := (float(total[h]) if h < total.size() else 0.0)
 	var c: Dictionary = _outcome()
 	var offs: Dictionary = _data.get("offence", {})
@@ -567,13 +721,116 @@ func _chain() -> Array:
 		"IDENTICARD SEIZED -- %s" % String(row.get("source", "")).left(64),
 		"ESCORTED TO THE BRIG -- %.1f min on the routed graph"
 			% (float(legs.get("escort_s", 0.0)) / 60.0),
-		"BOOKED -- %.0f min" % (float(legs.get("booking_s", 0.0)) / 60.0),
+		"BOOKED IN CELL %02d OF %d -- %s, %.0f min"
+			% [_cell, int(_brig.get("cells", 0)),
+				String(d.get("offence", "")).to_upper().replace("_", " "),
+				float(legs.get("booking_s", 0.0)) / 60.0],
 		"HELD TO THE NEXT OMBUDS SITTING -- %.1f h" % (hold_s / 3600.0),
 		"OMBUDS COURT -- %s" % String(c.get("reason", "")).left(64),
 		"FINE %.2f CR -- %s" % [float(c.get("fine", 0.0)),
 			String(c.get("disposal", "")).to_upper()],
 		"RELEASED -- %.1f h in custody, %s" % [total_s / 3600.0, card],
 	]
+
+
+# ---------------------------------------------------------------------------
+#  THE BRIG, AS A PLACE THE PLAYER IS IN
+# ---------------------------------------------------------------------------
+## THE LIMIT THIS CLOSES IS IN THE FILE THAT SHIPPED IT. `_settle`'s own comment
+## read: "Released into the corridor, because the brig is a real place in the
+## register and it is 6 km and four decks from this one -- teleporting a body
+## into a cell that has not streamed drops it through the world. The escort is
+## reported in minutes and not walked, which is a real limit and is printed
+## rather than hidden."
+##
+## Printing a limit is better than hiding one and it is still a caption. A hold
+## you are TOLD about is the same thing as a refusal you can walk away from.
+##
+## SO THE BODY GOES, AND THE HONESTY IS MOVED FROM THE PROSE INTO A MEASUREMENT.
+## The player is placed at the brig's own address -- `enforcement.py::
+## brig_address`'s `stand`, which is `collision.stand_at`'s formula, so it is
+## the point that module would have stood a body at -- and TWO separate things
+## are then reported, because they are two separate claims and only one of them
+## is always available:
+##
+##   `in_box`  the player's world position is inside the brig's own register
+##             box. This is checkable with NO DECK BUILT, and it is the claim
+##             "they are at the brig" in the only terms the register has.
+##   `floor`   a ray finds collision under them. This is the claim "they are
+##             STANDING in it", and it can only be true when red/2/1 has been
+##             baked and streamed. When it is false the run says so, in those
+##             words, and does not pretend.
+##
+## A gate that reported one number for both would be the tool-that-silently-
+## degrades defect this project has already paid a session for.
+func _to_brig() -> void:
+	if _player == null or _brig.is_empty():
+		return
+	_return_to = _player.global_position
+	var stand: Array = _brig.get("stand", [])
+	if stand.size() < 3:
+		return
+	brig_at = Vector3(float(stand[0]), float(stand[1]), float(stand[2]))
+	_player.global_position = brig_at
+	_player.set("velocity", Vector3.ZERO)
+	brig_held += 1
+	var inside := _in_brig_box(brig_at)
+	if inside:
+		brig_in_box += 1
+	brig_floor_m = _floor_under(brig_at)
+	print("ARREST brig HELD at %s cell %02d of %d -- (%.1f, %.1f, %.1f), "
+		% [String(_brig.get("place", "brig")), _cell,
+			int(_brig.get("cells", 0)), brig_at.x, brig_at.y, brig_at.z]
+		+ "%s %s ring %d deck %d %.0f deg z %.0f, in_box=%s, floor=%s"
+		% [String(_brig.get("name", "")), String(_brig.get("sector", "?")),
+			int(_brig.get("ring", -1)), int(_brig.get("deck", -1)),
+			float(_brig.get("angle_deg", 0.0)), float(_brig.get("z_m", 0.0)),
+			("yes" if inside else "NO"),
+			("%.2f m" % brig_floor_m if brig_floor_m >= 0.0
+				else "NONE -- red/2/1 is not built in this container, so the "
+					+ "hold is an ADDRESS and not a floor")])
+
+
+## Put back where they were taken from, then walked out of the room by the
+## normal rung-3 exit. The brig is not a scene this build can leave on foot.
+func _from_brig() -> void:
+	if _player == null or _return_to == Vector3.ZERO:
+		return
+	_player.global_position = _return_to
+	_player.set("velocity", Vector3.ZERO)
+	_return_to = Vector3.ZERO
+
+
+func _in_brig_box(p: Vector3) -> bool:
+	var b = _brig.get("box")
+	if typeof(b) != TYPE_ARRAY or (b as Array).size() < 2:
+		return false
+	var lo: Array = (b as Array)[0]
+	var hi: Array = (b as Array)[1]
+	for i in 3:
+		if p[i] < float(lo[i]) - 0.01 or p[i] > float(hi[i]) + 0.01:
+			return false
+	return true
+
+
+## Metres to the collision under a point, or -1.0 if there is none. Cast along
+## the DECK'S OWN DOWN, which at r=157 m on a habitat ring is inward along the
+## radius and is not -Y; a -Y cast at the brig would miss a floor that was
+## there and report the limit for the wrong reason.
+func _floor_under(p: Vector3) -> float:
+	var down := Vector3(p.x, p.y, 0.0)
+	if down.length() < 1.0:
+		down = Vector3(0, -1, 0)
+	down = -down.normalized()
+	var space := get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(p - down * 2.0, p + down * 6.0)
+	q.collision_mask = 1
+	if _player != null:
+		q.exclude = [_player.get_rid()]
+	var hit := space.intersect_ray(q)
+	if hit.is_empty():
+		return -1.0
+	return (p - down * 2.0).distance_to(hit["position"]) - 2.0
 
 
 ## Which rung of the conviction ladder this is, at the rung the card ACTUALLY
@@ -591,7 +848,7 @@ func _chain() -> Array:
 ## asserts this at all six rungs with a grade-2 positive control beside it, so
 ## "it never revokes" cannot quietly become "the machinery is absent".
 func _outcome() -> Dictionary:
-	var d: Dictionary = _row.get("detention", {})
+	var d: Dictionary = _branch()
 	var t := int(_player.get("tier"))
 	var by: Dictionary = d.get("ladder_by_tier", {})
 	var seq: Array = by.get(str(t), d.get("ladder", []))
@@ -612,11 +869,21 @@ func _convictions() -> int:
 
 
 func _custody(delta: float) -> void:
+	# HELD MEANS HELD. Between the escort leg and the release leg the body is
+	# re-asserted at the cell every physics frame. Without it a player put at an
+	# address with no floor under it falls for the length of the hold and is
+	# somewhere else by the court leg -- which would make "you were in the brig"
+	# true for one frame and false for the rest, which is the same as false.
+	if _leg >= BRIG_LEG and _leg < RELEASE_LEG and _return_to != Vector3.ZERO:
+		_player.global_position = brig_at
+		_player.set("velocity", Vector3.ZERO)
 	_t += delta * rate
 	if _t < LEG_DWELL_S:
 		return
 	_t = 0.0
 	_leg += 1
+	if _leg == BRIG_LEG:
+		_to_brig()
 	if _leg < _legs.size():
 		print("ARREST   %s" % String(_legs[_leg]))
 		_say("IN CUSTODY\n%s" % String(_legs[_leg]).to_upper())
@@ -635,12 +902,13 @@ func _custody(delta: float) -> void:
 ## transfer to the court in the ledger a drink moves through, not a new wallet.
 func _settle() -> void:
 	var c: Dictionary = _outcome()
-	var d: Dictionary = _row.get("detention", {})
+	var d: Dictionary = _branch()
 	var legs: Dictionary = d.get("legs", {})
 	var h := 13
 	if _clock != null:
 		h = int(floor(fposmod(float(_clock.call("hour")), 24.0)))
-	var total: Array = d.get("total_s_h", [])
+	var total: Array = (_row.get("detention", {}) as Dictionary).get(
+		"total_s_h", [])
 	var total_s := (float(total[h]) if h < total.size() else 0.0)
 
 	# 1. THE CLOCK. A hold that does not move the station clock is a caption.
@@ -673,12 +941,31 @@ func _settle() -> void:
 			String(c.get("tier_after_name", "")))
 	last_line = String(c.get("disposal", ""))
 	last_why = String(c.get("reason", ""))
+	tier_after = int(_player.get("tier"))
+	if tier_after < tier_before:
+		print("ARREST DEMOTED %d (%s) -> %d (%s) -- %s"
+			% [tier_before, String(c.get("tier_before_name", "")), tier_after,
+				String(_player.get("tier_name")),
+				String(c.get("reason", "")).left(64)])
+	else:
+		print("ARREST tier %d STANDS -- %s"
+			% [tier_after, String(c.get("reason", "")).left(72)])
 
-	# 4. AND YOU ARE NOT WHERE YOU WERE. Released into the corridor, because the
-	#    brig is a real place in the register and it is 6 km and four decks from
-	#    this one -- teleporting a body into a cell that has not streamed drops
-	#    it through the world. The escort is reported in minutes and not walked,
-	#    which is a real limit and is printed rather than hidden.
+	# 3b. AND IT IS READABLE. The booking is not stored: `enforcement.py::
+	#     bookings` recomputes it from the purse the line above just wrote, and
+	#     this is that record's one-line form, printed where a gate can read it.
+	booking = ("%s, %s, cell %02d of %d, %.2f cr, %s"
+		% [String(_player.get("person")),
+			String(d.get("offence", "")), _cell,
+			int(_brig.get("cells", 0)), fine,
+			("%s WITHDRAWN" % String(c.get("tier_before_name", "")).to_upper()
+				if bool(c.get("revoked", false)) else "card endorsed")])
+	print("ARREST booking -- %s" % booking)
+
+	# 4. AND YOU ARE NOT WHERE YOU WERE. Brought back from the cell to the room
+	#    the arrest happened in, then walked out of it by the ordinary exit --
+	#    the point the ray that placed the officer already proved clear.
+	_from_brig()
 	_escort_out()
 	_dismiss()
 	var seen := "%.2f CR PAID, CONVICTION ON THE CARD" % fine
@@ -704,13 +991,13 @@ func _escort_out() -> void:
 ## player escorted to 12 m that happened to still be inside would be refused
 ## again on the next frame, for ever.
 func _outside() -> Vector3:
-	var b = (_hud.get("_boxes") as Dictionary).get(_place)
+	var b := _box_of(_place)
 	var dir := _out_dir()
 	var p: Vector3 = _player.global_position
 	var want := APPROACH_MAX_M
-	if typeof(b) == TYPE_ARRAY:
-		var lo: Vector3 = (b as Array)[0]
-		var hi: Vector3 = (b as Array)[1]
+	if not b.is_empty():
+		var lo: Vector3 = b[0]
+		var hi: Vector3 = b[1]
 		var ax := 0
 		for i in 3:
 			if absf(dir[i]) > absf(dir[ax]):
@@ -784,6 +1071,8 @@ func _say(s: String) -> void:
 func report() -> String:
 	return ("refused=%d responded=%d arrived=%d moved_on=%d detained=%d "
 		% [refused, responded, arrived, moved_on, detained]
+		+ "searched=%d brig=%d/%d tier=%d->%d " % [searched, brig_in_box,
+			brig_held, tier_before, tier_after]
 		+ "walked=%.1f rate=%.1f" % [_officer_m, rate])
 
 
@@ -806,6 +1095,7 @@ var _gate_visits := 0
 var _gate_cr0 := -1.0
 var _gate_h0 := -1.0
 var _gate_where0 := Vector3.ZERO
+var _gate_tier0 := -99
 
 const GATE_SETTLE := 30
 const GATE_VISITS := 3          ## enough stops for the fork to show both faces
@@ -832,8 +1122,21 @@ func run_gate() -> void:
 	if _args().has("tier"):
 		var t := int(_args()["tier"])
 		_player.set("tier", t)
-		_player.set("tier_name", "forced_%d" % t)
-		print("ARREST control: the card now reads tier %d" % t)
+		_player.set("tier_name", String((_data.get("tiers", {}) as Dictionary)
+			.get(str(t), "forced_%d" % t)))
+		print("ARREST control: the card now reads tier %d (%s)"
+			% [t, String(_player.get("tier_name"))])
+	# THE BAG, AND IT IS `player.gd::take` AND NOT A FIELD POKE. That is the
+	# same call `interact.gd` makes when a player picks something up, so the
+	# gate exercises the state a played session would actually be in -- and it
+	# respects `bag_full()`, so a gate cannot smuggle a good past the carry cap
+	# the game enforces.
+	if _args().has("arrest-contraband") and not _restricted.is_empty():
+		var good := String(_restricted[0])
+		var got: bool = _player.call("take", good)
+		print("ARREST bag: took `%s` -> %s (carrying %s)"
+			% [good, ("yes" if got else "REFUSED -- bag full"),
+				", ".join(_player.get("carrying"))])
 	# THE TABLE'S ABSENCE GETS ITS OWN SENTENCE. Without it the run falls into
 	# "nothing on this deck refuses this card", which is a statement about the
 	# CARD and would send the next reader to the wrong half of the system.
@@ -855,6 +1158,11 @@ func run_gate() -> void:
 		return
 	_gate_cr0 = float(_player.get("credits"))
 	_gate_h0 = (float(_clock.call("hour")) if _clock != null else -1.0)
+	# THE RUNG THE RUN STARTED ON, held separately from `tier_before`, which is
+	# per-arrest. A three-visit gate demotes on visit one and then arrests a
+	# person with nothing left to take, so comparing the LAST arrest's before
+	# and after would report "no demotion" on a run that demoted.
+	_gate_tier0 = int(_player.get("tier"))
 	print("ARREST gate: %s, rung %d(%s) against need %d, response %.0f s at "
 		% [_gate_k, int(_player.get("tier")), String(_player.get("tier_name")),
 			int((_places[_gate_k] as Dictionary).get("need", 0)),
@@ -873,13 +1181,22 @@ func run_gate() -> void:
 ## inside the first `GATE_VISITS` stops, and refused by the card we hold.
 func _pick() -> String:
 	var tier := int(_player.get("tier"))
-	var boxes: Dictionary = _hud.get("_boxes")
 	var best := ""
+	var carrying := _contraband() != ""
 	for k in _places:
 		var r: Dictionary = _places[k]
-		if tier >= int(r.get("need", 0)):
+		# CARRYING CHANGES WHICH PLACES CAN STOP YOU, and that is the point of
+		# the second trigger rather than a loosening of the first. With a clean
+		# bag only a place that REFUSES the card can open a stop. With Dust in
+		# it, any place that READS a card searches -- including the one that
+		# just admitted you, which on this deck is the only place a rung-2 card
+		# can meet at all.
+		if carrying:
+			if not bool(r.get("reads_card", false)):
+				continue
+		elif tier >= int(r.get("need", 0)):
 			continue
-		if not boxes.has(k):
+		if not _has_box(String(k)):
 			continue
 		if best == "":
 			best = String(k)
@@ -902,7 +1219,7 @@ func _pick() -> String:
 ## teleport onto the centre would prove the table can be looked up and would say
 ## nothing about a transition.
 func _visit() -> void:
-	var b: Array = (_hud.get("_boxes") as Dictionary)[_gate_k]
+	var b: Array = _box_of(_gate_k)
 	var lo: Vector3 = b[0]
 	var hi: Vector3 = b[1]
 	var c: Vector3 = (lo + hi) * 0.5
@@ -961,9 +1278,25 @@ func _finish(_ok: bool) -> void:
 		and (moved_on + detained) > 0 and detained > 0
 		and dcr > 0.0 and dh > 0.0
 		and (not body or _gate_walked > 1.0))
+	# THE PROGRESSION HALF, and it is only asserted when the run was ASKED for
+	# it. `--arrest-contraband` is what puts something in the bag; without it
+	# the only offence available is grade 1 and `Record.ordinary()` correctly
+	# takes nothing, so demanding a demotion on a clean-bag run would be a gate
+	# that fails for the right behaviour.
+	var want_demote := _args().has("arrest-contraband") \
+		and not _args().has("enforce-no-contraband")
+	var demoted := (tier_after >= 0 and _gate_tier0 > -99
+		and tier_after < _gate_tier0)
+	if want_demote:
+		ok = ok and searched > 0 and demoted and booking != "" \
+			and brig_in_box > 0
 	print(("ARREST gate=%s refused=%d responded=%d arrived=%d moved_on=%d "
-		+ "detained=%d walked=%.1fm cr=-%.2f clock=+%.1fh out=%.1fm rate=x%.0f "
+		+ "detained=%d searched=%d brig=%d/%d floor=%.2f tier=%d->%d "
+		+ "walked=%.1fm cr=-%.2f clock=+%.1fh out=%.1fm rate=x%.0f "
 		+ "place=%s") % [
 		("PASS" if ok else "FAIL"), refused, responded, arrived, moved_on,
-		detained, _gate_walked, dcr, dh, moved, rate, _gate_k])
+		detained, searched, brig_in_box, brig_held, brig_floor_m, _gate_tier0,
+		tier_after, _gate_walked, dcr, dh, moved, rate, _gate_k])
+	if booking != "":
+		print("ARREST record -- %s" % booking)
 	get_tree().quit(0 if ok else 1)

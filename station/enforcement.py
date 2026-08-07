@@ -1305,7 +1305,7 @@ def godot_binary():
     return None
 
 
-def _run(extra, timeout=240, verbose=False):
+def _run(extra, timeout=240, verbose=False, ledger_src=None):
     """One launch of the shipped scene, and TWO things about it are deliberate.
 
     A TIMEOUT IS A RESULT. `--no-enforcement` stops `interact.gd` building the
@@ -1333,7 +1333,7 @@ def _run(extra, timeout=240, verbose=False):
     import tempfile                                               # noqa: PLC0415
     tmp = tempfile.mkdtemp(prefix="arrest-gate-")
     led = os.path.join(tmp, "economy.json")
-    shutil.copyfile(LEDGER, led)
+    shutil.copyfile(ledger_src or LEDGER, led)
     cmd = [g, "--headless", "--path", GODOT_DIR, "--", "--no-coldstart",
            "--arrest-gate", "--ledger=" + led] + list(extra)
     try:
@@ -1342,7 +1342,8 @@ def _run(extra, timeout=240, verbose=False):
     except subprocess.TimeoutExpired:
         return None, ("no verdict in %d s -- nothing in this build answered "
                       "--arrest-gate" % timeout)
-    out = res.stdout + res.stderr + "\n" + _ledger_delta(LEDGER, led)
+    out = res.stdout + res.stderr + "\n" + _ledger_delta(ledger_src or LEDGER,
+                                                         led)
     if verbose:
         print(out)
     m = re.search(r"^%s gate=(\S+)(.*)$" % GATE_TAG, out, re.M)
@@ -1383,13 +1384,175 @@ def _ledger_delta(before: str, after: str) -> str:
     ra = (a.get("record") or {}).get("convictions", [])
     rb = (b.get("record") or {}).get("convictions", [])
     return ("ARREST ledger cr %.2f -> %.2f (-%.2f), convictions %d -> %d, "
-            "tier %s -> %s"
+            "tier %s -> %s\n%s"
             % (float(a.get("credits", 0)), float(b.get("credits", 0)),
                float(a.get("credits", 0)) - float(b.get("credits", 0)),
-               len(ra), len(rb), a.get("tier"), b.get("tier")))
+               len(ra), len(rb), a.get("tier"), b.get("tier"),
+               _reload_line(a, b)))
 
 
-def gate(verbose=False, legacy=False) -> dict:
+def _reload_line(before: dict, after: dict) -> str:
+    """QUIT AND RELOAD, DONE FOR REAL: the engine's file, reopened by Python.
+
+    THE STORED `tier` FIELD IS NOT THE ANSWER AND MUST NOT BE READ AS ONE.
+    `interact.gd::convict` writes the demotion where it belongs -- into the
+    `record` (`visa_revoked`, `revoked_from`) -- and `player.py` DELIBERATELY
+    does not store the rung as a fact: `Player.tier` is `consequence.tier_of`'s
+    reading of the card plus the record, and its own comment says a stored tier
+    "would be a second description of what the card already says". So the
+    purse's `tier` key is a REPORT written at save time and the reload has to
+    re-derive rather than trust it.
+
+    That is what this does: it mints the player the purse names, restores the
+    document the engine wrote, and asks `tier_of` again -- exactly what a second
+    session's `player.from_state` does. The rung it returns is the one a player
+    would come back to.
+    """
+    try:
+        rb = after.get("record") or {}
+        pl = PL.player_from({"species": after.get("species", "human"),
+                             "role": after.get("role", "")},
+                            seed=str(after.get("npc_id", "")).split(":")[-1])
+        t0 = int(pl.tier)
+        pl.restore({k: v for k, v in after.items() if k != "npc_id"})
+        bk = bookings(after)
+        return ("ARREST reload rung=%d(%s) from a clean card at rung %d(%s); "
+                "revoked=%s from=%s; booking=%s"
+                % (int(pl.tier), pl.tier_name, t0, cq.tier_name(t0),
+                   bool(rb.get("visa_revoked")),
+                   rb.get("revoked_from") or "-",
+                   ("%s/%s/%.2f cr/cell %s" % (bk[-1]["who"], bk[-1]["offence"],
+                                               bk[-1]["fine"], bk[-1]["cell"]))
+                   if bk else "none"))
+    except Exception as e:                                        # noqa: BLE001
+        return "ARREST reload UNREADABLE -- %s" % e
+
+
+# THE PROGRESSION RUN OF THE SAME GATE -- same scene, same launcher, two flags.
+# `--tier=2` gives the card something to lose: the shipped purse is rung 0,
+# where `REVOCABLE[NO_STATUS]` is None and there is nothing an Ombuds can take,
+# so a demotion gate run against the shipped purse could only ever fail.
+# `--arrest-contraband` puts an `economy.GOODS`-classed contraband good in the
+# bag through `player.gd::take`, which is the call a played session makes.
+PROG_FLAGS = ("--arrest-contraband",)
+PROG_CONTROLS = (
+    (("--enforce-no-contraband",),
+     "same stop, EMPTY BAG -- grade 1, and nothing is taken"),
+    (("--arrest-contraband", "--enforce-legacy"),
+     "the node reads no table -- the build before session 4r"),
+    (("--arrest-contraband", "--enforce-no-detain"),
+     "every stop takes rung 3 -- nobody is booked, so nobody is demoted"),
+)
+
+# AND THE PURSE THE RUN OPENS, WHICH IS NOT `--tier=N`. The first version of
+# this gate forced the rung with `--tier=2`, which writes the number onto
+# `player.gd` and LEAVES THE FILE ALONE -- so the engine demoted a card the
+# document had never issued, and the reload check correctly reported the
+# document coming back at rung 0 with nothing taken from it. Forcing a field is
+# not the same as issuing a card.
+#
+# So the progression run gets its own ledger, minted by `_mint` and written by
+# `economy.Ledger.save`: a real transit visa, in the real document format, in a
+# temp directory. The engine loads it the ordinary way (`--ledger=`), the whole
+# chain runs against it, and the reload is then a claim about a file that
+# described a rung-2 person before the arrest and a rung-0 one after.
+def prog_ledger(day: int = 3, seed: str = "b5") -> tuple:
+    import tempfile                                             # noqa: PLC0415
+    pl = _mint()
+    if int(pl.tier) < 2:
+        raise AssertionError(
+            "the minted card reads rung %d %s -- this gate needs somebody with "
+            "something to lose, and `REVOCABLE` has nothing to take below rung "
+            "1. `_mint`'s seed no longer produces a transit visa."
+            % (pl.tier, pl.tier_name))
+    path = os.path.join(tempfile.mkdtemp(prefix="prog-purse-"), "economy.json")
+    _ledger_for(pl, day=day, seed=seed, path=path)
+    return pl, path
+
+
+def _prog_gate(verbose=False) -> dict:
+    """THE ACCEPTANCE, IN THE SHIPPED SCENE: arrested, held, fined, DEMOTED.
+
+    One launch. The body walks across a real boundary at a place that reads a
+    card, the bag is searched, the pair comes, the player is put in a numbered
+    cell at the brig's own register address, the fine leaves the purse, the
+    conviction is written, the rung goes DOWN, and the booking is printed.
+    Then the LEDGER ON DISK is re-read and the demotion has to be in it, which
+    is the reload half: the file is what a second session would open.
+    """
+    if not os.path.exists(OUT_JSON):
+        print("ARREST SKIP -- no %s. Run `--bake`"
+              % os.path.relpath(OUT_JSON, ROOT))
+        return {"ok": True, "skipped": True}
+    pl, src = prog_ledger()
+    print("PROGRESSION IN THE ENGINE -- `godot --headless --path godot -- "
+          "--no-coldstart --arrest-gate %s`" % " ".join(PROG_FLAGS))
+    print("  the card this run opens: %s, rung %d %s, %.2f cr"
+          % (pl.card.card_name, pl.tier, pl.tier_name, pl.credits))
+    d, out = _run(PROG_FLAGS, verbose=verbose, ledger_src=src)
+    if d is None:
+        for line in out.splitlines()[-25:]:
+            print("    | " + line)
+        print("  ARREST-PROG FAIL -- the shipped scene printed no verdict")
+        return {"ok": False}
+    ok = d.get("gate") == "PASS"
+    print("  %s %s" % (d["gate"], " ".join("%s=%s" % (k, v)
+                                           for k, v in d.items()
+                                           if k != "gate")))
+    for line in out.splitlines():
+        if line.startswith("ARREST ") and "gate=" not in line:
+            print("    | " + line[7:])
+    t0, t1 = -99, -99
+    m = re.search(r"tier=(-?\d+)->(-?\d+)", out)
+    if m:
+        t0, t1 = int(m.group(1)), int(m.group(2))
+        print("  %s TIER %d -> %d" % ("ok  " if t1 < t0 else "FAIL", t0, t1))
+        ok = ok and t1 < t0
+    # THE FILE, NOT THE RUNTIME -- and here it is the demotion and not only the
+    # money. A rung that moved in a variable and not in the document is a rung
+    # the next session does not inherit, which is the whole of THE-GAME's
+    # "the record is what makes a second day different from the first".
+    md = re.search(r"^ARREST ledger cr .*\(-([\d.]+)\), convictions (\d+) -> "
+                   r"(\d+), tier (\S+) -> (\S+)", out, re.M)
+    on_disk = (bool(md) and float(md.group(1)) > 0.0
+               and int(md.group(3)) > int(md.group(2)))
+    print("  %s the LEDGER ON DISK carries it: %s"
+          % ("ok  " if on_disk else "FAIL",
+             md.group(0)[7:] if md else "no ledger line"))
+    ok = ok and on_disk
+    # THE RELOAD, AND IT IS THE HALF THE ACCEPTANCE IS ACTUALLY ABOUT. The
+    # engine wrote a JSON document and quit; this line is Python opening that
+    # document as a second session would and asking `consequence.tier_of` for
+    # the rung. It reports both the rung the reload gives AND the rung the same
+    # card would read with the record thrown away -- which is `--no-restore` as
+    # a number printed beside its subject rather than as a separate run.
+    mr = re.search(r"^ARREST reload rung=(-?\d+)\([^)]*\) from a clean card at "
+                   r"rung (-?\d+)\(", out, re.M)
+    reloaded = bool(mr) and int(mr.group(1)) < int(mr.group(2))
+    print("  %s RELOADED from the file the engine wrote: %s"
+          % ("ok  " if reloaded else "FAIL",
+             mr.group(0)[7:] if mr else "no reload line"))
+    ok = ok and reloaded
+    print("  PROGRESSION CONTROLS -- each removes one input; the demotion must "
+          "stop happening")
+    for flags, why in PROG_CONTROLS:
+        cd, cout = _run(flags, verbose=verbose, ledger_src=src)
+        cm = re.search(r"tier=(-?\d+)->(-?\d+)", cout)
+        fell = bool(cm) and int(cm.group(2)) < int(cm.group(1)) \
+            and int(cm.group(2)) >= 0
+        good = not fell
+        print("    %s %-46s %-52s -- %s"
+              % ("ok  " if good else "FAIL", " ".join(flags), why,
+                 ("tier %s -> %s" % (cm.group(1), cm.group(2))) if cm
+                 else "no verdict"))
+        ok = ok and good
+    print("  ARREST-PROG %s" % ("PASS" if ok else "FAIL"))
+    return {"ok": ok, "verdict": d, "tier_before": t0, "tier_after": t1}
+
+
+def gate(verbose=False, legacy=False, progression=False) -> dict:
+    if progression:
+        return _prog_gate(verbose)
     if not os.path.exists(OUT_JSON):
         print("ARREST SKIP -- no %s. Run `python3 station/enforcement.py "
               "--bake`" % os.path.relpath(OUT_JSON, ROOT))
@@ -1452,6 +1615,9 @@ def main(argv=None):
     ap.add_argument("--gate", action="store_true")
     ap.add_argument("--legacy", action="store_true",
                     help="with --gate: run the pre-4r build and show it FAIL")
+    ap.add_argument("--progression", action="store_true",
+                    help="with --gate: run the DEMOTION scenario in the "
+                         "shipped scene, with its own controls")
     ap.add_argument("--progression-gate", action="store_true",
                     help="arrest -> brig -> fine -> release -> DEMOTED, and "
                          "the record survives a reload")
@@ -1495,7 +1661,7 @@ def main(argv=None):
         print("enforcement: %s -- %d place(s)" % (os.path.relpath(p, ROOT), n))
     if a.selftest and not selftest():
         rc = 1
-    if a.gate and not gate(a.verbose, a.legacy).get("ok"):
+    if a.gate and not gate(a.verbose, a.legacy, a.progression).get("ok"):
         rc = 1
     return rc
 
