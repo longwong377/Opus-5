@@ -11817,3 +11817,53 @@ make smuggling the norm rather than a crime.
 
 **What would overturn it.** Any figure for B5 cargo unit mass, or any seizure volume for the cargo
 side, or a stated throughput that replaces the spec's 4,000–5,000 t/day.
+
+## INV-745 — a room's collision box is its MODULE's box, measured, not a representative bay
+
+**What.** `deck.room_box_m` returns `(x0, x1, ceil_m)` for every place, and it is the only
+thing `deck.room_shell_for`, `deck.room_half_w_m` and `deck_plan`'s door-fit test are allowed
+to ask. For a place `bespoke.compose` draws, all three numbers are MEASURED off the module's
+own mesh through `bespoke.room_shell`; for a place `rooms.build` draws they are
+`rooms.built_span_m` and `rooms.ceiling_m` unchanged. `collision.room_shell` gains `x_off_m`
+so an asymmetric box can be expressed at all.
+
+**Why.** Not an aesthetic choice: 20 of the 33 composed places on the station had render
+geometry outside their own collision shell. `ambassadorial_suites` had a +/-5.25 m shell
+around a mesh running -92.28..+8.53 m — 87.04 m of room a body could walk out of. Both
+call sites carried the pre-4k expression `min(room_extent_m, bay_span_m) / 2`, which is the
+width of one generic representative bay; session 4k replaced exactly that expression on the
+AXIS, for exactly this reason, and left the width.
+
+**What constrained it.**
+
+* **The measurement, not a number.** There is nothing to invent: the module's mesh is the
+  room, and `bespoke.room_shell` is already the call `--shell-fit` scores containment
+  against and the call `deck.room_geometry` composes from, so no second description of a
+  module's size exists to drift. This is hard rule 4 (inside and outside from one schema)
+  applied to a third mesh.
+* **The offset is forced by `bespoke.room_shell`'s own frame.** It recentres a module's x on
+  its DOORWAY rather than its bounding box — its note says local x = 0 "is not a centre, it
+  is a DOORWAY" — so a symmetric half-width about the place's bearing cannot describe
+  `arrival_concourse` (-17.37..+3.53 m) at any width. Either containment or the neighbouring
+  arc has to give.
+* **The ceiling is `max(declared, measured)` and never the measurement alone.** The mesh
+  height is what the shell must CONTAIN; `rooms.ceiling_m` is what the place is specified
+  at. Taking the mesh alone would let a module that models only its lower storey shrink the
+  volume a body may occupy. `council_chamber` goes 3.60 -> 7.42 m, `downbelow_arch`
+  3.40 -> 23.57 m.
+* **Non-overlap is now asserted rather than inherited.** `directory.collisions()` asserts
+  footprints do not overlap, so a shell inside its footprint used to inherit non-overlap by
+  construction. Widening the shells spends that: `qtr_transient` builds 69.68 m of module in
+  a 58.28 m footprint. `deck.py --shell-fit`'s OVERLAP leg therefore tests the arcs the
+  shells actually span, pairwise, on every shared sector/ring/deck with overlapping z bands.
+  It reports 0 — measured, not assumed.
+* **The 89 generic places do not move.** `built_span_m()[0]` is `min(w_full, bw)` for them,
+  which is the number both call sites returned before, and the door-fit test reduces to the
+  old `abs(dx) + door_w/2 < hw - WALL_T` whenever `x0 = -x1`. Asserted by `--legacy`.
+
+**What would overturn it.** A composed module that emits geometry it does not intend a body
+to reach (an exterior greeble, a skybox card) would inflate its box, and the answer would be
+to measure a named subset of its groups rather than its whole mesh. Landing P1 of
+`scratchpad/PATCHES-4t-shellfit.md` — `bespoke.axial_plan` returning `bay_w` — makes
+`rooms.built_span_m` true for composed places, at which point `room_box_m`'s `module` branch
+collapses into its `builder` branch and only `x_off_m` remains.

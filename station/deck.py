@@ -2623,7 +2623,20 @@ def shell_fit(schema, profile, verbose=True, legacy=False, break_shell=None):
     # arcs all intersect. Arc, not metres: the same 5 m of x is a different
     # angle on a 191 m ring than on a 250 m one, and comparing metres would
     # both miss and invent collisions between rings.
-    over = []
+    #
+    # CONTAINMENT IS NOT COLLISION, and this asks the register's own fact
+    # rather than deciding it again. `directory.collisions()` had exactly this
+    # argument first: its first run flagged C&C inside Observation Dome 1,
+    # Kosh's quarters inside the Alien Sector and Downbelow inside the plant
+    # zone, and all three are correct nesting -- a place declares `within` and
+    # is then expected to overlap its container. Its docstring is explicit that
+    # "exempting them by name would have been a fudge; modelling containment is
+    # the fact", so the same predicate is called here. Written without it this
+    # leg reported `cnc` sharing 12.97 m of arc with `obs_dome_1`, which is
+    # true, is the whole of the dome, and is the register saying C&C is inside
+    # it. A NESTED PAIR IS STILL COUNTED IN `nested` AND PRINTED, because the
+    # exemption is the one thing here that could hide a real overlap.
+    over, nested = [], []
     for i in range(len(boxes)):
         p, ax0, ax1 = boxes[i]
         try:
@@ -2645,7 +2658,10 @@ def shell_fit(schema, profile, verbose=True, legacy=False, break_shell=None):
             ja = (q.get("angle_deg", 0.0) + math.degrees(bx0 / r_i),
                   q.get("angle_deg", 0.0) + math.degrees(bx1 / r_i))
             lo, hi = max(ia[0], ja[0]), min(ia[1], ja[1])
-            if hi - lo > 1e-9:
+            if hi - lo > 1e-9 and (dr.contains(p, q) or dr.contains(q, p)):
+                nested.append((p["key"], q["key"], hi - lo,
+                               math.radians(hi - lo) * r_i))
+            elif hi - lo > 1e-9:
                 over.append((p["key"], q["key"], hi - lo,
                              math.radians(hi - lo) * r_i))
 
@@ -2693,6 +2709,9 @@ def shell_fit(schema, profile, verbose=True, legacy=False, break_shell=None):
     for key, sw, w_full in overfoot:
         out(f"  note OVERFOOT {key:<20} shell {sw:7.2f} m in a {w_full:7.2f} m "
             f"footprint -- OVERLAP above is what makes that safe")
+    for key, a, b, m_ in sorted(nested, key=lambda r: -r[3]):
+        out(f"  note NESTED   {key:<20} shares {m_:6.2f} m of arc with {a}, "
+            f"which the register declares it is INSIDE")
     if stale or overfoot:
         out(f"  ({len(stale)} stale builder widths, {len(overfoot)} shells "
             f"outside their footprint -- reported, not counted: neither is "
