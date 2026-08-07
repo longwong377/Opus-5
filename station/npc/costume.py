@@ -1129,10 +1129,55 @@ HEM_R = 1.022
 BOOT_TOP_YF = 0.185
 BOOT_TOP_HALF_H_F = 0.011
 BOOT_TOP_R = 1.070
-PLACKET_HALF_W_F = 0.010  # of stature: a 35 mm closure strip
+PLACKET_HALF_W_F = 0.010  # of stature: a 35 mm closure strip -- SUPERSEDED by
+                          # the measured PLACKET_W_TOP_M/BOT_M below, kept
+                          # because `CONSTRUCTION["placket"].value_m` and
+                          # `_selftest`'s cull arithmetic are written against
+                          # it and it is still the strip's smallest dimension
 PLACKET_THICK_F = 0.004
 PLACKET_LO_YF = 0.10      # of the torso's height
 PLACKET_HI_YF = 0.90
+
+# --- THE SEAM IS A DIAGONAL, AND THE REFERENCES SAY SO TWICE -- INV-1191 ----
+#
+# MEASURED, off `reference/14-characters-and-uniforms/earthforce security
+# uniforms.jpg`, an orthographic three-view. Scale: the front figure is 610 px
+# crown to sole for a nominal 1.80 m = 339 px/m. Classifying by the panel's own
+# colour (57,28,24) against the uniform's (126,126,126):
+#
+#   * the panel is FRONT-ONLY. Over the back view (x 820..1015) it returns
+#     ZERO pixels for every row from y=162 to y=300 -- so what this file has
+#     been building, a band that rings the shoulders at constant height, does
+#     not exist on the reference at all.
+#   * its top edge is the shoulder line, y=144; its lower boundary on the
+#     wearer's right is y=168. 24 px = 0.071 m. On the wearer's left there is
+#     no panel: the boundary has descended past the shoulder entirely.
+#   * the closure strip's inboard edge runs x=107 at y=168 to x=126 at y=312,
+#     with its outboard edge fixed at x=145 -- so the strip TAPERS, 38 px
+#     (0.112 m) at the collarbone to 19 px (0.056 m) at the belt, over 0.425 m
+#     of height.
+#   * torso half-width there is (208-63)/2 = 72.5 px and its centre is x=135.5,
+#     so the strip's centre at the top is 9.5 px = 0.028 m to the wearer's
+#     RIGHT of the centreline. It is a wrap, not a centre placket.
+#
+# Corroborated at authority 1 and NOT measured there: `Talia Winters in
+# uniform.webp` shows the same asymmetric diagonal wrap closure running from
+# the shoulder point down across the chest. A gradient trace of that frame
+# returns noise (peak |d/dx| of 2-4 over a jacket sitting at luminance 15-30),
+# so it is cited as corroboration of the SHAPE and no number is taken from it.
+# Overturned by any authority-1 frame that resolves a civilian yoke seam
+# against a known scale.
+#
+# What is extrapolated, at authority 5, is WHICH shoulder: the reference shows
+# one figure. It is drawn per resident from the same hash everything else in
+# this file is drawn from, so half the crowd wraps right over left. That is
+# also the only per-resident variation this pipeline can express in geometry --
+# one material per fabric, drawn as instances of a shared library, is why
+# `Costume.value_jitter` still reaches nothing (INV-815).
+YOKE_SEAM_TILT_M = 0.071
+PLACKET_W_TOP_M = 0.112
+PLACKET_W_BOT_M = 0.056
+PLACKET_OFFSET_TOP_M = 0.028
 
 CONSTRUCTION = {a.key: a for a in (
     Attachment("yoke_panel", "Shoulder yoke panel", 0.007,
@@ -1862,11 +1907,343 @@ def _att_seg(radius, distance_m, cap=16):
     return cap
 
 
-def _band(m, cx, cz, y, r, half_h, group, part, seg, taper=1.0):
-    """A closed band: two rings, capped. The shape of a collar, belt or strap."""
-    rings = [body._ring(cx, y - half_h, cz, r, r, seg),
-             body._ring(cx, y + half_h, cz, r * taper, r * taper, seg)]
-    v, t = body._loft(rings)
+# ---------------------------------------------------------------------------
+# 7c. GARMENT PANELS AS SHELLS ON THE BODY -- INV-1190..1193
+#
+# THE DEFECT THIS SECTION EXISTS TO CLOSE, MEASURED RATHER THAN ARGUED. Every
+# band and panel in this file was `two rings + _loft`, and `_loft` caps both
+# ends by default. A cap is a HORIZONTAL DISC the full width of the thing it
+# closes, and on a dressed figure at the corridor bake level those discs are
+# most of the garment:
+#
+#     piece        horizontal area / total area   (measured by --panels on
+#     yoke_panel   1770 cm2 / 3333 cm2 = 53.1%     the pre-r2 build; the
+#     hem          2000 cm2 / 2447 cm2 = 81.7%     numbers are reproduced by
+#     belt         3158 cm2 / 4007 cm2 = 78.8%     `--panels --legacy`)
+#     boot_top      222 cm2 /  380 cm2 = 58.3%
+#     cuff           72 cm2 /  154 cm2 = 47.0%
+#
+# At the rubric's HALF distance the eye is above the yoke and 0.62 m from it,
+# and 53% of that panel is a flat plate pointing at the camera. judge-4t
+# round 2 described it without reading a line of source -- "a flat octagonal
+# tray floating across the shoulders" -- and every gate in this module passed
+# it, because a capped tube is closed, correctly wound, inside its footprint,
+# above its density floor and carrying a measured material. LAYER 2'S LESSON
+# AT THE SCALE OF A HEM: a cube passes every word of a topological test.
+#
+# The cure is that a garment panel is a SHELL ON THE BODY, not a tube beside
+# it. `_sheath` offsets the part's OWN vertices outward along their own radial
+# direction by a stated thickness, runs the inner surface back down INSIDE the
+# part, and closes the two with a rim of exactly that thickness. What used to
+# be a disc is now a 10 mm edge you can see the underside of, which is what
+# cloth does.
+#
+# THE THICKNESS IS DERIVED, NOT PICKED. `reference/14-characters-and-uniforms/
+# earthforce security uniforms.jpg` is an orthographic three-view; its front
+# figure is 610 px from crown to sole for a nominal 1.80 m, so 339 px/m, and
+# the dark panel's edge reads as a 2 px line = 5.9 mm. That is the drawn line,
+# not the cloth: a faced and interlined garment panel is shell plus facing plus
+# interlining, so the built edge is twice it. 10 mm also has a stated visual
+# life -- at 1280 px and the shot's horizontal field it is 1475 px/m at the
+# rubric's HALF distance (0.62 m), so 14.7 px; 7.4 px at the NORMAL 1.245 m;
+# and it falls under one pixel at 9.1 m, which is past the corridor's
+# conversational range. Overturned by any authority-1 frame that resolves a
+# garment edge against a known scale.
+GARMENT_T_M = 0.010
+
+# How far INSIDE the part the shell's hidden surface runs. It must clear the
+# body's own faceting: a part built at `n` segments has its polygon chord
+# sagging r(1 - cos(pi/n)) inside its ring radius, which on a 0.24 m torso at
+# 8 segments is 18 mm -- so an inner surface 2 mm inside the RING radius would
+# stand 16 mm PROUD of the actual polygon and a panel would show its own
+# lining. `_sheath` does not guess: it takes the part's real vertices at the
+# part's real segment count, so the inner surface is that polygon moved inward
+# by this much and cannot escape it.
+GARMENT_INSET_M = 0.003
+
+
+def _outward(p, cx, cz, d):
+    """Move a point `d` metres along its own radial direction about (cx, cz)."""
+    dx, dz = p[0] - cx, p[2] - cz
+    L = math.hypot(dx, dz)
+    if L < 1e-9:
+        return (p[0], p[1], p[2])
+    return (p[0] + dx / L * d, p[1], p[2] + dz / L * d)
+
+
+def _rings_by_period(verts):
+    """A stooped part's ring stack, recovered from the period of its own x.
+
+    Returns `[[p, ...], ...]` or None. Scored rather than guessed: for each
+    candidate segment count that divides the vertex count, the correlation
+    between each block's x and `cos(2 pi i / d)` is 1.0 for the true period and
+    well under it for any other, so the answer is the argmax and a floor of
+    0.90 refuses to answer at all on anything that is not a loft.
+    """
+    n = len(verts)
+    best, best_s = None, 0.0
+    for d in range(4, n // 2 + 1):
+        if n % d:
+            continue
+        num, den = 0.0, 0
+        for k in range(n // d):
+            blk = verts[k * d:(k + 1) * d]
+            mx = sum(p[0] for p in blk) / d
+            ref = [math.cos(2.0 * math.pi * i / d) for i in range(d)]
+            a = [p[0] - mx for p in blk]
+            na = math.sqrt(sum(q * q for q in a))
+            nb = math.sqrt(sum(q * q for q in ref))
+            if na < 1e-12 or nb < 1e-12:
+                continue
+            num += sum(x * y for x, y in zip(a, ref)) / (na * nb)
+            den += 1
+        if not den:
+            continue
+        s = num / den
+        if s > best_s:
+            best_s, best = s, d
+    if best is None or best_s < 0.90:
+        return None
+    return [verts[k * best:(k + 1) * best] for k in range(n // best)]
+
+
+def _part_rings(verts):
+    """(rings, cx, cz) for a lofted part, ascending in y, or (None, 0, 0).
+
+    `body._y_rings` groups by height, which is exact for everything `_loft`
+    writes and -- unlike `_rings_of` -- does not need the segment count told to
+    it. That matters here more than anywhere else in the file: the whole point
+    of `_sheath` is that a panel carries the part's OWN segment count and the
+    part's OWN vertices, so it inherits the superellipse, the deltoid lobes and
+    the silhouette modifiers instead of re-deriving an ellipse that agrees with
+    none of them. It is also why the panel got CHEAPER: `_att_seg` was sizing a
+    yoke at 16 segments beside a torso built at 8.
+    """
+    rings = body._y_rings(verts)
+    if not rings or len(rings[0]) < 3:
+        # SIX OF EIGHT SPECIES ARRIVED HERE AND WOULD HAVE KEPT THE TRAY.
+        # `_y_rings` groups by equal height and returns None for a STOOPED
+        # part, because `body._bend` rotates y as a function of z and a
+        # pak'ma'ra's rings are no longer level. The first build of this
+        # section shipped with that fallback silent: human and vree got the
+        # shell, minbari, narn, centauri, drazi, brakiri and pak'ma'ra got the
+        # capped tube, and every gate in this file passed. It was `--panels`
+        # printing per species that said so. CLAUDE.md's rule, paid for again:
+        # a fix applied to an instance and not to the rule is a fix that will
+        # be needed again -- so the recovery is fixed rather than the species.
+        #
+        # `_ring` places vertex i of a ring at theta = 360 i / seg and the
+        # stoop does not touch x, so the x sequence within a ring is
+        # rx * cos(2 pi i / seg) whatever has been done to y and z. The period
+        # of that is recoverable exactly, and it is the only property of the
+        # ring stack that survives every modifier in the module.
+        rings = _rings_by_period(verts)
+    if not rings or len(rings[0]) < 3:
+        return None, 0.0, 0.0
+    if rings[0][0][1] > rings[-1][0][1]:
+        rings = list(reversed(rings))
+    cx = sum(v[0] for v in verts) / len(verts)
+    cz = sum(v[2] for v in verts) / len(verts)
+    return rings, cx, cz
+
+
+def _surface_at(rings, i, y):
+    """The part's own surface point at azimuth index `i` and height `y`.
+
+    Linear between the two rings that bracket `y`, clamped at both ends. This
+    is the "offset the hull's own vertices" a panel is built from.
+    """
+    if y <= rings[0][i][1]:
+        return rings[0][i]
+    if y >= rings[-1][i][1]:
+        return rings[-1][i]
+    for a, b in zip(rings, rings[1:]):
+        ya, yb = a[i][1], b[i][1]
+        if ya <= y <= yb:
+            f = (y - ya) / max(yb - ya, 1e-12)
+            return tuple(a[i][k] + (b[i][k] - a[i][k]) * f for k in range(3))
+    return rings[-1][i]
+
+
+def _surface_polar(rings, theta_deg, y):
+    """The part's surface at an arbitrary AZIMUTH, not just at a vertex index.
+
+    Between two adjacent vertices this lands on the polygon's own chord, which
+    is what a strip laid on a faceted body should do -- an ellipse evaluated at
+    the same angle would float above the chord by r(1 - cos(pi/n)), 18 mm on a
+    torso at 8 segments, and that is the "floating ribbon" this whole section
+    exists to stop.
+    """
+    n = len(rings[0])
+    f = (theta_deg % 360.0) / 360.0 * n
+    i0 = int(math.floor(f)) % n
+    i1 = (i0 + 1) % n
+    g = f - math.floor(f)
+    p0 = _surface_at(rings, i0, y)
+    p1 = _surface_at(rings, i1, y)
+    return tuple(p0[k] + (p1[k] - p0[k]) * g for k in range(3))
+
+
+# The negative control for everything in section 7c. `--panels --legacy` sets
+# it and every panel reverts to the capped tube the build shipped before, so
+# the A/B is one flag on one build rather than two revisions of the file.
+_LEGACY_PANELS = False
+
+
+def _ribbon(m, rings, cx, cz, stations, group, part,
+            thick=GARMENT_T_M, inset=GARMENT_INSET_M):
+    """A strip laid ALONG a part's surface. `stations` is bottom-to-top
+    `(y, theta_centre_deg, half_width_deg)`, and the strip is closed the same
+    way `_sheath` is: outer sheet, inner sheet inside the body, and a rim of
+    `thick` down each long edge and across each end.
+    """
+    # THREE RAILS ACROSS, NOT TWO, and the number comes out of the strip's own
+    # width. At the collarbone the strip is 0.112 m of arc on a torso whose
+    # front half-depth is about 0.15 m -- a 42 degree arc, whose chord sags
+    # 0.15(1 - cos 21) = 10 mm below the surface. That is exactly the shell's
+    # thickness, so a two-rail strip would be flush with the chest in the
+    # middle and proud only at its edges: the "no curvature over the torso"
+    # judge-4t r2 named, rebuilt. A centre rail halves the arc and the sag with
+    # it, to 2.5 mm.
+    M = 3
+    K = len(stations)
+    o, ii = [], []
+    for y, th, hw in stations:
+        for r in range(M):
+            f = -1.0 + 2.0 * r / (M - 1.0)
+            p = _surface_polar(rings, th + f * hw, y)
+            o.append(_outward(p, cx, cz, thick))
+            ii.append(_outward(p, cx, cz, -inset))
+    verts = o + ii
+    O, I = 0, K * M
+
+    def oi(a, r):
+        return O + a * M + r
+
+    def ni(a, r):
+        return I + a * M + r
+
+    tris = []
+    # theta_hat x y_hat = +r_hat and r_hat x y_hat = +theta_hat under `_ring`'s
+    # angle convention; every winding below is read off those two facts rather
+    # than tried until it looked right.
+    for a in range(K - 1):
+        b = a + 1
+        for r in range(M - 1):
+            s = r + 1
+            tris += [(oi(a, r), oi(b, r), oi(b, s)),
+                     (oi(a, r), oi(b, s), oi(a, s))]
+            tris += [(ni(a, r), ni(b, s), ni(b, r)),
+                     (ni(a, r), ni(a, s), ni(b, s))]
+        # the two long edges
+        tris += [(ni(a, 0), oi(b, 0), oi(a, 0)),
+                 (ni(a, 0), ni(b, 0), oi(b, 0))]
+        tris += [(ni(a, M - 1), oi(a, M - 1), oi(b, M - 1)),
+                 (ni(a, M - 1), oi(b, M - 1), ni(b, M - 1))]
+    e = K - 1
+    for r in range(M - 1):
+        s = r + 1
+        tris += [(oi(0, r), ni(0, s), ni(0, r)),
+                 (oi(0, r), oi(0, s), ni(0, s))]
+        tris += [(oi(e, r), ni(e, r), ni(e, s)),
+                 (oi(e, r), ni(e, s), oi(e, s))]
+    m.add(verts, tris, group, part)
+
+
+def _sheath(m, rings, cx, cz, y_lo, y_hi, group, part,
+            thick=GARMENT_T_M, inset=GARMENT_INSET_M):
+    """A garment panel as a closed shell sitting ON a part's own surface.
+
+    `y_lo` and `y_hi` are each either a number -- a boundary at constant height
+    -- or a callable taking the azimuth index and returning a height, which is
+    how the yoke's seam runs on the diagonal the references show instead of on
+    the horizontal cut nothing in the show has.
+
+    Cross section, from the outside in: an OUTER sheet at surface + `thick`, a
+    RIM of exactly `thick` at each boundary, and an INNER sheet at
+    surface - `inset` that is inside the body and seen by nobody.
+    """
+    n = len(rings[0])
+    fl = y_lo if callable(y_lo) else (lambda i, v=y_lo: v)
+    fh = y_hi if callable(y_hi) else (lambda i, v=y_hi: v)
+    # HOW MANY STATIONS THE PANEL WALKS, AND WHY IT IS NOT TWO. Two levels is a
+    # straight-sided frustum from the seam to the top, which cuts THROUGH the
+    # body wherever the body is convex between them: the first build of this
+    # function did that and the yoke's enclosed volume came out at 30 litres on
+    # a 1.7 m figure -- a panel bridging the whole chest instead of lying on it.
+    # One station per body ring the panel crosses, so a panel follows whatever
+    # the torso does between its own boundaries.
+    lo_min = min(fl(i) for i in range(n))
+    hi_max = max(fh(i) for i in range(n))
+    crossed = sum(1 for r in rings if lo_min < r[0][1] < hi_max)
+    K = max(2, min(6, crossed + 2))
+    lv = []
+    for k in range(K):
+        t = k / (K - 1.0)
+        o, ii = [], []
+        for i in range(n):
+            y = fl(i) + (fh(i) - fl(i)) * t
+            p = _surface_at(rings, i, y)
+            o.append(_outward(p, cx, cz, thick))
+            ii.append(_outward(p, cx, cz, -inset))
+        lv.append((o, ii))
+    verts = []
+    for o, ii in lv:
+        verts.extend(o)
+    O = 0
+    for o, ii in lv:
+        verts.extend(ii)
+    I = K * n
+    tris = []
+    for k in range(K - 1):
+        a, b = O + k * n, O + (k + 1) * n
+        p, q = I + k * n, I + (k + 1) * n
+        for i in range(n):
+            j = (i + 1) % n
+            # Outer sheet, wound outward -- `body._loft`'s derivation: for a
+            # ring running x=cos(t), z=sin(t) stacked ascending in y,
+            # (a_i, b_i, b_j) faces radially out.
+            tris.append((a + i, b + i, b + j))
+            tris.append((a + i, b + j, a + j))
+            # Inner sheet: the same quads REVERSED, because the shell's own
+            # outward normal there points at the body's axis.
+            tris.append((p + i, q + j, q + i))
+            tris.append((p + i, p + j, q + j))
+    # The two rims. THIS IS THE WHOLE POINT OF THE SECTION: what used to be a
+    # horizontal disc of radius r is now an annulus of width `thick + inset`.
+    # r_hat x theta_hat = -y_hat under `_ring`'s angle convention, so
+    # (inner, outer_i, outer_j) faces DOWN and is the low rim; the high rim is
+    # that order reversed.
+    hi_o, hi_i = O + (K - 1) * n, I + (K - 1) * n
+    for i in range(n):
+        j = (i + 1) % n
+        tris.append((I + i, O + i, O + j))
+        tris.append((I + i, O + j, I + j))
+        tris.append((hi_i + i, hi_o + j, hi_o + i))
+        tris.append((hi_i + i, hi_i + j, hi_o + j))
+    m.add(verts, tris, group, part)
+
+
+def _band(m, cx, cz, y, r, half_h, group, part, seg, taper=1.0,
+          rings=None, proud=None):
+    """A band on a part: a shell if the part's own rings are available.
+
+    THE OLD SIGNATURE IS KEPT AND THE OLD BODY IS THE FALLBACK, deliberately.
+    Four callers -- collar, epaulettes, belt, armband -- pass a radius that is
+    already the body's radius times a standoff, and they are the reason `_band`
+    could not know how far proud of anything it stood. `rings` and `proud` are
+    what a caller that DOES know passes; without them the piece is still a
+    capped tube, and `--panels` is what says so out loud rather than letting it
+    pass quietly.
+    """
+    if rings is not None and rings[0] and not _LEGACY_PANELS:
+        _sheath(m, rings[0], rings[1], rings[2], y - half_h, y + half_h,
+                group, part,
+                thick=GARMENT_T_M if proud is None else proud)
+        return
+    v, t = body._loft([body._ring(cx, y - half_h, cz, r, r, seg),
+                       body._ring(cx, y + half_h, cz, r * taper, r * taper,
+                                  seg)])
     m.add(v, t, group, part)
 
 
@@ -1963,27 +2340,31 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
         if scratch.tris:
             pieces.append((group, key, scratch))
 
+    # The part's own ring stack, once, for every piece sewn to it. See
+    # `_part_rings`: a panel built from these carries the torso's superellipse,
+    # its deltoid lobes and whatever the silhouette modifiers did to it, none of
+    # which an ellipse re-derived from `_section_at` knows about.
+    trg = _part_rings(torso_verts) if torso_verts else (None, 0.0, 0.0)
+    # WHICH SHOULDER THE WRAP GOES OVER. Authority 5 and stated as such in the
+    # YOKE_SEAM_TILT_M block; drawn from the same hash as every other
+    # per-resident choice here, so it is stable for a given resident and split
+    # across a crowd.
+    wrap = 1.0 if _u(str(c.npc_id), "wrap") < 0.5 else -1.0
+
     # --- the yoke, as the panel it was measured as -------------------------
     if (on("yoke_panel") and c.trim and c.trim != c.cloth
             and c.split != "plastron" and torso_verts):
-        # NOT `_band`, AND THE REASON IS A CAP YOU CAN SEE. `_band` is two
-        # rings capped at both ends; at conversational range the player's eye
-        # is ABOVE a yoke and 0.6 m from it, so the upper cap -- a horizontal
-        # disc the width of the shoulders -- projects to a quarter of the frame
-        # and reads as a shelf. The render said so and nothing else could have.
-        # The panel is therefore a loft whose TOP RING IS BURIED INSIDE THE
-        # TORSO, which is the same trick `_skirt` records for its own top cap
-        # and `body.py` uses for the arm root and the neck: the cap still
-        # exists, so the solid is closed, and no camera outside the body can
-        # reach it.
         cx0, cz0, rx0, rz0, y0 = _section_at(torso_verts, YOKE_LO_YF,
                                              band=0.05)
         cx1, cz1, rx1, rz1, y1 = _section_at(torso_verts, YOKE_HI_YF,
                                              band=0.05)
         yseg = _att_seg(rx0 * YOKE_PANEL_R, distance_m, cap=16)
 
-        def _yoke(m, cx0=cx0, cz0=cz0, rx0=rx0, rz0=rz0, y0=y0,
-                  cx1=cx1, cz1=cz1, rx1=rx1, rz1=rz1, y1=y1, yseg=yseg):
+        def _yoke_legacy(m, cx0=cx0, cz0=cz0, rx0=rx0, rz0=rz0, y0=y0,
+                         cx1=cx1, cz1=cz1, rx1=rx1, rz1=rz1, y1=y1, yseg=yseg):
+            # THE NEGATIVE CONTROL, and the build every frame before 4t r2 was
+            # taken on: two rings, `_loft`, capped at both ends. `--panels
+            # --legacy` measures 53.1% of this panel's area as horizontal plate.
             rings = [body._ring(cx0, y0, cz0, rx0 * YOKE_PANEL_R,
                                 rz0 * YOKE_PANEL_R, yseg),
                      body._ring(cx1, y1, cz1, rx1 * YOKE_BURY,
@@ -1991,7 +2372,28 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
             v, t = body._loft(rings)
             m.add(v, t, trim_g, CONSTRUCTION_HANGS_ON["yoke_panel"])
 
-        piece("yoke_panel", trim_g, _yoke)
+        def _yoke(m, y0=y0, y1=y1, trg=trg, wrap=wrap):
+            # THE SEAM RUNS ON THE DIAGONAL, not at a constant height. Half the
+            # measured tilt either side of the old cut, so the panel covers the
+            # same mean area and the shoulder it favours is the one the wrap
+            # closes over. theta = 0 is the figure's LEFT (+X): `body._ring`'s
+            # angle convention, stated there once and relied on here.
+            n = len(trg[0][0])
+            amp = 0.5 * YOKE_SEAM_TILT_M
+
+            def lo(i, n=n, amp=amp, y0=y0, wrap=wrap):
+                return y0 + wrap * amp * math.cos(2.0 * math.pi * i / n)
+
+            # The upper boundary is the top of the torso part itself: a yoke
+            # covers the shoulder, and running the panel into the part's own
+            # crown is what puts its top rim where the collar and the neck
+            # already are rather than leaving a free edge across the deltoid.
+            y_top = trg[0][-1][0][1] - 1e-4
+            _sheath(m, trg[0], trg[1], trg[2], lo, min(y_top, max(y1, y0 + 0.02)),
+                    trim_g, CONSTRUCTION_HANGS_ON["yoke_panel"])
+
+        piece("yoke_panel", trim_g,
+              _yoke_legacy if (_LEGACY_PANELS or not trg[0]) else _yoke)
 
     # --- the front closure -------------------------------------------------
     # Not on a robe (it has no front to close) and not on a plastron set (the
@@ -2002,14 +2404,42 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
         cx, z_lo, y_lo = _front_at(torso_verts, PLACKET_LO_YF, band=0.04)
         _cx2, z_hi, y_hi = _front_at(torso_verts, PLACKET_HI_YF, band=0.04)
         thick = PLACKET_THICK_F * H
-        piece("placket", trim_g,
-              lambda m, cx=cx, z_lo=z_lo, y_lo=y_lo, z_hi=z_hi, y_hi=y_hi,
-              thick=thick: body._blade(
-                  m, trim_g, CONSTRUCTION_HANGS_ON["placket"],
-                  cx, y_lo, z_lo + 0.45 * thick,
-                  PLACKET_HALF_W_F * H, max(y_hi - y_lo, 1e-3), thick,
-                  _att_seg(PLACKET_HALF_W_F * H, distance_m, cap=8),
-                  sweep=(z_lo - z_hi), taper=1.0))
+        if _LEGACY_PANELS or not trg[0]:
+            piece("placket", trim_g,
+                  lambda m, cx=cx, z_lo=z_lo, y_lo=y_lo, z_hi=z_hi, y_hi=y_hi,
+                  thick=thick: body._blade(
+                      m, trim_g, CONSTRUCTION_HANGS_ON["placket"],
+                      cx, y_lo, z_lo + 0.45 * thick,
+                      PLACKET_HALF_W_F * H, max(y_hi - y_lo, 1e-3), thick,
+                      _att_seg(PLACKET_HALF_W_F * H, distance_m, cap=8),
+                      sweep=(z_lo - z_hi), taper=1.0))
+        else:
+            def _placket(m, y_lo=y_lo, y_hi=y_hi, trg=trg, wrap=wrap):
+                # A WRAP, ON THE BODY. The old build was `body._blade`: a
+                # flattened box standing off the chest on a straight line, which
+                # is why judge-4t r2 read "no curvature over the torso and a
+                # hard unaligned seam at the navel". This rides the torso's own
+                # surface, tapers 112 -> 56 mm as the reference does, and its
+                # centreline leaves the figure's midline by 28 mm at the
+                # collarbone -- all three numbers off the same frame, in the
+                # YOKE_SEAM_TILT_M block.
+                st = []
+                K = 5
+                for k in range(K):
+                    t = k / (K - 1.0)             # 0 at the hem, 1 at the collar
+                    y = y_lo + (y_hi - y_lo) * t
+                    p = _surface_polar(trg[0], 90.0, y)
+                    r = max(math.hypot(p[0] - trg[1], p[2] - trg[2]), 1e-3)
+                    w = PLACKET_W_BOT_M + (PLACKET_W_TOP_M
+                                           - PLACKET_W_BOT_M) * t
+                    off = PLACKET_OFFSET_TOP_M * t * wrap
+                    st.append((y,
+                               90.0 + math.degrees(off / r),
+                               math.degrees(0.5 * w / r)))
+                _ribbon(m, trg[0], trg[1], trg[2], st, trim_g,
+                        CONSTRUCTION_HANGS_ON["placket"])
+
+            piece("placket", trim_g, _placket)
 
     # --- the hem -----------------------------------------------------------
     if on("hem") and torso_verts and not c.robed:
@@ -2024,34 +2454,39 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
         # material run on every figure; in the trim it merges with the yoke
         # panel, the placket and the cuffs into one.
         g = dirty_g if soiled else trim_g
-        piece("hem", g, lambda m, cx=cx, cz=cz, rx=rx, rz=rz, y=y, g=g:
-              _band_e(m, cx, cz, y, rx * HEM_R, rz * HEM_R,
-                      HEM_HALF_H_F * H, g, CONSTRUCTION_HANGS_ON["hem"],
-                      _att_seg(rx * HEM_R, distance_m, cap=16), taper=0.90))
+        piece("hem", g, lambda m, cx=cx, cz=cz, rx=rx, rz=rz, y=y, g=g,
+              trg=trg: _band_e(
+                  m, cx, cz, y, rx * HEM_R, rz * HEM_R,
+                  HEM_HALF_H_F * H, g, CONSTRUCTION_HANGS_ON["hem"],
+                  _att_seg(rx * HEM_R, distance_m, cap=16), taper=0.90,
+                  rings=trg))
 
     # --- the cuffs ---------------------------------------------------------
     if on("cuff"):
         g = dirty_g if soiled else (leather_g if tailored else trim_g)
         for av in arm_parts:
             cx, cz, rx, rz, y = _section_at(av, CUFF_YF, band=0.06)
-            piece("cuff", g, lambda m, cx=cx, cz=cz, rx=rx, rz=rz, y=y, g=g:
-                  _band_e(m, cx, cz, y, rx * CUFF_R, rz * CUFF_R,
-                          CUFF_HALF_H_F * H, g, CONSTRUCTION_HANGS_ON["cuff"],
-                          _att_seg(rx * CUFF_R, distance_m, cap=10),
-                          taper=0.92))
+            arg = _part_rings(av)
+            piece("cuff", g, lambda m, cx=cx, cz=cz, rx=rx, rz=rz, y=y, g=g,
+                  arg=arg: _band_e(
+                      m, cx, cz, y, rx * CUFF_R, rz * CUFF_R,
+                      CUFF_HALF_H_F * H, g, CONSTRUCTION_HANGS_ON["cuff"],
+                      _att_seg(rx * CUFF_R, distance_m, cap=10), taper=0.92,
+                      rings=arg))
 
     # --- the boot tops -----------------------------------------------------
     if on("boot_top") and not c.robed:
         g = dirty_g if soiled else leather_g
         for lv in leg_parts:
             cx, cz, rx, rz, y = _section_at(lv, BOOT_TOP_YF, band=0.05)
+            lrg = _part_rings(lv)
             piece("boot_top", g, lambda m, cx=cx, cz=cz, rx=rx, rz=rz, y=y,
-                  g=g: _band_e(
+                  g=g, lrg=lrg: _band_e(
                       m, cx, cz, y, rx * BOOT_TOP_R, rz * BOOT_TOP_R,
                       BOOT_TOP_HALF_H_F * H, g,
                       CONSTRUCTION_HANGS_ON["boot_top"],
                       _att_seg(rx * BOOT_TOP_R, distance_m, cap=10),
-                      taper=0.90))
+                      taper=0.90, rings=lrg))
 
     # The material already at the end of the mesh goes first, so the block
     # joins the run it is next to instead of starting a new one.
@@ -2073,11 +2508,24 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
     return made
 
 
-def _band_e(m, cx, cz, y, rx, rz, half_h, group, part, seg, taper=1.0):
-    """`_band`, on the part's own ELLIPTICAL section. See `_section_at`."""
-    rings = [body._ring(cx, y - half_h, cz, rx, rz, seg),
-             body._ring(cx, y + half_h, cz, rx * taper, rz * taper, seg)]
-    v, t = body._loft(rings)
+def _band_e(m, cx, cz, y, rx, rz, half_h, group, part, seg, taper=1.0,
+            rings=None):
+    """`_band`, on the part's own section. A SHELL when `rings` is supplied.
+
+    `_section_at` was the previous step in the same argument -- a band should
+    follow the ellipse it sits on, not the larger of its two radii -- and this
+    is that argument taken all the way: it should follow the part's actual
+    surface, at the part's actual segment count, and it should not be capped.
+    `rings` is `_part_rings(part_verts)`; without it the old capped tube is
+    still what gets built, which is what `--panels --legacy` measures.
+    """
+    if rings is not None and rings[0] and not _LEGACY_PANELS:
+        _sheath(m, rings[0], rings[1], rings[2], y - half_h, y + half_h,
+                group, part)
+        return
+    rg = [body._ring(cx, y - half_h, cz, rx, rz, seg),
+          body._ring(cx, y + half_h, cz, rx * taper, rz * taper, seg)]
+    v, t = body._loft(rg)
     m.add(v, t, group, part)
 
 
@@ -2552,20 +3000,32 @@ def _build_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
             base = neck_verts if neck_verts else torso_verts
             cx, cz, r, y = _axis_at(base, 0.50 if neck_verts else 0.985,
                                     band=0.06 if neck_verts else 0.03)
+            # THE STANDOFF IS NOW THE THICKNESS, and it is the same number it
+            # always was. Every one of these four callers already said how far
+            # proud of its part it stood -- x1.15 on the neck, x1.22 on the
+            # deltoid, x1.03 on the waist, x1.10 on the forearm -- and threw
+            # that away into a radius `_band` could not decompose. Handed over
+            # as metres it becomes the rim of the shell: 12.3 mm at the collar,
+            # 11.0 at the epaulette, 7.2 at the belt, 4.0 at the armband. No
+            # band on this figure moved; what changed is that each now has an
+            # underside instead of a lid.
             _band(out, cx, cz, y + 0.022 * H, r * 1.15, COLLAR_HALF_H_F * H,
                   group_name("npc_leather", c.leather), "collar",
-                  _att_seg(r * 0.92, distance_m), taper=1.06)
+                  _att_seg(r * 0.92, distance_m), taper=1.06,
+                  rings=_part_rings(base), proud=0.15 * r)
         elif key == "epaulettes":
             for av in arm_parts:
                 cx, cz, r, y = _axis_at(av, 0.97, band=0.06)
                 _band(out, cx, cz, y - 0.012 * H, r * 1.22, EPAULETTE_HALF_H_F * H,
                       group_name("npc_leather", c.leather), "epaulette",
-                      _att_seg(r * 1.22, distance_m, cap=12), taper=0.88)
+                      _att_seg(r * 1.22, distance_m, cap=12), taper=0.88,
+                      rings=_part_rings(av), proud=0.22 * r)
         elif key == "belt":
             cx, cz, r, y = _axis_at(torso_verts, 0.30, band=0.05)
             _band(out, cx, cz, y, r * 1.03, BELT_HALF_H_F * H,
                   group_name("npc_leather", c.leather), "belt",
-                  _att_seg(r * 1.03, distance_m))
+                  _att_seg(r * 1.03, distance_m),
+                  rings=_part_rings(torso_verts), proud=0.03 * r)
         elif key == "baldric":
             cx0, cz0, r0, y0 = _axis_at(torso_verts, 0.86, band=0.05)
             cx1, cz1, r1, y1 = _axis_at(torso_verts, 0.38, band=0.05)
@@ -2589,7 +3049,8 @@ def _build_mesh(species, npc_id, lod=0, chain=None, datum=ERA_DATUM,
                 cx, cz, r, y = _axis_at(av, 0.22, band=0.08)
                 _band(out, cx, cz, y, r * 1.10, ARMBAND_HALF_H_F * H,
                       group_name("npc_cloth_trim", "nightwatch_black"),
-                      "armband", _att_seg(r * 1.10, distance_m, cap=12))
+                      "armband", _att_seg(r * 1.10, distance_m, cap=12),
+                      rings=_part_rings(av), proud=0.10 * r)
         elif key == "cowl":
             cx, cz, r, y = _axis_at(torso_verts, 0.94, band=0.06)
             cseg = min(seg, _att_seg(r * 1.16, distance_m, cap=32))
@@ -3012,6 +3473,166 @@ def construction_gate(out=print, legacy=False, sample=8):
         out(f"  ({len(bad)} findings)")
     out("  PASS" if ok else "  FAIL")
     return 0 if ok else 1
+
+
+# THE BOUND `--panels` FAILS ON, AND IT IS DERIVED. A rim triangle is a sliver
+# whose short edge is exactly the shell's own thickness: the largest `thick`
+# any caller in this module passes is the collar's 0.15 x neck radius =
+# 12.3 mm, plus GARMENT_INSET_M = 3.0 mm, plus 18% for the oblique
+# interpolation a diagonal seam produces = 18.1 mm. A CAP has no short edge at
+# all: `_loft` fans it (v0, vi, vi+1) from one ring vertex, so every edge is a
+# ring chord -- 2 r sin(pi/n), 180 mm on a torso at 8 segments, and up to 2r
+# across. Measured on the two builds the separation is 10.8-14.5 mm against
+# 20.4-110.0 mm, so the bound is not near either population.
+PANEL_RIM_MAX_M = 0.018
+_PANEL_FLAT_COS = math.cos(math.radians(6.0))
+
+
+def _panel_metrics(pv, pt):
+    """(worst near-horizontal short edge, horizontal area, total area).
+
+    THE QUESTION IS THE SHAPE OF THE FACE, NOT ITS SIZE, and that is the whole
+    reason this metric is the one shipped. Two rejected alternatives, both
+    measured before being dropped:
+
+      * "fraction of area that is horizontal" -- legacy 1.0-83.0%, new
+        2.2-26.8%. The hem's rim IS horizontal, correctly, so the two
+        populations overlap and any bound is a tuned number.
+      * "radial span of a horizontal triangle" -- reports 59 mm on a CORRECT
+        belt, because a torso section is 0.24 x 0.15 and radial distance from
+        one centre varies by 90 mm around it. It measures the ellipse, not the
+        defect.
+    """
+    worst = 0.0
+    h_area = 0.0
+    area = 0.0
+    for t in pt:
+        a, b, c = pv[t[0]], pv[t[1]], pv[t[2]]
+        u = [b[k] - a[k] for k in range(3)]
+        v = [c[k] - a[k] for k in range(3)]
+        n = (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2],
+             u[0] * v[1] - u[1] * v[0])
+        L = math.sqrt(sum(q * q for q in n))
+        area += 0.5 * L
+        if L <= 0.0 or abs(n[1] / L) < _PANEL_FLAT_COS:
+            continue
+        h_area += 0.5 * L
+        worst = max(worst, min(math.dist(a, b), math.dist(b, c),
+                               math.dist(c, a)))
+    return worst, h_area, area
+
+
+_PANEL_ATTACHMENT_PARTS = ("collar", "epaulette", "belt", "armband")
+
+
+def panel_gate(out=print, legacy=False, sample=3):
+    """Is any garment panel a FLAT PLATE THE WIDTH OF THE BODY?
+
+    The question judge-4t round 2 asked of a frame, asked of the geometry: "a
+    flat octagonal tray floating across the shoulders". Nothing in this
+    repository asked it before -- a capped tube is closed, correctly wound,
+    inside its own footprint, above its density floor and carrying a measured
+    material, so every gate here passed a panel that was half lid.
+
+    It runs over every species and both garment tables, and it asserts three
+    things per piece: the shell is CLOSED (0 boundary, 0 non-manifold edges),
+    it is wound OUTWARD (positive signed volume), and it carries no
+    near-horizontal face wider than a rim.
+
+    `legacy` is the negative control: `_LEGACY_PANELS` reverts every panel to
+    the capped tube this session found, on the same build, one flag.
+    """
+    try:
+        import costume as _cos                                  # noqa: PLC0415
+    except ImportError:                                         # pragma: no cover
+        _cos = sys.modules[__name__]
+    lod, lod_src = _shipped_lod()
+    chain = body.lod_chain()
+    dist = chain[lod]["switch_distance_m"]
+    keep = _cos._LEGACY_PANELS
+    _cos._LEGACY_PANELS = bool(legacy)
+    rows, bad, pieces, posed_ok, posed_n = {}, [], 0, 0, 0
+    try:
+        import populace as _pop                                 # noqa: PLC0415
+    except Exception:                                           # noqa: BLE001
+        _pop = None
+    try:
+        for sp in sorted(body.SPECIES):
+            for k in range(sample):
+                npc_id = f"panels/{sp}/{k}"
+                m = _cos.dressed_mesh(sp, npc_id, lod=lod, distance_m=dist)
+                if isinstance(m, tuple):
+                    continue
+                made = dict(getattr(m, "construction", ()) or ())
+                # THE THING MEASURED IS THE THING SHIPPED. `populace._posed` is
+                # the call `deck.build_deck` reaches; if its triangle count
+                # disagrees with the mesh measured below, the deck is carrying
+                # something else and every number here is about a file nobody
+                # renders.
+                if _pop is not None:
+                    try:
+                        _v, tt, _g = _pop._posed(sp, npc_id, lod, "walk",
+                                                 _pop.G0_MS2, None, phase=0)
+                        posed_n += 1
+                        if len(tt) == len(m.tris):
+                            posed_ok += 1
+                        else:
+                            bad.append(f"{sp}/{k}: posed {len(tt)} triangles, "
+                                       f"dressed {len(m.tris)}")
+                    except Exception as exc:                    # noqa: BLE001
+                        bad.append(f"{sp}/{k}: _posed raised {exc}")
+                for i, p in enumerate(m.parts):
+                    name = made.get(i)
+                    if name is None:
+                        if p[0] not in _PANEL_ATTACHMENT_PARTS:
+                            continue
+                        name = p[0]
+                    pieces += 1
+                    w, h_a, a = _panel_metrics(p[1], p[2])
+                    b, nm = body.edge_census(p[2])
+                    vol = body.signed_volume(p[1], p[2])
+                    r = rows.setdefault(name, [0.0, 0.0, 0.0, 0, 0, 0])
+                    r[0] = max(r[0], w)
+                    r[1] += h_a
+                    r[2] += a
+                    r[3] += 1
+                    if b or nm:
+                        r[4] += 1
+                        bad.append(f"{sp}/{k} {name}: {b} boundary, "
+                                   f"{nm} non-manifold edges")
+                    if vol <= 0.0:
+                        r[5] += 1
+                        bad.append(f"{sp}/{k} {name}: inside out "
+                                   f"(signed volume {vol:.6f})")
+                    if w > PANEL_RIM_MAX_M:
+                        bad.append(f"{sp}/{k} {name}: a horizontal face "
+                                   f"{w * 1000:.1f} mm wide -- a lid, not a "
+                                   f"rim (bound {PANEL_RIM_MAX_M * 1000:.0f})")
+    finally:
+        _cos._LEGACY_PANELS = keep
+    ok = (not bad) and pieces > 0
+    out(f"panel gate: chain level {lod} ({lod_src}), {len(body.SPECIES)} "
+        f"species x {sample}, {pieces} garment pieces"
+        + (" -- LEGACY (the control)" if legacy else ""))
+    out(f"  bound: no near-horizontal face wider than "
+        f"{PANEL_RIM_MAX_M * 1000:.0f} mm (a rim is "
+        f"{(GARMENT_T_M + GARMENT_INSET_M) * 1000:.0f} mm)")
+    for name in sorted(rows):
+        w, h_a, a, n, nb, nv = rows[name]
+        out(f"  {name:11s} n={n:3d} worst face {w * 1000:6.1f} mm  "
+            f"horizontal {100.0 * h_a / max(a, 1e-9):5.1f}% of area  "
+            f"{'OPEN ' + str(nb) if nb else 'closed'}"
+            f"{'  INSIDE-OUT ' + str(nv) if nv else ''}"
+            f"{'   FAIL' if w > PANEL_RIM_MAX_M or nb or nv else ''}")
+    if _pop is not None:
+        out(f"  {posed_ok}/{posed_n} figures agree triangle-for-triangle with "
+            f"populace._posed, the call deck.build_deck makes")
+    if bad:
+        for line in bad[:10]:
+            out(f"  FAIL {line}")
+        out(f"  ({len(bad)} findings)")
+    out("  PASS" if ok else "  FAIL")
+    return ok
 
 
 # ---------------------------------------------------------------------------
@@ -3692,9 +4313,13 @@ def main():
     ap.add_argument("--construct", action="store_true",
                     help="does a garment feature survive posing? The question "
                          "no other gate here asks")
+    ap.add_argument("--panels", action="store_true",
+                    help="is any garment panel a flat plate the width of the "
+                         "body? judge-4t r2's finding, asked of the geometry")
     ap.add_argument("--legacy", action="store_true",
-                    help="--construct's negative control: the pre-4t build, "
-                         "where the yoke is a span inside the torso part")
+                    help="the negative control for --construct (the yoke as a "
+                         "span inside the torso part) and for --panels (every "
+                         "panel back to the capped tube)")
     ap.add_argument("--lod", type=int, default=0)
     ap.add_argument("--datum", default="")
     a = ap.parse_args()
@@ -3702,6 +4327,8 @@ def main():
     if a.datum:
         s, e = a.datum.lower().lstrip("s").split("e")
         datum = (int(s), int(e))
+    if a.panels:
+        return 0 if panel_gate(legacy=a.legacy) else 1
     if a.construct:
         return construction_gate(legacy=a.legacy)
     if a.report:
