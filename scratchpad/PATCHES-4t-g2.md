@@ -76,3 +76,40 @@ spread is genuinely 1 s and the check is correctly reporting a scope that no lon
 contrast LAW-CRIME 2.6 is about. It is a **scope** finding, not a routing defect: with
 `--all` the same function still spans the station. Either widen the boot deck or scope the check
 to `checked_places()` rather than `boot_rooms()`.
+
+---
+
+## ROUND 4 — what is owed to files g2 does not own
+
+Nothing is owed to the **wf-aaa-4t** workflow's list (`economy.py`, `consequence.py`,
+`player.py`, `dialogue.py`, `broadcast.py`, `boot.py`, `stream.gd`, `bake_station.py`,
+`bootstrap.py`, `collision.py`, `deck.py`, `npc/body.py`, `npc/costume.py`, `export_scene.py`,
+`observation.py`, `drum_ground.py`, `drum_dressing.py`, `spec_harness/*`). Round 4 touched only
+`station/enforcement.py`, `godot/scripts/enforcement.gd`, `godot/scripts/interact.gd` and
+`godot/scripts/player.gd`, and `station/player.py`'s rule — *"a stored tier would be a second
+description of what the card already says"* — is now obeyed by both of `player.gd`'s loaders
+rather than by one of them.
+
+## One item, for whoever owns `godot/scripts/main.gd`
+
+The round-3 verifier proposed adding `body.tier` to `main.gd::_save_gate`'s perturbed-and-compared
+set, so that the save gate can fail for a stored rung. **I did not apply it and I think it is the
+weaker of the two available checks**, for a reason worth recording rather than a preference:
+
+`_save_gate` perturbs a field, restores, and asserts the field came back. After round 4 the rung is
+**not restored** — `player.gd::load_state` re-derives it through `set_purse`/`rung_of`. So a
+perturbed `body.tier` comes back correct *because the derivation is right*, and it also came back
+correct in the pre-fix build *because the stored copy was right*. **The check passes either way**,
+which is the shape of an assertion that cannot fail.
+
+The distinguishing evidence is the **artefact**, and that is where
+`station/enforcement.py::_prog_save` now asserts: the player section of `user://saves/gate.json`
+must carry no `tier` key at all. It is run by
+`python3 station/enforcement.py --ensure --gate --progression`, with two controls
+(`--player-saved-rung`, `--player-stale-save`) that make it go red.
+
+If `main.gd`'s owner still wants a rung row in the save gate, the one that can fail is:
+**perturb the LEDGER's record between capture and restore** (add a conviction to
+`_interact`'s purse after `save_to("gate")`), then assert the rung after `load_from("gate")` is the
+one the *new* record implies. That is the case where a stored rung and a derived rung genuinely
+disagree, and it is the only one inside a single process that does.
