@@ -1,0 +1,132 @@
+=== A: AFTER ===
+shell fit: 129 places measured, tolerance 5% of the room's own extent
+  0 rooms have geometry outside their own collision shell, 0 taller than their shell's ceiling, 0 shells disagree with their builder, 0 rooms wider than their footprint, 0 pairs of shells overlapping
+  note STALE    ambassadorial_suites rooms.built_span_m says   10.49 m; the module builds  100.81 m
+  note STALE    alien_resident_qtr   rooms.built_span_m says   11.08 m; the module builds  103.53 m
+  note STALE    qtr_personnel        rooms.built_span_m says   10.54 m; the module builds   95.22 m
+  note STALE    qtr_civilian         rooms.built_span_m says   11.05 m; the module builds   90.07 m
+  note STALE    qtr_command          rooms.built_span_m says   11.63 m; the module builds   72.83 m
+  note STALE    qtr_transient        rooms.built_span_m says   11.66 m; the module builds   69.68 m
+  note STALE    league_delegations   rooms.built_span_m says   11.39 m; the module builds   50.14 m
+  note STALE    council_chamber      rooms.built_span_m says   11.81 m; the module builds   22.74 m
+  note STALE    arrival_concourse    rooms.built_span_m says   11.08 m; the module builds   20.90 m
+  note STALE    zocalo               rooms.built_span_m says   12.79 m; the module builds   22.04 m
+  note STALE    obs_rotundas         rooms.built_span_m says    8.43 m; the module builds   14.36 m
+  note STALE    core_shuttle         rooms.built_span_m says    5.77 m; the module builds    9.61 m
+  note STALE    shops_kiosks         rooms.built_span_m says   14.05 m; the module builds   22.04 m
+  note STALE    obs_dome_1           rooms.built_span_m says    8.32 m; the module builds   12.97 m
+  note STALE    alien_sector         rooms.built_span_m says    9.68 m; the module builds   14.11 m
+  note STALE    customs_north        rooms.built_span_m says   12.31 m; the module builds   17.50 m
+  note STALE    customs_south        rooms.built_span_m says   12.31 m; the module builds   17.50 m
+  note STALE    central_corridor     rooms.built_span_m says    6.98 m; the module builds    9.36 m
+  note STALE    cnc                  rooms.built_span_m says   11.52 m; the module builds   14.33 m
+  note STALE    obs_dome_2           rooms.built_span_m says    9.60 m; the module builds    8.76 m
+  note STALE    shuttle_car          rooms.built_span_m says    6.40 m; the module builds    4.78 m
+  note OVERFOOT qtr_transient        shell   69.68 m in a   58.28 m footprint -- OVERLAP above is what makes that safe
+  note NESTED   cnc                  shares  12.97 m of arc with obs_dome_1, which the register declares it is INSIDE
+  (21 stale builder widths, 1 shells outside their footprint -- reported, not counted: neither is in this file and both are gated by SPAN/OVERLAP above)
+rc=0
+=== B: LEGACY control ===
+LEGACY control: 129 places measured, tolerance 5% of the room's own extent
+  CONTAIN alien_resident_qtr       shell    -5.54 ..    5.54 m, mesh   -54.16 ..   49.37 m --   48.62 m outside left,   43.83 m right
+  CONTAIN ambassadorial_suites     shell    -5.25 ..    5.25 m, mesh   -92.28 ..    8.53 m --   87.04 m outside left,    3.28 m right
+  CONTAIN qtr_personnel            shell    -5.27 ..    5.27 m, mesh   -50.22 ..   45.01 m --   44.94 m outside left,   39.74 m right
+  CONTAIN qtr_civilian             shell    -5.52 ..    5.52 m, mesh   -47.39 ..   42.68 m --   41.87 m outside left,   37.16 m right
+  CONTAIN qtr_command              shell    -5.82 ..    5.82 m, mesh   -55.58 ..   17.25 m --   49.76 m outside left,   11.44 m right
+  CONTAIN qtr_transient            shell    -5.83 ..    5.83 m, mesh   -36.71 ..   32.97 m --   30.88 m outside left,   27.15 m right
+  CONTAIN league_delegations       shell    -5.69 ..    5.69 m, mesh   -27.41 ..   22.73 m --   21.72 m outside left,   17.03 m right
+  CONTAIN arrival_concourse        shell    -5.54 ..    5.54 m, mesh   -17.37 ..    3.53 m --   11.83 m outside left,    0.00 m right
+  CONTAIN council_chamber          shell    -5.90 ..    5.90 m, mesh   -13.84 ..    8.90 m --    7.94 m outside left,    3.00 m right
+  CONTAIN zocalo                   shell    -6.40 ..    6.40 m, mesh   -11.02 ..   11.02 m --    4.62 m outside left,    4.62 m right
+  CONTAIN shops_kiosks             shell    -7.02 ..    7.02 m, mesh   -11.02 ..   11.02 m --    4.00 m outside left,    4.00 m right
+  CONTAIN alien_sector             shell    -4.84 ..    4.84 m, mesh    -2.32 ..   11.79 m --    0.00 m outside left,    6.95 m right
+  CONTAIN obs_rotundas             shell    -4.22 ..    4.22 m, mesh    -7.18 ..    7.18 m --    2.96 m outside left,    2.96 m right
+  CONTAIN customs_north            shell    -6.15 ..    6.15 m, mesh    -8.75 ..    8.75 m --    2.60 m outside left,    2.60 m right
+  CONTAIN customs_south            shell    -6.15 ..    6.15 m, mesh    -8.75 ..    8.75 m --    2.60 m outside left,    2.60 m right
+  CONTAIN obs_dome_1               shell    -4.16 ..    4.16 m, mesh    -6.48 ..    6.48 m --    2.32 m outside left,    2.32 m right
+  CONTAIN core_shuttle             shell    -2.89 ..    2.89 m, mesh    -2.52 ..    7.10 m --    0.00 m outside left,    4.21 m right
+  CONTAIN kosh_quarters            shell    -5.11 ..    5.11 m, mesh    -2.25 ..    8.41 m --    0.00 m outside left,    3.30 m right
+  CONTAIN cnc                      shell    -5.76 ..    5.76 m, mesh    -7.16 ..    7.16 m --    1.40 m outside left,    1.40 m right
+  CONTAIN central_corridor         shell    -3.49 ..    3.49 m, mesh    -4.68 ..    4.68 m --    1.19 m outside left,    1.19 m right
+  HEIGHT  downbelow                shell ceiling   2.70 m over a  19.14 m room  ( 14.1%)
+  HEIGHT  downbelow_arch           shell ceiling   3.40 m over a  22.00 m room  ( 15.5%)
+  HEIGHT  water_reclamation        shell ceiling   6.20 m over a  18.74 m room  ( 33.1%)
+  HEIGHT  air_compressors          shell ceiling   6.40 m over a  18.00 m room  ( 35.6%)
+  HEIGHT  obs_dome_1               shell ceiling   3.50 m over a   8.51 m room  ( 41.1%)
+  HEIGHT  plant_zone               shell ceiling   8.20 m over a  19.70 m room  ( 41.6%)
+  HEIGHT  core_shuttle             shell ceiling   3.40 m over a   7.38 m room  ( 46.1%)
+  HEIGHT  shops_kiosks             shell ceiling   3.40 m over a   7.34 m room  ( 46.3%)
+  HEIGHT  customs_north            shell ceiling   3.50 m over a   7.45 m room  ( 47.0%)
+  HEIGHT  customs_south            shell ceiling   3.50 m over a   7.45 m room  ( 47.0%)
+  HEIGHT  central_corridor         shell ceiling   3.55 m over a   7.38 m room  ( 48.1%)
+  HEIGHT  arrival_concourse        shell ceiling   3.60 m over a   7.45 m room  ( 48.3%)
+  HEIGHT  obs_rotundas             shell ceiling   3.60 m over a   7.38 m room  ( 48.8%)
+  HEIGHT  zocalo                   shell ceiling   3.60 m over a   7.34 m room  ( 49.0%)
+  HEIGHT  obs_dome_2               shell ceiling   3.60 m over a   6.93 m room  ( 51.9%)
+  HEIGHT  alien_sector             shell ceiling   2.60 m over a   3.62 m room  ( 71.8%)
+  HEIGHT  kosh_quarters            shell ceiling   2.60 m over a   3.62 m room  ( 71.8%)
+  HEIGHT  qtr_command              shell ceiling   2.70 m over a   2.92 m room  ( 92.5%)
+  HEIGHT  qtr_personnel            shell ceiling   2.70 m over a   2.92 m room  ( 92.5%)
+  HEIGHT  qtr_civilian             shell ceiling   2.70 m over a   2.92 m room  ( 92.5%)
+  HEIGHT  qtr_transient            shell ceiling   2.70 m over a   2.92 m room  ( 92.5%)
+  HEIGHT  alien_resident_qtr       shell ceiling   2.70 m over a   2.92 m room  ( 92.5%)
+  20 rooms have geometry outside their own collision shell, 22 taller than their shell's ceiling, 0 shells disagree with their builder, 0 rooms wider than their footprint, 0 pairs of shells overlapping
+  note STALE    ambassadorial_suites rooms.built_span_m says   10.49 m; the module builds  100.81 m
+  note STALE    alien_resident_qtr   rooms.built_span_m says   11.08 m; the module builds  103.53 m
+  note STALE    qtr_personnel        rooms.built_span_m says   10.54 m; the module builds   95.22 m
+  note STALE    qtr_civilian         rooms.built_span_m says   11.05 m; the module builds   90.07 m
+  note STALE    qtr_command          rooms.built_span_m says   11.63 m; the module builds   72.83 m
+  note STALE    qtr_transient        rooms.built_span_m says   11.66 m; the module builds   69.68 m
+  note STALE    league_delegations   rooms.built_span_m says   11.39 m; the module builds   50.14 m
+  note STALE    council_chamber      rooms.built_span_m says   11.81 m; the module builds   22.74 m
+  note STALE    arrival_concourse    rooms.built_span_m says   11.08 m; the module builds   20.90 m
+  note STALE    zocalo               rooms.built_span_m says   12.79 m; the module builds   22.04 m
+  note STALE    obs_rotundas         rooms.built_span_m says    8.43 m; the module builds   14.36 m
+  note STALE    core_shuttle         rooms.built_span_m says    5.77 m; the module builds    9.61 m
+  note STALE    shops_kiosks         rooms.built_span_m says   14.05 m; the module builds   22.04 m
+  note STALE    obs_dome_1           rooms.built_span_m says    8.32 m; the module builds   12.97 m
+  note STALE    alien_sector         rooms.built_span_m says    9.68 m; the module builds   14.11 m
+  note STALE    customs_north        rooms.built_span_m says   12.31 m; the module builds   17.50 m
+  note STALE    customs_south        rooms.built_span_m says   12.31 m; the module builds   17.50 m
+  note STALE    central_corridor     rooms.built_span_m says    6.98 m; the module builds    9.36 m
+  note STALE    cnc                  rooms.built_span_m says   11.52 m; the module builds   14.33 m
+  note STALE    obs_dome_2           rooms.built_span_m says    9.60 m; the module builds    8.76 m
+  note STALE    shuttle_car          rooms.built_span_m says    6.40 m; the module builds    4.78 m
+  note NESTED   cnc                  shares   8.32 m of arc with obs_dome_1, which the register declares it is INSIDE
+  (21 stale builder widths, 0 shells outside their footprint -- reported, not counted: neither is in this file and both are gated by SPAN/OVERLAP above)
+  (negative control -- this is the expression that shipped)
+rc=1
+=== C: BROKEN control ===
+BROKEN control: 129 places measured, tolerance 5% of the room's own extent
+  CONTAIN council_chamber          shell    -7.02 ..    2.08 m, mesh   -13.84 ..    8.90 m --    6.82 m outside left,    6.82 m right
+  SPAN    council_chamber          shell     9.10 m against module    22.74 m  ( 40.0%)
+  SPAN    customs_north            shell    70.00 m against module    17.50 m  (400.0%)
+  OVERLAP customs_north            shares   8.06 m (2.183 deg) of arc with arrival_concourse
+  1 rooms have geometry outside their own collision shell, 0 taller than their shell's ceiling, 2 shells disagree with their builder, 0 rooms wider than their footprint, 1 pairs of shells overlapping
+  note STALE    ambassadorial_suites rooms.built_span_m says   10.49 m; the module builds  100.81 m
+  note STALE    alien_resident_qtr   rooms.built_span_m says   11.08 m; the module builds  103.53 m
+  note STALE    qtr_personnel        rooms.built_span_m says   10.54 m; the module builds   95.22 m
+  note STALE    qtr_civilian         rooms.built_span_m says   11.05 m; the module builds   90.07 m
+  note STALE    qtr_command          rooms.built_span_m says   11.63 m; the module builds   72.83 m
+  note STALE    qtr_transient        rooms.built_span_m says   11.66 m; the module builds   69.68 m
+  note STALE    league_delegations   rooms.built_span_m says   11.39 m; the module builds   50.14 m
+  note STALE    council_chamber      rooms.built_span_m says   11.81 m; the module builds   22.74 m
+  note STALE    arrival_concourse    rooms.built_span_m says   11.08 m; the module builds   20.90 m
+  note STALE    zocalo               rooms.built_span_m says   12.79 m; the module builds   22.04 m
+  note STALE    obs_rotundas         rooms.built_span_m says    8.43 m; the module builds   14.36 m
+  note STALE    core_shuttle         rooms.built_span_m says    5.77 m; the module builds    9.61 m
+  note STALE    shops_kiosks         rooms.built_span_m says   14.05 m; the module builds   22.04 m
+  note STALE    obs_dome_1           rooms.built_span_m says    8.32 m; the module builds   12.97 m
+  note STALE    alien_sector         rooms.built_span_m says    9.68 m; the module builds   14.11 m
+  note STALE    customs_north        rooms.built_span_m says   12.31 m; the module builds   17.50 m
+  note STALE    customs_south        rooms.built_span_m says   12.31 m; the module builds   17.50 m
+  note STALE    central_corridor     rooms.built_span_m says    6.98 m; the module builds    9.36 m
+  note STALE    cnc                  rooms.built_span_m says   11.52 m; the module builds   14.33 m
+  note STALE    obs_dome_2           rooms.built_span_m says    9.60 m; the module builds    8.76 m
+  note STALE    shuttle_car          rooms.built_span_m says    6.40 m; the module builds    4.78 m
+  note OVERFOOT customs_north        shell   70.00 m in a   36.92 m footprint -- OVERLAP above is what makes that safe
+  note OVERFOOT qtr_transient        shell   69.68 m in a   58.28 m footprint -- OVERLAP above is what makes that safe
+  note NESTED   cnc                  shares  12.97 m of arc with obs_dome_1, which the register declares it is INSIDE
+  (21 stale builder widths, 2 shells outside their footprint -- reported, not counted: neither is in this file and both are gated by SPAN/OVERLAP above)
+  (negative control -- council_chamber x0.4, customs_north x4.0 broken on purpose; a run that comes back clean means the gate has stopped looking)
+rc=1
