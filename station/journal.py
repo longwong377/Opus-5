@@ -876,6 +876,60 @@ def _boot_ready(build=True):
     return True, ""
 
 
+LEDGER_LINE = re.compile(r"^journal: (\d+) kinds, (\d+) ledgers", re.M)
+
+
+def engine_ledgers(out=print, build=False):
+    """WHAT THE ENGINE ITSELF SAYS ITS LEDGER IS, read off its own printed line.
+
+    Returns `(n_blocks_reported, why)` -- `None` and a reason when the answer
+    could not be obtained, NEVER a fallback number. A gate that substitutes a
+    plausible value for a measurement is the "silently degrades and exits 0"
+    defect this repository has paid for twice.
+
+    THE REASON THIS IS NOT A PYTHON ASSERTION. `incident.py` now routes every
+    standing delta onto a `STANDING_BLOCKS` row, five of which were added in
+    session 4t. Checking in Python that those five are in the table checks that
+    the table contains what the table contains. What can actually be wrong is
+    the JOIN: `emit()` writes `station/generated/journal.json`, `journal.gd`
+    reads `standing_blocks` from it and initialises one accumulator per key,
+    and if that file is stale, unwritten, or read under a different shape then
+    the engine's ledger has eight rows while the station moves thirteen -- and
+    NOTHING in Python could tell. So this reads the count out of the line
+    `journal.gd::install` prints on every boot and compares it to
+    `len(STANDING_BLOCKS)` here.
+
+    It refuses to build a deck (`build=False` by default): a station that has
+    no `boot.json` gets a stated SKIP, because building one is minutes of four
+    contended cores and this is not the gate that should be doing it.
+    """
+    godot = godot_binary()
+    if godot is None:
+        return None, "no double-precision Godot binary in this container"
+    p = os.path.join(ROOT, "station/generated/scene/boot.json")
+    if not os.path.exists(p):
+        good, why = _boot_ready(build)
+        if not good:
+            return None, why
+    emit()
+    text, rc = _run(godot, ["--journal-gate", "--phase=learn"])
+    if not text.strip():
+        return None, "the engine produced no output at all (rc=%s)" % rc
+    # A TOOL THAT SUBSTITUTES A LESSER MODE MUST SAY SO. The container has been
+    # caught rendering through "OpenGL 3 Compatibility" and exiting 0; this run
+    # is headless and does not need a renderer, but if one is reported it is
+    # reported here rather than swallowed.
+    m = LEDGER_LINE.search(text)
+    if not m:
+        head = "\n".join(l for l in text.splitlines()
+                          if l.startswith("journal"))[:300]
+        return None, ("the engine never printed its `journal: N kinds, M "
+                      "ledgers` line (rc=%s); it said %r" % (rc, head or
+                                                             text[-300:]))
+    out("  the engine's own line: %s" % m.group(0).strip())
+    return int(m.group(2)), ""
+
+
 def gate(verbose=False, build=True) -> bool:                     # noqa: C901
     """Learn it, QUIT, reload, still have it -- plus time compression."""
     godot = godot_binary()

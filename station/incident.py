@@ -5139,6 +5139,30 @@ def ledger_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
           f"control standing {sorted(k for k, v in ctrl.standing.items() if v)}"
           f" (expect none); world {w.fingerprint()} against "
           f"{w2.fingerprint()}")
+
+    # 5. AND THE OTHER END OF THE JOIN, READ OFF THE ENGINE'S OWN PRINTED LINE.
+    # Everything above is Python checking Python. The blocks these deltas land
+    # on have to exist in the RUNTIME too -- `journal.gd` builds one
+    # accumulator per key in `station/generated/journal.json` and says how many
+    # it got. If that file is stale or unwritten, the station moves thirteen
+    # ledgers and the engine keeps eight, and no amount of Python could notice.
+    # REPORTED when the engine cannot be reached, ASSERTED when it can, and
+    # never given a fallback number.
+    got_n, why = JN.engine_ledgers(out=out)
+    if got_n is None:
+        out(f"  THE ENGINE WAS NOT ASKED: {why}. The count below is "
+            f"unverified against the runtime.")
+        out(f"  station-side, journal.STANDING_BLOCKS has "
+            f"{len(JN.STANDING_BLOCKS)} rows and every FACTION_LEDGER target "
+            f"is one of them")
+    else:
+        n += 1
+        check(got_n == len(JN.STANDING_BLOCKS),
+              "THE ENGINE agrees about how many ledgers there are -- the "
+              "number is read out of the line journal.gd prints at install, "
+              "not recomputed here",
+              f"engine {got_n} against journal.STANDING_BLOCKS "
+              f"{len(JN.STANDING_BLOCKS)}")
     return n
 
 

@@ -2337,13 +2337,18 @@
  "stale_after_days": 7,
  "standing_blocks": {
   "centauri": "the Centauri Republic's mission",
+  "civil_admin": "FAC-01 -- EarthGov's civil departments: housing, maintenance, traffic control, hospitality licensing. ONE block for four counterparties because they are one employer; split it when a place can play them off",
   "criminal": "FAC-25's networks -- the ledger the official one must not see",
+  "dockers_guild": "FAC-06 -- the Guild's own count, the one the ballot in `incident.py`'s grievance board reads",
   "downbelow": "standing among the underclass -- ROLE-10's informer mark",
   "ea_lawful": "EarthForce, customs, the Ombuds -- the official ledger",
   "league": "the League of Non-Aligned Worlds' delegations",
+  "medical": "FAC-07 -- medlab and the free clinic, who owe favours separately from the service that employs them",
+  "merchants": "FAC-08 -- the Zocalo traders' association",
   "minbari": "the Minbari delegation and the religious caste aboard",
   "narn": "the Narn regime's mission and the refugee committee",
-  "nightwatch": "FAC-24's informer standing, distinct from both"
+  "nightwatch": "FAC-24's informer standing, distinct from both",
+  "psi_corps": "FAC-05 -- earnable only with LICENSED PSI on the card, which is why it is a ledger and not a reputation"
  },
  "standing_range": [
   -100.0,
