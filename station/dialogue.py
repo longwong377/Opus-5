@@ -171,6 +171,12 @@ class World:
     # say, and a caller who did not say gets the public manner.
     session: str = ""
     audience: int = None
+    # WHICH TURN OF THE CONVERSATION THIS IS. The anti-repeat rule needs an
+    # ordinal and DETERMINISM forbids a hidden ledger -- `_selftest`'s
+    # "the same world state twice gives the same lines" caught exactly that
+    # when the draw kept its own mutable set, and it was right to. So the
+    # position in the draw is an INPUT, and the draw is a pure permutation.
+    turn: int = 0
 
     @property
     def era(self):
@@ -1236,8 +1242,20 @@ def _fmt(tpl: str, fact: dict, extra: dict = None) -> str:
         raise KeyError(f"phrasing wants {e} which no fact supplies: {tpl!r}")
 
 
-def phrase(topic: dict, reg: Register, sp: _Speaker) -> str:
-    """One line of speech, from the topic's facts and the speaker's band."""
+def phrase(topic: dict, reg: Register, sp: _Speaker,
+           world: "World" = None) -> str:
+    """One line of speech, from the topic's facts and the speaker's band.
+
+    THE TIER-2 MATRIX IS CONSULTED FIRST AND `PHRASE` IS THE FALLBACK. Before
+    DLG-02 this function reached `PHRASE[key][band]` for every speaker on the
+    station, which is 39 strings shared by 79 (species x role) cells -- so a
+    Drazi dockworker and a human merchant said the same sentence in a
+    different band. `cell_draw` returns that cell's OWN phrasing, drawn without
+    replacement per (NPC, session) as the annex's anti-repeat rule requires.
+    The state-specific tables below still win where they apply: a person
+    sleeping in Downbelow, a lapsed card and a named era event are facts about
+    the PERSON, and the cell is a fact about the kind of person.
+    """
     b = reg.band
     key = topic["key"]
     f = dict(topic.get("fact") or {})
@@ -1252,6 +1270,11 @@ def phrase(topic: dict, reg: Register, sp: _Speaker) -> str:
         return _fmt(VISA_PHRASE[f["state"]][b], f)
     if key == "shift" and f.get("here"):
         return _fmt(PHRASE["shift_here"][b], f)
+    cell = cell_draw(sp.species, sp.role, sp.npc_id,
+                     (world.session if world is not None else ""), key,
+                     (world.turn if world is not None else 0))
+    if cell:
+        return _fmt(cell, f)
     return _fmt(PHRASE[key][b], f)
 
 
@@ -1676,6 +1699,675 @@ def work_line(role: str, verb: str) -> str:
 
 
 # ===========================================================================
+# 4e.  DLG-02 -- THE TIER-2 VOICE MATRIX
+# ===========================================================================
+#
+# WHAT WAS ACTUALLY WRONG, AND IT WAS STRUCTURAL RATHER THAN A SHORTFALL.
+# `_ROLE_REGISTER` (19 rows) and `_SPECIES_VOICE` (15 rows) MODULATE a shared
+# phrasing -- they pick which of three bands a shared string is delivered in --
+# so 19 x 15 does not multiply into 285 voices, it selects one of 3. Every
+# speaker on the station drew from the same 39 strings. `spec_harness/dlg.py`
+# said so in as many words and it was right: *"19 role registers x 15 species
+# voices MODULATE them, they do not multiply them"*.
+#
+# THE FIX IS COMPOSITION, AND THE TWO HALVES ARE OWNED BY DIFFERENT TABLES:
+#
+#   ROLE_CLAUSE[role][topic]   -- WHAT this job says about this subject. 19 x
+#                                 11 = 209. It carries the FACT: the same
+#                                 braces `PHRASE` uses, filled by the topic
+#                                 function, so a matrix line still names
+#                                 today's liner and this officer's own beat.
+#   SPECIES_FRAME[species]     -- HOW that sentence leaves this mouth. 15 x 2
+#                                 = 30 frames, `{say}` being the clause.
+#
+# so a cell is 11 topics x 2 frames = 22 lines, plus 4 greetings and 4
+# farewells built the same way (a species stem plus a role tag) = **30 per
+# cell, 79 cells, 2,370 distinct lines** -- which is DLG-02's arithmetic, and
+# the distinctness is BY CONSTRUCTION rather than by discipline: every line
+# contains a string only that role owns and a string only that species owns,
+# so two cells cannot collide. `_selftest` asserts it over all 79 rather than
+# trusting the argument.
+#
+# WHY NOT 79 x 30 HAND-WRITTEN LINES. Because that is 2,370 strings nobody
+# will ever re-read, and because the failure it invites is the one this project
+# already has a gate for: a table whose entries drift apart. Composition means
+# a new species is 2 frames and a new role is 11 clauses, and the matrix is
+# complete the moment they exist -- `_selftest` fails on the hole otherwise.
+#
+# THE SPECIES CONSTRAINTS THE ANNEX NAMES ARE CARRIED HERE AND ARE CHECKABLE:
+# pak'ma'ra speak through a translator (every frame says so), Gaim only through
+# an interpreter, Brakiri reckon by a night clock, and the Minbari frames carry
+# a CASTE ADDRESS -- `MINBARI_CASTE` maps each role to the caste that holds it,
+# and the greeting names it. The Brakiri daypart inversion was already built in
+# `daypart()` and is untouched. Authority 5 for every phrasing; the register is
+# the customs board's, as everywhere else in this module. INV-688.
+
+# THE CASTE A ROLE BELONGS TO. Minbari society is three castes and the annex
+# asks for the address forms inside the Minbari cells; the mapping is the one
+# FACTIONS.md 8.1 implies -- the religious caste is the bulk aboard, the
+# warrior caste holds the martial offices, the worker caste builds and carries.
+MINBARI_CASTE = {
+    "command": "warrior", "security": "warrior", "customs": "warrior",
+    "traffic": "worker", "medical": "religious", "diplomat": "religious",
+    "envoy": "religious", "cleric": "religious", "financier": "worker",
+    "merchant": "worker", "service": "worker", "engineer": "worker",
+    "industrial": "worker", "dockworker": "worker", "waste": "worker",
+    "hydroponics": "worker", "visitor": "religious", "refugee": "religious",
+    "lurker": "worker",
+}
+CASTE_ADDRESS = {"religious": "in the light", "warrior": "in the line",
+                 "worker": "at the work"}
+
+# 19 x 11. Each clause uses ONLY the brace keys the topic's own fact supplies
+# -- the same keys `PHRASE` uses -- so a clause cannot ask for a value the
+# station did not compute. `_selftest` renders all 209 against the topic facts.
+ROLE_CLAUSE = {
+    "command": {
+        "port": "The {ship} is on my board at {when}. {souls} souls, and every "
+                "one of them is my responsibility until they clear.",
+        "news": "You will have read it: {text}. I am not going to comment on "
+                "it in a corridor.",
+        "beat": "{sector} ring is a {min:.0f} minute circuit and I have {on} "
+                "to cover it with. Do the arithmetic yourself.",
+        "trade": "The {counter} at {where} is licensed and it is inspected. "
+                 "That is the whole of my interest in it.",
+        "shift": "I am wanted at {job}. The watch runs {start} to {end} and it "
+                 "does not run late.",
+        "meal": "I take {meals} at {where} because the day allows for {meals} "
+                "and no more.",
+        "home": "Quarters at {home}. I sleep where the board can reach me.",
+        "worship": "{where}, when the duty roster permits. It generally does "
+                   "not.",
+        "visa": "{visa}. Mine is the least interesting card on this deck.",
+        "era": "I have read the order four times. Command is what you do when "
+               "the order does not cover it.",
+        "refusal": "turns squarely away and does not look back",
+    },
+    "security": {
+        "port": "{ship}, {when}. {souls} through the hall and every one a "
+                "chance for somebody to try something.",
+        "news": "{text}. I hear it on the post four times a watch.",
+        "beat": "{sector} ring. {min:.0f} minutes a lap, {on} of us on the "
+                "watch. Move along, please.",
+        "trade": "The {counter} at {where} has had no complaint against it "
+                 "this quarter. Keep it that way.",
+        "shift": "{job} at {start}. Off at {end}, in theory.",
+        "meal": "{meals} a day, at {where}, standing up.",
+        "home": "{home}. Ten minutes from the post if I run.",
+        "worship": "{where}. The watch does not always allow it.",
+        "visa": "{visa}. And yes, I do check my own.",
+        "era": "One in three of the officers I sign the roster for is wearing "
+               "something I did not issue.",
+        "refusal": "puts a hand on the belt and says nothing at all",
+    },
+    "customs": {
+        "port": "The {ship} berthed {when} and {souls} of them are queueing "
+                "at my positions as we speak.",
+        "news": "{text}. It changes nothing at the desk and everything behind "
+                "it.",
+        "beat": "The hall is not a beat. {sector} ring has {on} on it and none "
+                "of them stand in a queue for {min:.0f} minutes at a time.",
+        "trade": "The {counter} at {where} clears through this hall like "
+                 "everyone else.",
+        "shift": "{job}, {start} to {end}. The queue does not know about the "
+                 "end.",
+        "meal": "{meals} at {where}. One of them is eaten at the desk.",
+        "home": "{home}, and I am grateful for a door that shuts.",
+        "worship": "{where}. It is on my way, which is the only reason I go.",
+        "visa": "{visa}. I read three hundred of these a day and I still read "
+                "mine.",
+        "era": "The forms changed and nobody sent a note explaining which "
+               "authority changed them.",
+        "refusal": "returns to the queue and calls the next person forward",
+    },
+    "traffic": {
+        "port": "{ship}. Berthed {when}. {souls}. That is the whole call.",
+        "news": "{text}. Not my board.",
+        "beat": "{sector}. {min:.0f}. {on}. Ask security.",
+        "trade": "{counter}, {where}. Cargo desk, not mine.",
+        "shift": "{job}. {start}. {end}.",
+        "meal": "{where}. {meals}. Between hulls.",
+        "home": "{home}. Close to the bays, which is the point.",
+        "worship": "{where}, off watch.",
+        "visa": "{visa}. Filed.",
+        "era": "The traffic does not care what the news says. It arrives "
+               "either way.",
+        "refusal": "keys the headset and turns to the board",
+    },
+    "medical": {
+        "port": "The {ship} came in at {when} with {souls} aboard, and I will "
+                "see four of them before the watch is out.",
+        "news": "{text}. What that means down here is that people stop coming "
+                "in until they are much worse.",
+        "beat": "{sector} ring, {min:.0f} minutes -- I know it because that is "
+                "how long it takes {on} officers to bring somebody up to me.",
+        "trade": "The {counter} at {where} sells things I have to explain "
+                 "afterwards.",
+        "shift": "I am due at {job}. {start} to {end}, and then whatever comes "
+                 "through the door at {end}.",
+        "meal": "{meals} at {where}, and I recommend the same to you.",
+        "home": "{home}. I am there for six hours of the twenty-four.",
+        "worship": "{where}. It helps, and I am not going to defend that.",
+        "visa": "{visa}. Status has never once changed what I treat.",
+        "era": "I have signed more certificates this year than in the four "
+               "before it, and none of them said why.",
+        "refusal": "steps back behind the curtain and draws it",
+    },
+    "diplomat": {
+        "port": "The {ship} arrived at {when}. {souls} passengers, of whom I "
+                "am told two are worth meeting.",
+        "news": "{text}. One says nothing about such matters in a public "
+                "corridor, and one says a great deal in private.",
+        "beat": "{sector} ring is patrolled by {on} officers on a {min:.0f} "
+                "minute circuit. I have made it my business to know.",
+        "trade": "The {counter} at {where}. A mission runs on small "
+                 "courtesies, and small courtesies are bought.",
+        "shift": "I am expected at {job} between {start} and {end}. Ceremony "
+                 "is the work.",
+        "meal": "{meals} at {where}, and the seating is the meeting.",
+        "home": "{home}. A residence is a statement; mine is a modest one.",
+        "worship": "{where}. Observance is noticed, which is reason enough.",
+        "visa": "{visa}, and it opens doors this station does not know it has.",
+        "era": "Everything is now said twice: once for the room and once for "
+               "the record.",
+        "refusal": "inclines the head with perfect courtesy and withdraws",
+    },
+    "envoy": {
+        "port": "The {ship}. {when}. {souls}.",
+        "news": "{text}.",
+        "beat": "{sector}. {min:.0f}. {on}.",
+        "trade": "{counter}. {where}.",
+        "shift": "{job}. {start}. {end}.",
+        "meal": "{where}. If it must be.",
+        "home": "{home}. For now.",
+        "worship": "{where}.",
+        "visa": "{visa}.",
+        "era": "It has already happened.",
+        "refusal": "does not move, and the moment passes",
+    },
+    "cleric": {
+        "port": "The {ship} came in at {when}. {souls} arrivals, and some of "
+                "them will find their way to us before the week is out.",
+        "news": "{text}. We do not read the screens at the hours; we read them "
+                "afterwards.",
+        "beat": "{sector} ring, {min:.0f} minutes, {on} officers. We walk it "
+                "too, only slower and for another reason.",
+        "trade": "The {counter} at {where} gives what it can spare, which is "
+                 "more than most.",
+        "shift": "The hours are kept at {job}, {start} and again at {end}.",
+        "meal": "{meals} at {where}, and the first of them in silence.",
+        "home": "{home}. The order asks for little and is given less.",
+        "worship": "{where}. It is not somewhere I go; it is what I am for.",
+        "visa": "{visa}. The order stands surety for those who have none.",
+        "era": "People who never came before are coming now, and they do not "
+               "say why, and we do not ask.",
+        "refusal": "makes the sign of the order and turns to the lamps",
+    },
+    "financier": {
+        "port": "The {ship} at {when} with {souls} aboard is four hundred "
+                "settlements before the close of business.",
+        "news": "{text}. The market read it an hour before you did.",
+        "beat": "{sector} ring, {on} officers, {min:.0f} minutes. Insurance "
+                "prices that circuit, and it prices it badly.",
+        "trade": "The {counter} at {where} banks with us, or it banks nowhere.",
+        "shift": "{job}, {start} to {end}. The hours are rigid on a station "
+                 "with no day, which is the joke.",
+        "meal": "{meals}. {where}. Accounts do not close for lunch.",
+        "home": "{home}, and the rent is the second largest line in my month.",
+        "worship": "{where}. It is good for the standing.",
+        "visa": "{visa}, renewed annually, and it costs what it costs.",
+        "era": "Every emergency measure is a clause somebody has to price. "
+               "I am somebody.",
+        "refusal": "closes the ledger deliberately and waits for you to leave",
+    },
+    "merchant": {
+        "port": "The {ship} docked at {when} -- {souls} of them, and by "
+                "evening half will have walked past my front.",
+        "news": "{text}, and I will tell you what it does to the price of "
+                "everything on this cloth.",
+        "beat": "{sector} ring, {min:.0f} minutes, {on} officers. Between "
+                "circuits is when things go missing.",
+        "trade": "The {counter} is mine, at {where}. Come and look properly, "
+                 "there is no charge for looking.",
+        "shift": "I open at {start} and I am still there at {end}, which is "
+                 "not a shift, it is a life.",
+        "meal": "{meals} a day at {where}, eaten behind the counter.",
+        "home": "{home}. Two rooms, and one of them is stock.",
+        "worship": "{where}, on the days trade allows.",
+        "visa": "{visa}. A trading licence is a different card and it costs "
+                "more.",
+        "era": "My suppliers are on the wrong side of somebody's line now and "
+               "nobody will tell me whose.",
+        "refusal": "goes back to arranging the front of the stall",
+    },
+    "service": {
+        "port": "The {ship} in at {when}. {souls}. We will be three deep at "
+                "the counter by twenty hundred.",
+        "news": "{text}. It gets argued about in here every single night.",
+        "beat": "{sector} ring, {min:.0f} minutes. {on} on the watch and two "
+                "of them drink in here off duty.",
+        "trade": "The {counter} at {where} is where I am, most hours you would "
+                 "want me.",
+        "shift": "{job} from {start}. I lock up at {end} and I clean until "
+                 "somebody makes me stop.",
+        "meal": "{meals} at {where}, standing at the end of the bar.",
+        "home": "{home}, and I sleep through the shift change like the dead.",
+        "worship": "{where}. Sunday mornings are the only quiet I get.",
+        "visa": "{visa}. The licence matters more than the visa in my trade.",
+        "era": "People say things in here they would not say in a corridor, "
+               "and lately they have stopped.",
+        "refusal": "wipes the counter down and moves to the far end of it",
+    },
+    "engineer": {
+        "port": "The {ship} at {when}. {souls} aboard, and her grapple will be "
+                "on my works list by morning.",
+        "news": "{text}. It will come down to us as a change to a procedure "
+                "and no explanation.",
+        "beat": "{sector} ring is {min:.0f} minutes if you are walking it. It "
+                "is forty if you are pulling a cable down it.",
+        "trade": "The {counter} at {where} sells the only decent gasket on "
+                 "this ring.",
+        "shift": "{job}, {start} to {end}, and then whatever breaks at {end}.",
+        "meal": "{meals} at {where}. Out of a tin, mostly.",
+        "home": "{home}. It is loud, but everything here is loud.",
+        "worship": "{where}, if the plant behaves.",
+        "visa": "{visa}. Trade certification is the card that actually feeds "
+                "me.",
+        "era": "Nobody tells the shop floor anything. We work out what has "
+               "happened from what we are suddenly not allowed to order.",
+        "refusal": "picks the panel back up and goes on working",
+    },
+    "industrial": {
+        "port": "{ship}, {when}, {souls}. Means a run for us tomorrow.",
+        "news": "{text}. Same as ever.",
+        "beat": "{sector} ring, {min:.0f} minutes. {on} of them. None of them "
+                "come down our end.",
+        "trade": "{counter} at {where}. I buy there when I have to.",
+        "shift": "{job}. {start} to {end}. Three shifts round the clock and "
+                 "mine is this one.",
+        "meal": "{meals} at {where}. Twenty minutes.",
+        "home": "{home}. Ninety decks of us stacked up.",
+        "worship": "{where}. Not often.",
+        "visa": "{visa}. Never been asked for it in Grey.",
+        "era": "The line runs whatever happens. That is the one thing you can "
+               "say for it.",
+        "refusal": "shoulders past and keeps walking",
+    },
+    "dockworker": {
+        "port": "{ship}. {when}. {souls}. Forty-one crates and the manifest "
+                "says thirty-nine.",
+        "news": "{text}. Don't care.",
+        "beat": "{sector}. {min:.0f} minutes. {on} of them, and not one down a "
+                "bay when you want one.",
+        "trade": "{counter}. {where}. That's the one.",
+        "shift": "{job}. {start}. Off at {end} and not a minute over.",
+        "meal": "{where}. {meals}. Fast.",
+        "home": "{home}. Bunk, locker, done.",
+        "worship": "{where}. Once a year, if that.",
+        "visa": "{visa}. Guild card's the one that counts.",
+        "era": "They will find a way to make it our fault. They always do.",
+        "refusal": "spits on the deck and turns back to the gang",
+    },
+    "waste": {
+        "port": "{ship} at {when}. {souls} aboard, and every one of them "
+                "produces two kilos a day for me.",
+        "news": "{text}. Nobody down at the plant has said a word about it.",
+        "beat": "{sector} ring, {min:.0f} minutes, {on} officers -- who do not "
+                "come below the plant deck at all.",
+        "trade": "The {counter} at {where}. Half of what they sell comes back "
+                 "through me within the month.",
+        "shift": "{job}, {start} to {end}. It never stops, so neither do we.",
+        "meal": "{meals} at {where}. Washed first.",
+        "home": "{home}. Close to the plant, and you get used to it.",
+        "worship": "{where}. Nobody minds where I have come from there.",
+        "visa": "{visa}. Nobody checks it in the reclamation levels.",
+        "era": "Whatever happens up there, it comes down to us in the end, "
+               "and it always has.",
+        "refusal": "pulls the mask back up and goes on with it",
+    },
+    "hydroponics": {
+        "port": "The {ship} at {when}. {souls} more mouths, and the beds do "
+                "not grow any faster for it.",
+        "news": "{text}. It will be a shortage in six weeks, whatever it is.",
+        "beat": "{sector} ring, {min:.0f} minutes, {on} officers. None of "
+                "them can tell a seedling from a weed.",
+        "trade": "The {counter} at {where} sells what we cut this morning.",
+        "shift": "{job}, {start} to {end}. An agricultural shift starts before "
+                 "the station wakes up.",
+        "meal": "{meals} at {where}, and most of it came off my own beds.",
+        "home": "{home}. It smells of the beds and I have stopped noticing.",
+        "worship": "{where}, after the cut.",
+        "visa": "{visa}. Agricultural certification, renewed each season.",
+        "era": "Every one of these leaves the same mark: an order to plant "
+               "more of what stores and less of what tastes of anything.",
+        "refusal": "bends back to the tray and does not straighten up",
+    },
+    "visitor": {
+        "port": "I came in on the {ship} at {when}, one of {souls}, and I am "
+                "still finding my way about.",
+        "news": "{text}. I have only just arrived; I do not know what to make "
+                "of it.",
+        "beat": "{sector} ring takes {min:.0f} minutes to walk, they tell me. "
+                "{on} officers on it. It seems a great many.",
+        "trade": "The {counter} at {where} was recommended to me. I have no "
+                 "idea by whom.",
+        "shift": "I am not on a shift. I am meant to be at {job} between "
+                 "{start} and {end} and I am not sure why.",
+        "meal": "{meals} at {where}, since I have nowhere to cook.",
+        "home": "{home}, for as long as it is paid for.",
+        "worship": "{where}. It is the one thing here that looks familiar.",
+        "visa": "{visa}. Thirty days, and then I am somebody else's problem.",
+        "era": "I read about it at home and it seemed very far away. It does "
+               "not seem far away from here.",
+        "refusal": "looks away quickly, the way a stranger does",
+    },
+    "refugee": {
+        "port": "The {ship} came in at {when} with {souls} aboard. I came the "
+                "same way, and I asked the same questions.",
+        "news": "{text}. We hear it before the screens do, and we hear it "
+                "wrong.",
+        "beat": "{sector} ring, {min:.0f} minutes, {on} officers. I have "
+                "learned when they pass. Everyone here has.",
+        "trade": "The {counter} at {where} will take a name it does not "
+                 "recognise, which is not nothing.",
+        "shift": "{job}, if I am picked at {start}. If I am not, there is no "
+                 "{end} to speak of.",
+        "meal": "{meals}, at {where}, and I am grateful for both of them.",
+        "home": "{home}. It is a partition and a curtain, and it is ours.",
+        "worship": "{where}. It is the only place I am asked nothing.",
+        "visa": "{visa}. That word is the whole of my standing here.",
+        "era": "It is why I am here. That is all it is, and it is everything.",
+        "refusal": "gathers the child closer and steps out of the way",
+    },
+    "lurker": {
+        "port": "{ship}, {when}. {souls} of them with full pockets and no idea "
+                "where they are.",
+        "news": "{text}. Doesn't reach down here till it's old.",
+        "beat": "{sector}. {min:.0f} minutes. {on} of them, and I know all "
+                "{on} by their boots.",
+        "trade": "{counter}. {where}. I've been moved on from there twice.",
+        "shift": "{job}? There's no shift. There's whoever's hiring at "
+                 "{start} and nothing at all by {end}.",
+        "meal": "{where}, if it's going. {meals} is for people with a door.",
+        "home": "{home}. That's what they call it on the register.",
+        "worship": "{where}. They feed you after, that's why.",
+        "visa": "{visa}. Don't go near the readers, that's the trick.",
+        "era": "It gets worse down here first and it gets better down here "
+               "last, and that's the whole of it.",
+        "refusal": "melts back into the crowd without a word",
+    },
+}
+
+# 15 x 2. `{say}` is the role clause. NO FRAME MAY BE BARE and no two may be
+# equal, because a bare frame would let two species collide on one string --
+# which is exactly the degeneracy `deck.py --degeneracy` exists to catch, and
+# `_selftest` asserts it here rather than trusting the writing.
+SPECIES_FRAME = {
+    "human":    ("Look -- {say}", "{say} That's about the size of it."),
+    "narn":     ("{say} No more than that.", "It is simple enough. {say}"),
+    "centauri": ("My dear fellow, {say}",
+                 "{say} And there is a great deal more to it, believe me."),
+    "minbari":  ("Be at peace. {say}", "{say} It is done as it should be."),
+    "drazi":    ("{say} Yes? Good.", "Hah. {say}"),
+    "brakiri":  ("{say} At this hour, at least.",
+                 "By the night's reckoning, {say}"),
+    "pakmara":  ("Translator: {say}", "{say} Translation ends."),
+    "vree":     ("{say} That is the arrangement.", "Arrangement: {say}"),
+    "abbai":    ("{say} We would rather it were settled quietly.",
+                 "If it can be done gently: {say}"),
+    "gaim":     ("The interpreter says: {say}",
+                 "Through the interpreter: {say} The hive adds nothing."),
+    "hyach":    ("{say} It was so before you came.", "In the old order: {say}"),
+    "llort":    ("{say} You want it? Make me an offer.", "Heh. {say}"),
+    "grome":    ("{say} The soil does not hurry.", "Slowly, then: {say}"),
+    "other":    ("{say} That is all I have to say to you.",
+                 "Understand this: {say}"),
+    "vorlon":   ("And? {say}", "{say} You already knew."),
+}
+
+# Four greeting stems and four parting stems per species; a role tag and a role
+# parting clause. greet = stem + tag, farewell = stem + parting. 4 + 4 = the 8
+# the row's arithmetic asks for, and both halves are cell-unique.
+SPECIES_GREET = {
+    "human":    ("Good {word}.", "{Word}.", "Yes?", "You want me?"),
+    "narn":     ("Good {word} to you.", "{Word}. State it.", "Speak.",
+                 "You have found me. Well."),
+    "centauri": ("Ah! Good {word}, good {word}!", "{Word}, and well met.",
+                 "You are in luck, I am at leisure.", "Yes, yes -- come."),
+    "minbari":  ("Good {word}. Be welcome.", "{Word}. The light is with you.",
+                 "You are expected, as all are.", "Peace to you."),
+    "drazi":    ("{Word}. What.", "Good {word}. Be quick.", "Hah! Speak.",
+                 "You. Yes?"),
+    "brakiri":  ("Good {word} -- by my clock, at any rate.",
+                 "{Word}. The desk is open.", "You have caught me working.",
+                 "Business, or company?"),
+    "pakmara":  ("Translator: good {word}.", "{Word}. Translator ready.",
+                 "Speech is permitted.", "You address me. Proceed."),
+    "vree":     ("Good {word}. State the arrangement.", "{Word}. Proceed.",
+                 "You are recognised.", "An approach is noted."),
+    "abbai":    ("Good {word}, and gently.", "{Word}. Be at ease.",
+                 "You are very welcome here.", "Softly, now."),
+    "gaim":     ("The interpreter returns your good {word}.",
+                 "{Word}. The interpreter attends.",
+                 "The hive acknowledges you.", "Address the interpreter."),
+    "hyach":    ("Good {word}, as it has always been said.",
+                 "{Word}. You are young.", "You come to an old house.",
+                 "Be seated, or do not."),
+    "llort":    ("{Word}. What have you got?", "Good {word}. Show me.",
+                 "Heh. You again.", "Something to sell?"),
+    "grome":    ("Good {word}. There is no hurry.", "{Word}. Sit if you like.",
+                 "You have come a long way for this.", "Slowly, now."),
+    # NOT "Good {word}." -- that is `human`'s stem, and two species sharing a
+    # stem collapses ten cells onto five strings. Found by the identity
+    # assertion below, not by reading.
+    "other":    ("A good {word} to you.", "{Word}. Yes.",
+                 "You wish to speak with me.", "I am here. Ask."),
+    "vorlon":   ("You are expected.", "{Word}. Perhaps.", "You have come.",
+                 "Ah."),
+}
+SPECIES_PART = {
+    "human":    ("Good {word} to you.", "Right you are.", "Mind how you go.",
+                 "See you about."),
+    "narn":     ("Go well.", "That is enough said.", "We are finished.",
+                 "Strength to you, for what it is worth."),
+    "centauri": ("Charmed, absolutely charmed.", "Do call again -- do!",
+                 "Until the next time, and there will be one.",
+                 "You have been a delight, truly."),
+    "minbari":  ("Go in the light.", "Be at peace.",
+                 "The work continues without us.", "Until it is time."),
+    "drazi":    ("Go.", "Hah. Finished.", "Enough.", "Away with you, then."),
+    "brakiri":  ("Good night -- mine, not yours.", "The desk closes.",
+                 "Settle before the market opens.", "Until the dark hours."),
+    "pakmara":  ("Translation ends.", "Session concluded.",
+                 "No further speech is required.", "Disconnect."),
+    "vree":     ("The arrangement stands.", "Concluded.",
+                 "Terms are recorded.", "Departure is noted."),
+    "abbai":    ("Go quietly.", "Let it rest there.",
+                 "Nothing more need be said.", "Be gentle with it."),
+    "gaim":     ("The interpreter withdraws.", "The hive has no more.",
+                 "Communication ends.", "Return if the hive is needed."),
+    "hyach":    ("It was so before you came.", "Go, then, as the young do.",
+                 "Another will ask the same in a century.",
+                 "The house remains."),
+    "llort":    ("Bring me something next time.", "Heh. Off with you.",
+                 "No sale, no farewell.", "Come back with better."),
+    "grome":    ("Go slowly.", "It will keep.", "There is time yet.",
+                 "The soil does not hurry, and neither should you."),
+    "other":    ("That is all.", "We are done here.", "Go on, then.",
+                 "Nothing further."),
+    "vorlon":   ("Go.", "Later.", "When you are ready.", "Not yet."),
+}
+
+# One tag per role, appended to a greeting; one parting clause per role. These
+# are what make (narn, dockworker) and (narn, merchant) different cells rather
+# than one cell said twice.
+ROLE_TAG = {
+    "command": "This is a duty station.",
+    "security": "Station security.",
+    "customs": "Customs. Have your card ready.",
+    "traffic": "Bay control.",
+    "medical": "Medlab. Is anybody hurt?",
+    "diplomat": "The mission is receiving.",
+    "envoy": "",
+    "cleric": "The hours are open to anyone.",
+    "financier": "The desk is open.",
+    "merchant": "Everything on the cloth is priced.",
+    "service": "What can I get you?",
+    "engineer": "Mind the panel, it is live.",
+    "industrial": "You are on the shop floor.",
+    "dockworker": "Bay's working. Stand clear.",
+    "waste": "You are a long way down.",
+    "hydroponics": "Mind the beds.",
+    "visitor": "I have only just arrived myself.",
+    "refugee": "I am waiting, like everyone.",
+    "lurker": "You are not from down here.",
+}
+ROLE_PART = {
+    "command": "I am wanted on the board.",
+    "security": "Keep moving, please.",
+    "customs": "Next in the queue.",
+    "traffic": "Bay control out.",
+    "medical": "Come back if it worsens.",
+    "diplomat": "The mission will be in touch.",
+    "envoy": "",
+    "cleric": "The hours are kept whether you come or not.",
+    "financier": "Accounts close at the hour.",
+    "merchant": "Come back when you are buying.",
+    "service": "Same again tomorrow, no doubt.",
+    "engineer": "This panel is not going to close itself.",
+    "industrial": "The line does not wait.",
+    "dockworker": "Hull is not going to unload itself.",
+    "waste": "Somebody has to be down here.",
+    "hydroponics": "The beds want water.",
+    "visitor": "I will probably be lost again by evening.",
+    "refugee": "I will be here. I am always here.",
+    "lurker": "You never saw me.",
+}
+
+
+def _cell_greet(species: str, role: str) -> tuple:
+    """The cell's four greetings. Species stem plus the role's own tag."""
+    tag = ROLE_TAG.get(role, "")
+    return tuple((g + (" " + tag if tag else "")).strip()
+                 for g in SPECIES_GREET.get(species, SPECIES_GREET["other"]))
+
+
+def _cell_part(species: str, role: str) -> tuple:
+    """The cell's four farewells."""
+    tag = ROLE_PART.get(role, "")
+    return tuple((p + (" " + tag if tag else "")).strip()
+                 for p in SPECIES_PART.get(species, SPECIES_PART["other"]))
+
+
+def cell_clause(role: str, topic: str) -> str:
+    """WHAT this role says about this subject, braces and all. None if absent."""
+    return (ROLE_CLAUSE.get(role) or {}).get(topic)
+
+
+def cell_line(species: str, role: str, topic: str, variant: int = 0) -> str:
+    """One tier-2 matrix line: the role's clause in this species' mouth.
+
+    Returns None when the matrix has no clause for the role, which is the
+    documented fallback to `PHRASE` -- a role that exists in `schedule.ROLES`
+    and not here. `_selftest` asserts there are none today, so the fallback is
+    a safety net rather than a hiding place.
+    """
+    say = cell_clause(role, topic)
+    if say is None:
+        return None
+    frames = SPECIES_FRAME.get(species, SPECIES_FRAME["other"])
+    return frames[variant % len(frames)].format(say=say)
+
+
+def cell_lines(species: str, role: str) -> tuple:
+    """Everything one (species x role) cell can say. DLG-02's per-cell pool.
+
+    11 topics x 2 frames + 4 greetings + 4 farewells = 30, and the harness
+    counts THIS rather than a number written down beside it.
+    """
+    out = []
+    for key, _fn in TOPICS:
+        for v in range(len(SPECIES_FRAME.get(species, SPECIES_FRAME["other"]))):
+            ln = cell_line(species, role, key, v)
+            if ln:
+                out.append(ln)
+    out.extend(_cell_greet(species, role))
+    out.extend(_cell_part(species, role))
+    return tuple(out)
+
+
+def occupied_cells() -> tuple:
+    """The (species, role) pairs `schedule.ROLE_WEIGHTS` actually populates.
+
+    79 at the datum, and DERIVED -- so a weight going to zero removes a cell
+    from the matrix's denominator instead of leaving a row nobody occupies.
+    """
+    return tuple((sp, r) for sp, w in sched.ROLE_WEIGHTS.items()
+                 for r, n in w.items() if n)
+
+
+# THE ANTI-REPEAT RULE, NORMATIVE IN THE ANNEX: *"within one place-visit no
+# tier-2 line repeats until its cell's pool is exhausted (draw without
+# replacement per (NPC, session))"*.
+#
+# AND IT IS A PERMUTATION, NOT A LEDGER, BECAUSE DETERMINISM IS THE OLDER
+# RULE. The first version kept a mutable `drawn` set per (species, role, npc,
+# session) and `_selftest`'s "the same world state twice gives the same lines"
+# failed immediately -- correctly: a `speak()` whose output depends on how many
+# times it has been called cannot be baked into a sidecar, cannot be
+# A/B-tested, and cannot be reproduced under two hash seeds. CLAUDE.md's
+# ROBUSTNESS 0 descriptor names `random` and salted hashing for the same
+# reason.
+#
+# So the draw is `_shuffle(pool, key)[turn % len(pool)]` -- a Fisher-Yates
+# permutation seeded by blake2b through `_u`, indexed by an ORDINAL THE CALLER
+# SUPPLIES. Draw-without-replacement is then a fact about the permutation
+# (lines-before-first-repeat is exactly the pool size, 30, comfortably over
+# the annex's floor of 20 in a ten-minute dwell) rather than a probability,
+# and two calls with the same world are the same call.
+def _shuffle(pool: tuple, key: str) -> tuple:
+    """A deterministic permutation of `pool`, keyed by `key`. No `random`."""
+    out = list(pool)
+    for i in range(len(out) - 1, 0, -1):
+        j = int(_u(f"{key}|{i}") * (i + 1)) % (i + 1)
+        out[i], out[j] = out[j], out[i]
+    return tuple(out)
+
+
+def cell_draw(species: str, role: str, npc_id: str, session: str = "",
+              topic: str = None, turn: int = 0) -> str:
+    """The `turn`-th line this person says, without repeating inside the pool."""
+    pool = cell_lines(species, role)
+    if not pool:
+        return None
+    if topic is not None:
+        say = cell_clause(role, topic)
+        want = tuple(l for l in pool if say and say in l) if say else ()
+        pool = want or pool
+    perm = _shuffle(pool, f"cell|{species}|{role}|{npc_id}|{session}")
+    return perm[turn % len(perm)]
+
+
+def lines_before_repeat(species: str, role: str, npc_id: str,
+                        session: str = "") -> int:
+    """How many draws before this cell says something twice. The annex's floor.
+
+    *"lines-before-first-repeat >= 20 in any 10-minute room dwell"*. Measured
+    by walking the draw rather than by asserting the pool size, because those
+    are two different claims and only one of them is about the code.
+    """
+    seen, n = set(), 0
+    while True:
+        t = cell_draw(species, role, npc_id, session, turn=n)
+        if t in seen:
+            return n
+        seen.add(t)
+        n += 1
+        if n > 1000:                                         # pragma: no cover
+            return n
+
+
+# ===========================================================================
 # 4d.  DLG-06 -- the two scarce voices, and scarcity enforced as content
 # ===========================================================================
 #
@@ -1777,19 +2469,6 @@ def broker_lines(alone: bool) -> tuple:
     return tuple(t for gate, t in BROKER_LINES if gate is not alone)
 
 
-# What one play session has already heard from a scarce voice. Keyed by
-# (which voice, session), so two sessions are two ledgers and the
-# "never twice in one session" rule is enforced by the pool shrinking rather
-# than by a caller remembering to check.
-_HEARD = {}
-
-
-def forget_session(session: str = "") -> None:
-    """Start a fresh session's scarce-voice ledger. The gate's own reset."""
-    for k in [k for k in _HEARD if k[1] == session]:
-        del _HEARD[k]
-
-
 def scarce_voice(sp) -> str:
     """Is this speaker one of DLG-06's two, and which?
 
@@ -1822,25 +2501,24 @@ def scarce_line(sp, world: World):
     if not kind:
         return None
     if kind == "kosh":
-        heard = _HEARD.setdefault(("kosh", world.session), set())
-        left = kosh_lines(world.session, heard)
-        if not left:
+        # NEVER TWICE IN ONE SESSION, AND IT IS THE PERMUTATION THAT SAYS SO.
+        # Turn n of a session gets perm[n]; turn 12 and after get SILENCE,
+        # which is the only thing a CEILING can honestly do when it is
+        # reached, and is the register besides.
+        perm = _shuffle(KOSH_LINES, f"kosh|{world.session}")
+        if world.turn >= len(perm):
             return ("", f"dialogue.KOSH_LINES exhausted: all "
                         f"{len(KOSH_LINES)} spoken in session "
                         f"{world.session!r} (DLG-06 ceiling, FACTIONS.md 12)")
-        i = int(_u(f"kosh|{world.session}|{len(heard)}|{sp.npc_id}")
-                * len(left)) % len(left)
-        t = left[i]
-        heard.add(t)
-        return (t, f"dialogue.KOSH_LINES[{KOSH_LINES.index(t)}] -- "
-                   f"{len(left) - 1} of {len(KOSH_LINES)} left this session")
+        t = perm[world.turn]
+        return (t, f"dialogue.KOSH_LINES[{KOSH_LINES.index(t)}] -- turn "
+                   f"{world.turn} of {len(KOSH_LINES)} this session")
     alone = world.audience is not None and world.audience <= 1
-    pool = broker_lines(alone)
-    i = int(_u(f"broker|{world.session}|{world.hour:.2f}|{sp.npc_id}")
-            * len(pool)) % len(pool)
-    return (pool[i], f"dialogue.BROKER_LINES, "
-                     f"{'alone with him' if alone else 'a room listening'} "
-                     f"(audience={world.audience}) -- {len(pool)} available")
+    pool = _shuffle(broker_lines(alone), f"broker|{world.session}|{sp.npc_id}")
+    return (pool[world.turn % len(pool)],
+            f"dialogue.BROKER_LINES, "
+            f"{'alone with him' if alone else 'a room listening'} "
+            f"(audience={world.audience}) -- {len(pool)} available")
 
 # The ASK answer -- the QUALITATIVE half. Named facts, no salience number.
 ASKED = {
@@ -2076,8 +2754,16 @@ def speak(resident, place_key: str, world: World = None,
         # press gets the band's own deflection; let-go ends it. Nothing new is
         # invented for the NPC here: `DEFLECT` is the row that already exists
         # for a person who will not give up the number.
-        lines.append(Line("npc", "action", pick["action"], pick["source"]))
-        sources.append(pick["source"])
+        # HOW a person avoids you is their role's business; THAT they avoid
+        # you is the gazetteer's. The sourced behaviour stays in the source
+        # string, so the provenance of the refusal is unchanged and only the
+        # staging is the cell's (authority 5, INV-688).
+        act = cell_clause(sp.role, "refusal") or pick["action"]
+        lines.append(Line("npc", "action", act,
+                          f"{pick['source']} -- behaviour "
+                          f"{pick['action']!r}; staged by cell "
+                          f"({sp.species}, {sp.role})"))
+        sources.append(lines[-1].source)
         say = SAY["refusal"]
         refuse = (
             Choice(stance="ask", text=say[0], reply=(), yielded=False,
@@ -2153,8 +2839,9 @@ def speak(resident, place_key: str, world: World = None,
                                   "The encounter suit does not move.", why))
                 sources.append(why)
         else:
-            lines.append(Line("npc", "speech", phrase(pick, reg, sp),
-                              pick["source"]))
+            lines.append(Line("npc", "speech", phrase(pick, reg, sp, world),
+                              f"{pick['source']} -> cell "
+                              f"({sp.species}, {sp.role})"))
             sources.append(pick["source"])
         # THE MENU GOES HERE AND NOWHERE ELSE. A player can answer a topic;
         # there is nothing to say back to "good afternoon", and interrupting
