@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "bar": {
+    "min_score": 4,
+    "clean_rounds_required": 2,
+    "max_rounds": 4
+  },
+  "subsystems": {
+    "interior_lighting_4b": {
+      "status": "active",
+      "_merge_note": "Written by the build agent for item interior_lighting_4b, session 4t. Round zero is the build and is NOT a review round (docs/AAA-STANDARD.md). Merge into docs/aaa-scorecard.json at integration.",
+      "rounds": [
+        {
+          "round": 1,
+          "reviewer": "build-4t-interior_lighting_4b (self, round zero)",
+          "scores": {
+            "craft": 3,
+            "fidelity": 3,
+            "performance": 0,
+            "robustness": 4
+          },
+          "evidence": {
+            "robustness": "tools/export_scene.py::_selftest, 8 new checks through the real build() with SHOTS stubbed. Broken twice and observed: dropping the ambient leg gives 'FAIL: K=3 scales the ambient (0.5)' and 'FAIL: the pair is compensated: energy x exposure invariant', 275/277 -> 273/277; deleting the apply_headroom call from build() gives 'FAIL: K=3 scales every light energy' and 'FAIL: K=3 scales the ambient'.",
+            "_frames": "scratchpad/blind/interior_lighting_4b/r1/, three cameras at 1280x720 derived from the hall's own bounds (22.04 x 7.48 x 67.43 m off station/generated/scene/interior/zocalo.obj). Every render's stdout grepped for 'Vulkan ... Forward+ - llvmpipe'; none fell back to OpenGL 3.",
+            "_measured": "tools/measure_frame.py against reference/04-sector-red/more zocalo.png. p99/median 15.62 -> 11.12 (far), 17.46 -> 12.32 (normal), 17.83 -> 11.66 (half) against the reference's 10.83. Clipped 2.12/1.70/0.68% -> 0.00% on all three. p5 x1.51 -> x1.38, x1.87 -> x1.53, x1.88 -> x1.56 (band x1.29). Crushed 0.89 -> 2.72%, 5.07 -> 8.47%, 2.88 -> 5.46% (reference 48.51% at our offset). Bands: normal and half go 5/7 -> 6/7; the gate shot stays 5/7.",
+            "_control": "after-far.png is byte-identical (md5 1dd0982e...) to the K=4 sweep cell rendered from a different invocation. K=1 writes no tonemap-exposure key and is byte-identical to the pre-4t build."
+          },
+          "broke_assertions": true,
+          "what_is_good": [
+            "The pinned top of the ladder is gone: the deck strip sat at 0.94 linear at every gain over a x5.7 exposure range and is now 0.4987, measured, on the room's own gate shot.",
+            "No clipped pixels at any of the three distances, from 2.12% at the longest sightline.",
+            "The emissive and lit populations are now orthogonal knobs, which is the first shape control in tools/export_scene.py; every previous knob moved level only.",
+            "The rejected ambient row is recorded with its measurements rather than deleted, so the next session does not re-derive 0.094 and spend the same renders."
+          ],
+          "findings": [
+            {
+              "severity": "major",
+              "dimension": "craft",
+              "descriptor": "C3",
+              "where": "tools/export_scene.py EMISSION_HEADROOM / station/zocalo.py fittings",
+              "text": "The floor pools are still featureless white at half distance. They are CAST light, not emission, so the compensated pair holds them invariant by construction and cannot reach them. The room is also a single warm hue throughout with no colour separation between key and fill. Falls apart at half distance on the pools; holds on the wall, the arches and the deck tiling, which the before frame did not."
+            },
+            {
+              "severity": "major",
+              "dimension": "craft",
+              "descriptor": "C3",
+              "where": "tools/export_scene.py BESPOKE_EXPOSURE['zocalo']",
+              "text": "Level goes x1.05 -> x0.77 against a x1.05-1.75 window: the room leaves the window by its bottom edge, because 23% of the frame's median was the emissive population. Not recoverable here -- at K=4 and exposure 0.73 the median returns to x0.91 and p5 returns to x1.50, exactly where it started. Level and shadow are one degree of freedom until the fittings can carry the level without also filling."
+            },
+            {
+              "severity": "major",
+              "dimension": "fidelity",
+              "descriptor": "F3",
+              "where": "canon/INVENTIONS.md INV-880",
+              "text": "K is solved against one reference frame (more zocalo.png) measured by one code path. No second source that could not have copied the first. Two of OUR cameras agreeing (10.86 and 11.12) is not a cross-check, it is the same scene twice."
+            },
+            {
+              "severity": "major",
+              "dimension": "performance",
+              "descriptor": "P0",
+              "where": "tools/export_scene.py::apply_headroom",
+              "text": "Nothing measures the cost of this change. It adds no geometry, no lights and no draw calls -- it rescales existing light energies and one Environment float -- but 'it should be free' is not a measurement and there is no gate that would notice if it were not."
+            },
+            {
+              "severity": "minor",
+              "dimension": "robustness",
+              "descriptor": "R4",
+              "where": "tools/export_scene.py, the render pipeline generally",
+              "text": "Two sweeps this session were discarded: five --fixture-energy cells came back with two frames sharing an md5 with a third run's output, because station/generated/scene/<shot>/ is rewritten by every render. Re-run strictly sequentially all cells differed. Nothing in the pipeline asserts that a PNG was rendered from the scene.json the same invocation wrote; the tell is an md5 collision between runs that differ in a flag, and it is found by looking rather than by a gate."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
