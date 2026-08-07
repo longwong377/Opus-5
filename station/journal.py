@@ -209,7 +209,7 @@ STANDING_CAUSES = 8
 # blocks are named for the governments: a Narn dockworker's goodwill is the
 # Narn regime's, which is the entire reason `narn` and `dockers_guild` are two
 # ledgers rather than one reputation. Everyone from a League world lands on
-# `league`, which is what that block says it is. INV-1123.
+# `league`, which is what that block says it is. INV-1163.
 #
 # The key is "species/role" with "*" as the wildcard on either side, resolved
 # most-specific-first by `journal.gd::_block_for`.
@@ -236,7 +236,7 @@ STANDING_FOR = {
 }
 
 #: What taking each of `dialogue.py::STANCES` costs the person you took it
-#: with, on the CAST-05 ledger. INV-1124.
+#: with, on the CAST-05 ledger. INV-1164.
 #:
 #: THE ORDER IS THE STANCE TABLE'S OWN AND THE SCALE IS THE LEDGER'S.
 #: `dialogue.py`'s own header says `ask` is "always answered", `press` "CAN BE
@@ -1089,6 +1089,7 @@ def gate(verbose=False, build=True) -> bool:                     # noqa: C901
 
     print("JOURNAL ACCEPTANCE -- two processes, not one: learn, QUIT, reload")
     ledgers = {}
+    subject_learn = ""
     for extra, want, why in (
             ((), True, "the shipped build"),
             (("--no-restore",), False,
@@ -1113,7 +1114,16 @@ def gate(verbose=False, build=True) -> bool:                     # noqa: C901
             f for f in extra if f in ("--no-journal", "--mute", "--teleport")]
         recall_flags = ["--journal-gate", "--phase=recall"] + [
             f for f in extra if f == "--no-restore"]
-        a, rca = _run(godot, learn_flags)
+        # `--no-restore` CHANGES ONLY PHASE 2, so it re-uses the subject's own
+        # learn output rather than re-walking 221 m to write an identical
+        # save. That is not a shortcut; it is the control being exact -- the
+        # file it declines to load is the very file the subject loaded.
+        if extra == ("--no-restore",) and subject_learn:
+            a, rca = subject_learn, 0
+        else:
+            a, rca = _run(godot, learn_flags)
+        if not extra:
+            subject_learn = a
         b, rcb = _run(godot, recall_flags)
         # A DIFF OF TWO FAILED RUNS IS NOT A PASS. This project recorded an A/B
         # as IDENTICAL when both halves had died on the same IndexError and

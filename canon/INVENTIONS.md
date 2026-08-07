@@ -13145,7 +13145,7 @@ apart without reading the exit code, which is the property a CI summary strips.
 
 **What would overturn it.** A CI runner with Godot and a bake, at which point the step drops
 `--allow-unbaked` and the state stops being reachable there.
-## INV-1120 — a place is 12 m of the nearest body who lives there
+## INV-1160 — a place is 12 m of the nearest body who lives there
 
 **What.** `godot/scripts/journal.gd::PLACE_R_M = 12.0`. A player is standing IN one of the
 deck's named places when the nearest of that place's own cast is within 12 m; otherwise they
@@ -13166,7 +13166,7 @@ of the NEXT room is 44.3 m of arc away and the one after that 620 m. Anything fr
 with four people in it would read as corridor down the middle. The cure is a footprint from
 `rooms.tiling`, not a bigger radius.
 
-## INV-1121 — 0.55 m in one frame is a placement, not a step
+## INV-1161 — 0.55 m in one frame is a placement, not a step
 
 **What.** `journal.gd::STEP_TOL_M = 0.55`. A frame in which the player's body moves further
 than this is recorded as a PLACEMENT: the leg's odometer is reset to zero and a counter is
@@ -13185,7 +13185,7 @@ the fastest honest frame is 0.133 m. 0.55 is four of those, which is the same st
 **What would overturn it.** A vehicle, a lift or a tram the player rides. Those are not walking
 and should raise their own kind of fact, not loosen this one.
 
-## INV-1122 — a third of the derived arc, under your own feet
+## INV-1162 — a third of the derived arc, under your own feet
 
 **What.** `journal.gd::LEG_FRACTION = 0.35`. A `route_time` fact for `a -> b` is refused unless
 the body covered at least 35% of the metres `transit.py` derives for that pair, continuously.
@@ -13202,7 +13202,7 @@ and fails by the whole margin.
 **What would overturn it.** A pair whose two radii overlap, where a legitimate walk registers
 nearly nothing. Then the measurement is wrong, not the threshold.
 
-## INV-1123 — which CAST-05 ledger the person in front of you sits on
+## INV-1163 — which CAST-05 ledger the person in front of you sits on
 
 **What.** `station/journal.py::STANDING_FOR`, a `"species/role" -> block` table with `*` as a
 wildcard on either side, resolved most-specific-first, emitted in the manifest and read by
@@ -13228,7 +13228,7 @@ reputation.
 Then the table needs a `narn/dockworker` row, which the most-specific-first resolution already
 supports and nothing else has to change.
 
-## INV-1124 — what a stance costs, on the ledger's own scale
+## INV-1164 — what a stance costs, on the ledger's own scale
 
 **What.** `station/journal.py::STANCE_FAVOUR` = `let_go +1.0`, `ask +0.5`, `press −1.0`, in
 CAST-05 ledger points, applied by `journal.gd::_watch_stance` when a player picks one of

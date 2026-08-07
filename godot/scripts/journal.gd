@@ -101,7 +101,7 @@ const WITNESS_FLOOR := 4
 ## the arc, so a body anywhere inside a room is within a few metres of
 ## somebody; the nearest body of the NEXT room is 44 m of arc away and the one
 ## after that 620 m. Any value between roughly 10 m and 40 m reads the same,
-## which is what makes this a threshold rather than a tuning knob. INV-1120.
+## which is what makes this a threshold rather than a tuning knob. INV-1160.
 const PLACE_R_M := 12.0
 
 ## How much further than one frame of walking a body may move and still count
@@ -110,14 +110,14 @@ const PLACE_R_M := 12.0
 ## `player.gd::sprint_m_s` is 8.0 m/s and a physics frame is 1/60 s, so the
 ## fastest honest frame is 0.133 m. Four of those is the same stutter
 ## allowance `JUMP_TOL` gives the clock, applied to space -- and the teleport
-## the control below performs is 44 m, which is 330x it. INV-1121.
+## the control below performs is 44 m, which is 330x it. INV-1161.
 const STEP_TOL_M := 0.55
 
 ## What fraction of `transit.py`'s own derived arc for a pair of places the
 ## player's feet must have actually covered before a route time may be written
 ## down. `PLACE_R_M` is eaten off each end of a leg, so a fully walked 44.3 m
 ## leg registers about 20 m of travel between the two place readings; a third
-## is the honest floor and a teleport registers zero. INV-1122.
+## is the honest floor and a teleport registers zero. INV-1162.
 const LEG_FRACTION := 0.35
 
 # --- what the station decided ---------------------------------------------
@@ -1052,11 +1052,22 @@ func _phase_learn(host) -> void:
 		var stuck := 0
 		var side := 1.0
 		var z0: float = from_pos.z
-		# THE WALK ENDS AT THE PERSON, NOT AT THE ROOM. Stopping the moment
-		# `_here_place` became `pair[1]` left the body 12 m out -- `PLACE_R_M`
-		# -- and `dialogue.gd` offers nobody at that range, so the leg was
-		# earned and the conversation was not. The leg closes en route.
-		while frames < 6000:
+		# THE WALK ENDS WHEN THE LEG IS EARNED, and reaching the person is a
+		# separate step below. TWO RUNS WERE SPENT ESTABLISHING WHY, and the
+		# answer is worth keeping: the ring CORRIDOR is walkable end to end --
+		# 221.2 m at 4.15 m/s with nothing in the way and zero placements --
+		# and the INTERIOR of a customs hall is not, because
+		# `station/collision.py` sweeps a smooth shell for the corridor while a
+		# room's own fittings stay solid. Told to walk the last stretch to Bo
+		# Rossi the body reached `customs_north` and then spent 1,200 frames
+		# going nowhere, 25.7 m short, exactly as it had when an earlier
+		# version started it inside the room.
+		#
+		# So: the LEG is walked, and the last 25 m is a placement -- the same
+		# placement `_phase_recall` makes to ask who is offered, and it happens
+		# AFTER the leg has closed, so it cannot buy the route fact. The
+		# `--teleport` control replaces the WALK and still fails.
+		while frames < 6000 and _here_place != pair[1]:
 			var pos: Vector3 = body.global_position
 			var dir: Vector3 = to_pos - pos
 			if dir.length() < 1.4:
@@ -1104,7 +1115,7 @@ func _phase_learn(host) -> void:
 	# KEY_T in `_unhandled_input` and calls `talk()`; pushing the event into
 	# the viewport runs that binding rather than going round it, so what this
 	# proves is that the shipped keypress reaches the notebook.
-	var who = await _scan_partner(false)
+	var who = await _scan_partner()
 	if _args().has("mute"):
 		# THE CONTROL FOR THE OTHER HALF: everything else identical, and the
 		# key never pressed. No conversation, therefore no name, therefore no
