@@ -4008,9 +4008,20 @@ def skinned(species: str, npc_id: str = None, lod: int = 0):
     for fam in order:
         surfaces.append({"group": fam, "positions": [], "normals": [],
                          "bones": [], "weights": [], "indices": [],
-                         "parts": []})
+                         # NAMES AND INDICES. A part name is no longer unique:
+                         # `costume.CONSTRUCTION_HANGS_ON` emits a cuff under
+                         # the name "arm" so that `animation.PART_CHAINS` gives
+                         # it the elbow, which is the joint a cuff follows -- so
+                         # a rig with two arms and two cuffs has four parts
+                         # called "arm". `skin_selftest` used to pair the
+                         # skinned mesh against the rig by popping the next part
+                         # OF THAT NAME, which silently paired a cuff with an
+                         # arm and reported 589 mm of drift. The index is the
+                         # identity; the name is documentation.
+                         "parts": [], "part_indices": []})
         for pi in groups[fam]:
             name, verts, tris = rg.parts[pi]
+            surfaces[-1]["part_indices"].append(pi)
             _skin_part(surfaces[-1], per_vertex[pi], name, verts, tris)
     del order, groups
 
@@ -4083,19 +4094,21 @@ def skin_selftest(species="human", out=print):
     # Each surface names the parts it swallowed, in order; taking the next
     # unconsumed rig part of that name reproduces the emission exactly, and it
     # is the ONLY thing that would notice a part being dropped or duplicated.
-    pool = {}
-    for pi, (nm, vs, _t) in enumerate(rg.parts):
-        pool.setdefault(nm, []).append(vs)
+    pool = set(range(len(rg.parts)))
     flat, want = [], []
     for srf in doc["surfaces"]:
         pos = srf["positions"]
         flat.extend((pos[i], pos[i + 1], pos[i + 2])
                     for i in range(0, len(pos), 3))
-        for nm in srf["parts"]:
-            want.extend(pool[nm].pop(0))
-    check(not any(pool.values()),
-          f"{sum(len(v) for v in pool.values())} rig parts were never emitted "
-          f"into any surface")
+        for pi in srf["part_indices"]:
+            want.extend(rg.parts[pi][1])
+            pool.discard(pi)
+    check(not pool,
+          f"{len(pool)} rig parts were never emitted into any surface")
+    check(all(rg.parts[pi][0] == nm for srf in doc["surfaces"]
+              for pi, nm in zip(srf["part_indices"], srf["parts"])),
+          "and every surface's recorded part name matches the part its index "
+          "points at")
     check(len(flat) == len(want),
           f"skinned() emits {len(flat)} vertices, the rig has {len(want)}")
     worst = 0.0
@@ -4498,10 +4511,40 @@ def _detail_gate(check, quiet=False, out=print):
                                             lod=bake)[:3]
             say(f"  dressed at the corridor bake level ({chain[bake]['name']}): "
                 f"{len(dt):,} tri, {len(ds)} spans, {len(merge(ds))} merged")
-            check(len(merge(ds)) == 12,
-                  f"a DRESSED body at the bake level is EXACTLY 12 primitives "
+            # PINNED AT 14, WAS 12, AND THE TWO ARE GARMENT CONSTRUCTION.
+            # `costume.CONSTRUCTION` (INV-814) adds a yoke panel, a placket, a
+            # hem, two cuffs and two boot tops, and they cannot be free: a
+            # material that is not already on the figure is a run of its own.
+            # Two is what it costs after `_construct` groups the pieces by
+            # material and puts the group the mesh already ends on first --
+            # emitted in the order they are conceived the same figure measures
+            # SEVENTEEN. On a 40-walker Blue deck the two are +80 draw calls,
+            # against the 147 this check was written to refuse and against
+            # `schedule.NPC_BUDGET["max_draw_calls"]` = 32 per figure.
+            #
+            # AND IT IS NO LONGER ONE PROBE. A pin on one human said nothing
+            # about a Minbari in a robe or a soiled dock worker, whose pieces
+            # land in different slots; the sweep below is the number that
+            # actually bounds a deck.
+            check(len(merge(ds)) == 14,
+                  f"a DRESSED body at the bake level is EXACTLY 14 primitives "
                   f"(got {len(merge(ds))}) -- pinned rather than bounded, so a "
                   f"change that costs a deck 147 draw calls cannot pass")
+            _worst_prim, _worst_who = 0, ""
+            for _sp in ("human", "minbari", "narn", "centauri", "drazi",
+                        "brakiri", "pakmara"):
+                for _i in range(20):
+                    try:
+                        _ds = _cos.build_dressed(_sp, f"prim/{_i}",
+                                                 lod=bake)[2]
+                    except Exception:                           # noqa: BLE001, PERF203
+                        continue
+                    if len(merge(_ds)) > _worst_prim:
+                        _worst_prim = len(merge(_ds))
+                        _worst_who = f"{_sp}/{_i}"
+            check(_worst_prim <= 15,
+                  f"and no dressed figure of any species exceeds 15 (worst "
+                  f"{_worst_prim} on {_worst_who}) -- the sweep, not the probe")
         except Exception as exc:                                # noqa: BLE001
             check(False, f"costume.build_dressed not usable here: {exc}")
 

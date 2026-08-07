@@ -1,4 +1,4 @@
-[gd_scene load_steps=173 format=3]
+[gd_scene load_steps=174 format=3]
 
 ; A room, from the inside.
 ;
@@ -206,6 +206,7 @@
 [ext_resource type="Material" path="res://materials/npc_impostor.tres" id="m_npc_impostor"]
 [ext_resource type="Material" path="res://materials/light_vorlon_frost.tres" id="m_light_vorlon_frost"]
 [ext_resource type="Material" path="res://materials/alien_status_lamp_dark.tres" id="m_alien_status_lamp_dark"]
+[ext_resource type="Material" path="res://materials/npc_cloth_trim__garment_soil.tres" id="m_npc_cloth_trim__garment_soil"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -617,6 +618,7 @@ material_rules = {
 "npc_cloth_trim__civ_worker_drab": ExtResource("m_npc_cloth_trim__civ_worker_drab"),
 "npc_cloth_trim__ef_black_leather": ExtResource("m_npc_cloth_trim__ef_black_leather"),
 "npc_cloth_trim__ef_command_leather": ExtResource("m_npc_cloth_trim__ef_command_leather"),
+"npc_cloth_trim__garment_soil": ExtResource("m_npc_cloth_trim__garment_soil"),
 "npc_cloth_trim__league_dark": ExtResource("m_npc_cloth_trim__league_dark"),
 "npc_cloth_trim__league_stole": ExtResource("m_npc_cloth_trim__league_stole"),
 "npc_cloth_trim__minbari_black": ExtResource("m_npc_cloth_trim__minbari_black"),

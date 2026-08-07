@@ -1889,9 +1889,7 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
     against what this function intends -- and because the parts CANNOT be found
     by name; see `CONSTRUCTION_HANGS_ON`.
     """
-    made = []
     soiled = c.wear >= WEAR_SOIL_MIN
-    cloth_g = group_name("npc_cloth", c.cloth)
     trim_g = group_name("npc_cloth_trim", c.trim or c.cloth)
     leather_g = group_name("npc_leather", c.leather or c.cloth)
     dirty_g = _soil_group()
@@ -1904,15 +1902,33 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
     def on(key):
         return _attachment_active(key, distance_m)
 
+    # BUILT INTO A SCRATCH MESH FIRST, then emitted grouped by material. A
+    # DRAW CALL IS THE REASON. `populace._by_material` merges a body's spans
+    # into one span per RUN of the same material, and `body.py::_selftest` pins
+    # a dressed figure at the corridor bake level to exactly twelve primitives
+    # -- "so a change that costs a deck 147 draw calls cannot pass". Emitted in
+    # the order they are conceived (yoke, placket, hem, cuff, cuff, boot, boot)
+    # these five pieces interleave three materials and the figure measures 17.
+    # Grouped, they merge into the runs they belong to. The check's own text
+    # already stated the rule this obeys: "the new parts are emitted adjacent
+    # to a part of their own material, not in the middle of another".
+    pieces = []
+
+    def piece(key, group, fn):
+        scratch = body.Mesh()
+        fn(scratch)
+        if scratch.tris:
+            pieces.append((group, key, scratch))
+
     # --- the yoke, as the panel it was measured as -------------------------
     if (on("yoke_panel") and c.trim and c.trim != c.cloth
             and c.split != "plastron" and torso_verts):
         cx, cz, r, y = _axis_at(torso_verts, YOKE_TOP_FRACTION, band=0.05)
-        _band(out, cx, cz, y + 0.55 * YOKE_PANEL_HALF_H_F * H,
-              r * YOKE_PANEL_R, YOKE_PANEL_HALF_H_F * H, trim_g,
-              CONSTRUCTION_HANGS_ON["yoke_panel"],
-              _att_seg(r * YOKE_PANEL_R, distance_m, cap=16), taper=1.03)
-        made.append((len(out.parts) - 1, "yoke_panel"))
+        piece("yoke_panel", trim_g, lambda m, cx=cx, cz=cz, r=r, y=y: _band(
+            m, cx, cz, y + 0.55 * YOKE_PANEL_HALF_H_F * H,
+            r * YOKE_PANEL_R, YOKE_PANEL_HALF_H_F * H, trim_g,
+            CONSTRUCTION_HANGS_ON["yoke_panel"],
+            _att_seg(r * YOKE_PANEL_R, distance_m, cap=16), taper=1.03))
 
     # --- the front closure -------------------------------------------------
     # Not on a robe (it has no front to close) and not on a plastron set (the
@@ -1923,40 +1939,70 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
         cx, z_lo, y_lo = _front_at(torso_verts, PLACKET_LO_YF, band=0.04)
         _cx2, z_hi, y_hi = _front_at(torso_verts, PLACKET_HI_YF, band=0.04)
         thick = PLACKET_THICK_F * H
-        body._blade(out, trim_g, CONSTRUCTION_HANGS_ON["placket"],
-                    cx, y_lo, z_lo + 0.45 * thick,
-                    PLACKET_HALF_W_F * H, max(y_hi - y_lo, 1e-3), thick,
-                    _att_seg(PLACKET_HALF_W_F * H, distance_m, cap=8),
-                    sweep=(z_lo - z_hi), taper=1.0)
-        made.append((len(out.parts) - 1, "placket"))
+        piece("placket", trim_g,
+              lambda m, cx=cx, z_lo=z_lo, y_lo=y_lo, z_hi=z_hi, y_hi=y_hi,
+              thick=thick: body._blade(
+                  m, trim_g, CONSTRUCTION_HANGS_ON["placket"],
+                  cx, y_lo, z_lo + 0.45 * thick,
+                  PLACKET_HALF_W_F * H, max(y_hi - y_lo, 1e-3), thick,
+                  _att_seg(PLACKET_HALF_W_F * H, distance_m, cap=8),
+                  sweep=(z_lo - z_hi), taper=1.0))
 
     # --- the hem -----------------------------------------------------------
     if on("hem") and torso_verts and not c.robed:
         cx, cz, r, y = _axis_at(torso_verts, HEM_YF, band=0.05)
-        _band(out, cx, cz, y, r * HEM_R, HEM_HALF_H_F * H,
-              dirty_g if soiled else cloth_g, CONSTRUCTION_HANGS_ON["hem"],
-              _att_seg(r * HEM_R, distance_m, cap=16), taper=1.02)
-        made.append((len(out.parts) - 1, "hem"))
+        # THE HEM TAKES THE TRIM, not the body cloth, and that is a draw call
+        # as much as a decision about tailoring. A bound hem -- the coat's edge
+        # finished in the yoke fabric -- is ordinary garment construction and
+        # it is what `civ_collar_yoke` is measured as ("civilian coats in this
+        # frame are CUT with a yoke: the shoulders are a separate, slightly
+        # lighter panel"), so the same panel closing the bottom edge is the
+        # same claim. In the body cloth it would be pure relief AND a third
+        # material run on every figure; in the trim it merges with the yoke
+        # panel, the placket and the cuffs into one.
+        g = dirty_g if soiled else trim_g
+        piece("hem", g, lambda m, cx=cx, cz=cz, r=r, y=y, g=g: _band(
+            m, cx, cz, y, r * HEM_R, HEM_HALF_H_F * H, g,
+            CONSTRUCTION_HANGS_ON["hem"],
+            _att_seg(r * HEM_R, distance_m, cap=16), taper=1.02))
 
     # --- the cuffs ---------------------------------------------------------
     if on("cuff"):
+        g = dirty_g if soiled else (leather_g if tailored else trim_g)
         for av in arm_parts:
             cx, cz, r, y = _axis_at(av, CUFF_YF, band=0.06)
-            _band(out, cx, cz, y, r * CUFF_R, CUFF_HALF_H_F * H,
-                  dirty_g if soiled else (leather_g if tailored else trim_g),
-                  CONSTRUCTION_HANGS_ON["cuff"],
-                  _att_seg(r * CUFF_R, distance_m, cap=10), taper=1.04)
-            made.append((len(out.parts) - 1, "cuff"))
+            piece("cuff", g, lambda m, cx=cx, cz=cz, r=r, y=y, g=g: _band(
+                m, cx, cz, y, r * CUFF_R, CUFF_HALF_H_F * H, g,
+                CONSTRUCTION_HANGS_ON["cuff"],
+                _att_seg(r * CUFF_R, distance_m, cap=10), taper=1.04))
 
     # --- the boot tops -----------------------------------------------------
     if on("boot_top") and not c.robed:
+        g = dirty_g if soiled else leather_g
         for lv in leg_parts:
             cx, cz, r, y = _axis_at(lv, BOOT_TOP_YF, band=0.05)
-            _band(out, cx, cz, y, r * BOOT_TOP_R, BOOT_TOP_HALF_H_F * H,
-                  dirty_g if soiled else leather_g,
-                  CONSTRUCTION_HANGS_ON["boot_top"],
-                  _att_seg(r * BOOT_TOP_R, distance_m, cap=10), taper=0.97)
-            made.append((len(out.parts) - 1, "boot_top"))
+            piece("boot_top", g, lambda m, cx=cx, cz=cz, r=r, y=y, g=g: _band(
+                m, cx, cz, y, r * BOOT_TOP_R, BOOT_TOP_HALF_H_F * H, g,
+                CONSTRUCTION_HANGS_ON["boot_top"],
+                _att_seg(r * BOOT_TOP_R, distance_m, cap=10), taper=0.97))
+
+    # The material already at the end of the mesh goes first, so the block
+    # joins the run it is next to instead of starting a new one.
+    last = out.spans[-1][0] if out.spans else ""
+    order, seen = [], set()
+    for g, _k, _m in pieces:
+        if g not in seen:
+            seen.add(g)
+            order.append(g)
+    rank = {g: i for i, g in enumerate(order)}
+    order.sort(key=lambda g: (g != last, rank[g]))
+    made = []
+    for g in order:
+        for pg, key, scratch in pieces:
+            if pg != g:
+                continue
+            out.add(scratch.verts, scratch.tris, g, scratch.parts[0][0])
+            made.append((len(out.parts) - 1, key))
     return made
 
 
