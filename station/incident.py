@@ -2362,9 +2362,55 @@ class World:
         return [f for f in self.facts if f[0] in MEANINGFUL]
 
     def fingerprint(self):
+        """The whole log, every kind. USE THIS ONLY TO ASSERT SAMENESS.
+
+        It hashes `self.facts`, which includes `news`, `unsolved`, `berth` and
+        `rumour` -- the four kinds `MEANINGFUL` deliberately excludes. That
+        makes it the STRONGEST statement of "these two worlds are identical"
+        (a control) and the WEAKEST possible statement of "these two worlds
+        differ" (a gate), because one word of differing headline text is
+        enough to move it.
+        """
         import hashlib
         h = hashlib.blake2b(digest_size=8)
         for f in sorted(self.facts):
+            h.update(("|".join(f) + "\n").encode("utf-8"))
+        return h.hexdigest()
+
+    def delta_fingerprint(self):
+        """The MEANINGFUL half alone, and it is what every DIFFER gate counts.
+
+        THE ROUND-3 FAILURE THIS IS THE ANSWER TO, and it is this project's
+        signature defect wearing the costume of a fix. Round 3 tightened
+        `gate()`'s pass band from `len(three) >= 20` to
+        `== len(CLASSES) - len(STANCE_EXEMPT)` and wrote up "30 of 30 classes
+        resolve into three distinct world states". The pass band was then
+        correct and THE MEASURED QUANTITY WAS STILL WRONG: `stance_report`,
+        `stance_table`, `stance_sweep` and `gate()` all counted distinct
+        `fingerprint()`s, so they counted three distinct HASHES OF THE DAY'S
+        LOG, not three distinct WORLDS.
+
+        A reviewer proved it by arming `_res_liner` so that helping and
+        reporting had identical consequences and differed only in a headline
+        string -- and the tightened gate still reported `3 of 3` and `--accept`
+        still passed. That is exactly the INC-PSICOP collapse the round claimed
+        to have closed: the old collapse only failed because its two branches
+        were character-for-character identical, and one word of differing
+        `rumour` text would have hidden it just as well.
+
+        `MEANINGFUL` is SYS-14's own list and its CHECK says the three stances
+        must "differ in NAMED facts (which ledger row, whose standing, which
+        stock line, who is in custody), not merely in a log string". `news` and
+        `rumour` ARE log strings. So the predicate reads the half of the world
+        SYS-14 named, and the flavour text cannot carry a pass.
+
+        Measured over the shipped table when this landed: MEANINGFUL-only
+        distinctness is 1,557 of 1,557 class x place x hour combinations, so
+        tightening the quantity costs no exemption. INV-1090.
+        """
+        import hashlib
+        h = hashlib.blake2b(digest_size=8)
+        for f in sorted(self.deltas()):
             h.update(("|".join(f) + "\n").encode("utf-8"))
         return h.hexdigest()
 
@@ -4249,7 +4295,11 @@ def three_ways(cid, ctx=None, place=None, hour=13.0, seed="b5"):
         w = World(day=ctx.day)
         _resolve(k, inc, w, st)
         out[st] = w
-    sets = {st: out[st].named() for st in STANCES}
+    # THE MEANINGFUL HALF, NOT `named()`. `named()` is every fact including
+    # `news` and `rumour`, so a stance that differs only in the headline it
+    # prints owns "a fact the other two do not" and passes. `deltas()` is the
+    # list SYS-14's CHECK names. See `World.delta_fingerprint`. INV-1090.
+    sets = {st: frozenset(out[st].deltas()) for st in STANCES}
     uniq = {st: sets[st] - set().union(*(sets[o] for o in STANCES if o != st))
             for st in STANCES}
     return inc, out, sets, uniq
@@ -4262,14 +4312,22 @@ def stance_report(cid, out=print, **kw):
     out(f"  at {inc.place} {inc.hour:05.2f}, cast "
         f"{', '.join(_who(c) for c in inc.cast)}")
     out(f"  escalation: {' -> '.join(k.beats)}")
-    n_distinct = len({worlds[s].fingerprint() for s in STANCES})
+    n_distinct = len({worlds[s].delta_fingerprint() for s in STANCES})
+    n_logged = len({worlds[s].fingerprint() for s in STANCES})
     for st in STANCES:
         w = worlds[st]
         out(f"  [{st:7s}] {len(w.deltas())} delta(s), "
-            f"fingerprint {w.fingerprint()}")
+            f"meaningful {w.delta_fingerprint()}  "
+            f"(whole log {w.fingerprint()})")
         for f in sorted(uniq[st]):
             out(f"      only here: {f[0]}/{f[1]} = {f[2]}")
-    out(f"  DISTINCT WORLD STATES: {n_distinct} of 3")
+    # BOTH NUMBERS, ALWAYS, AND THE ASSERTION IS ON THE FIRST. When they
+    # disagree the class is carried by flavour text and the line says so in
+    # words rather than leaving a reader to notice two hashes.
+    out(f"  DISTINCT WORLD STATES: {n_distinct} of 3"
+        + ("" if n_logged == n_distinct else
+           f"   (the whole log gives {n_logged} of 3 -- {n_logged - n_distinct}"
+           f" of those is news/rumour/berth/unsolved text and does NOT count)"))
     return n_distinct
 
 
@@ -4314,7 +4372,10 @@ def stance_table(out=print, seed="b5", hour=13.0, check=None):
             failures.append((k.cid, f"{type(exc).__name__}: {exc}"))
             rows.append((k.cid, 0, "", exc))
             continue
-        n = len({worlds[s].fingerprint() for s in STANCES})
+        # THE MEANINGFUL HALF. INV-1090 -- counting distinct
+        # `fingerprint()`s counted distinct LOGS, and a differing
+        # headline was enough to pass a collapsed class.
+        n = len({worlds[s].delta_fingerprint() for s in STANCES})
         rows.append((k.cid, n, inc.place, None))
         allowed = STANCE_EXEMPT.get(k.cid)
         if n == 3 and allowed is not None:
@@ -4387,7 +4448,8 @@ def stance_sweep(out=print, seed="b5", hours=SWEEP_HOURS, check=None,
                 try:
                     _inc, worlds, _s, _u = three_ways(k.cid, place=place,
                                                       hour=h, seed=seed)
-                    d = len({worlds[s].fingerprint() for s in STANCES})
+                    d = len({worlds[s].delta_fingerprint()
+                             for s in STANCES})   # INV-1090
                 except Exception as exc:                      # noqa: BLE001
                     d, exc_s = 0, f"{type(exc).__name__}: {exc}"
                     by_class.setdefault(k.cid, []).append(
@@ -4413,6 +4475,114 @@ def stance_sweep(out=print, seed="b5", hours=SWEEP_HOURS, check=None,
               f"distinct world states",
               f"{bad} failure(s) over {sorted(by_class)}")
     return n - bad, n, by_class
+
+
+# ---------------------------------------------------------------------------
+# 10c.  THE CONTROL THAT ARMS THE DEFECT THE PREDICATE WAS CHANGED FOR
+# ---------------------------------------------------------------------------
+#: The class the control arms. INC-LINER because that is the one a reviewer
+#: armed by hand to falsify round 3's headline; keeping the same subject means
+#: the control and the finding are the same experiment.
+FLAVOUR_CONTROL_CID = "INC-LINER"
+
+
+def _flavour_collapsed(k):
+    """A resolver whose HELPS and REPORTS are one world wearing two headlines.
+
+    The arming, verbatim in behaviour: both stances write the SAME meaningful
+    delta (one standing row, same block, same amount) and DIFFERENT `news`
+    text. Nothing else about the class changes and ABSENT is untouched, so the
+    incident still fires, still has a cast, and still reads like three
+    outcomes in the log.
+
+    `real` IS BOUND HERE AND NOT READ OFF `k` INSIDE THE BODY. Written the
+    obvious way it reads `k.resolve` at CALL time, which by then is this
+    wrapper, and the control dies in a RecursionError instead of arming.
+    """
+    real = k.resolve
+
+    def resolve(inc, w, st):
+        if st == ABSENT:
+            real(inc, w, st)
+            return
+        w.fact("standing", f"{PLAYER}:earthforce", "+0.5")
+        w.fact("news", inc.place,
+               f"{inc.cid} at {inc.place} was handled ({st})")
+    return resolve
+
+
+def flavour_control(out=print, check=None, cid=FLAVOUR_CONTROL_CID,
+                    hour=13.0, seed="b5"):
+    """THE SIXTH NEGATIVE CONTROL, AND IT IS THE ONE THAT WOULD HAVE CAUGHT
+    ROUND 3.
+
+    Round 3 tightened this module's stance gate from `>= 20` to `== 30` and
+    reported "30 of 30 classes resolve into three distinct world states". A
+    reviewer rewrote `_res_liner` so that helping and reporting had IDENTICAL
+    consequences and differed only in a headline string -- and the tightened
+    gate still said `ok INC-LINER 3 of 3` and `--accept` still passed 45/45,
+    because every distinctness count in the module was made on
+    `World.fingerprint()`, which hashes `news` and `rumour` along with
+    everything else. The pass band had been fixed and the measured quantity
+    was still wrong.
+
+    So the arming becomes a standing control rather than a note. It asserts
+    BOTH halves of the A/B in one run, which is what makes it evidence:
+
+      * under the OLD predicate (whole log) the collapsed class still reads
+        THREE distinct states -- so the control is genuinely armed and the
+        old gate genuinely could not see it;
+      * under the predicate this module now uses (`delta_fingerprint`, the
+        MEANINGFUL half) the same class reads TWO -- so the gate fails, which
+        is the only thing that makes it a gate.
+
+    A control that only demonstrated the second half would be a control that
+    could pass on a class that was never collapsed. INV-1090.
+    """
+    k = BY_ID[cid]
+    real = k.resolve
+    try:
+        k.resolve = _flavour_collapsed(k)
+        _inc, worlds, _s, uniq = three_ways(cid, hour=hour, seed=seed)
+        armed_new = len({worlds[s].delta_fingerprint() for s in STANCES})
+        armed_old = len({worlds[s].fingerprint() for s in STANCES})
+        armed_uniq = {s: len(uniq[s]) for s in STANCES}
+    finally:
+        k.resolve = real
+    _inc, worlds, _s, uniq = three_ways(cid, hour=hour, seed=seed)
+    live_new = len({worlds[s].delta_fingerprint() for s in STANCES})
+    live_uniq = {s: len(uniq[s]) for s in STANCES}
+
+    out("")
+    out(f"  CONTROL -- {cid} ARMED so helps and reports differ ONLY in a "
+        f"headline string:")
+    out(f"      MEANINGFUL deltas (what this module counts): "
+        f"{armed_new} of 3   per-stance own facts {armed_uniq}")
+    out(f"      the whole fact log (what it counted until INV-1090): "
+        f"{armed_old} of 3 -- the old predicate CANNOT SEE THIS")
+    out(f"      and disarmed, the shipped {cid}: {live_new} of 3, "
+        f"per-stance own facts {live_uniq}")
+    n = 0
+    if check is not None:
+        n += 1
+        check(armed_new < 3,
+              f"THE SIXTH CONTROL: with {cid}'s two acting stances collapsed "
+              f"onto one world and differing only in a news headline, this "
+              f"module's distinctness gate FAILS it",
+              f"armed gives {armed_new} of 3 on MEANINGFUL deltas")
+        n += 1
+        check(armed_old == 3,
+              f"...and the SAME arming passes the predicate this module used "
+              f"before INV-1090, which is why round 3 shipped green -- the "
+              f"control is armed, not merely broken",
+              f"armed gives {armed_old} of 3 on the whole fact log")
+        n += 1
+        check(live_new == 3 and live_uniq[HELPS] and live_uniq[REPORTS],
+              f"...and DISARMING restores {cid} to three distinct worlds with "
+              f"both acting stances owning a delta of their own, so the "
+              f"failure above is the arming and not the class",
+              f"disarmed {live_new} of 3, own facts {live_uniq}")
+    return n, armed_new, armed_old, live_new
 
 
 # ===========================================================================
@@ -5064,6 +5234,15 @@ def ledger_day(at="customs_north", policy="citizen", day=1, seed="b5",
     return w, fired, j
 
 
+#: How many further days `ledger_gate` carries the SAME `journal.Journal`
+#: through. Two, and the number is derived rather than picked: on the shipped
+#: content `criminal` runs about -44/day at customs_north, so it reaches
+#: `journal.STANDING_MIN` (-100) on day 3 and not on day 2. One day would leave
+#: `move_standing`'s clamp untested; the gate asserts below that a row really
+#: did hit the bound, so this constant cannot go stale in silence. INV-1091.
+CARRY_DAYS = 2
+
+
 def ledger_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
                 day=1):
     """DOES A STANDING DELTA REACH THE LEDGER THE PLAYER ACTUALLY CARRIES.
@@ -5187,21 +5366,112 @@ def ledger_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
     # ledgers and the engine keeps eight, and no amount of Python could notice.
     # REPORTED when the engine cannot be reached, ASSERTED when it can, and
     # never given a fallback number.
+    # A CHECK THAT CANNOT RUN MUST FAIL, NOT VANISH -- and this one used to
+    # vanish. `n += 1` sat inside the `else`, so a container with no
+    # `station/generated/scene/boot.json` got a denominator of 45 instead of
+    # 46 and `--accept` printed a full pass with the ONLY engine-side
+    # assertion silently absent. A reviewer running in a fresh worktree got
+    # 45/45 while the report said 46/46, and neither number was wrong: the
+    # gate had two denominators depending on what was lying on disk.
+    #
+    # That is this repository's "a gate that does not run is not a gate" at
+    # the scale of a single check, and the shrinking denominator is what made
+    # it invisible -- 45 of 45 reads exactly like a pass.
+    n += 1
     got_n, why = JN.engine_ledgers(out=out)
     if got_n is None:
-        out(f"  THE ENGINE WAS NOT ASKED: {why}. The count below is "
-            f"unverified against the runtime.")
         out(f"  station-side, journal.STANDING_BLOCKS has "
             f"{len(JN.STANDING_BLOCKS)} rows and every FACTION_LEDGER target "
-            f"is one of them")
+            f"is one of them -- and that is Python checking Python")
+        check(False,
+              "THE ENGINE agrees about how many ledgers there are",
+              f"THE ENGINE COULD NOT BE ASKED: {why}. This acceptance claims "
+              f"the standing join reaches the runtime, so it cannot pass "
+              f"without the runtime. Give this checkout a deck -- symlink or "
+              f"copy station/generated/scene from a checkout that has one, or "
+              f"run `python3 station/journal.py --gate` (which builds one) -- "
+              f"and re-run")
     else:
-        n += 1
         check(got_n == len(JN.STANDING_BLOCKS),
               "THE ENGINE agrees about how many ledgers there are -- the "
               "number is read out of the line journal.gd prints at install, "
               "not recomputed here",
               f"engine {got_n} against journal.STANDING_BLOCKS "
               f"{len(JN.STANDING_BLOCKS)}")
+
+    # 6. AND A SECOND DAY ON THE SAME LEDGER, BECAUSE +/-100 IS A REAL EDGE.
+    # Everything above runs on a FRESH `Journal`, and on a fresh Journal the
+    # equality "ledger == what the world facts say" is true for a reason that
+    # has nothing to do with the ledger working: nothing has accumulated, so
+    # nothing has hit `journal.STANDING_MIN/MAX`. A reviewer measured the
+    # consequence -- carry this ledger to day 3 and `move_standing`'s clamp
+    # discards 41 of 42 points on `criminal` in silence, and the gate above
+    # would have called that agreement.
+    #
+    # So day 2 runs on day 1's OWN ledger and the prediction is made WITH the
+    # clamp in it: the ledger must hold `clamp(day1 + day2)`, per row. That is
+    # a harder statement than the fresh-day one -- it asserts the carry AND
+    # names the bound as the reason for any shortfall, rather than letting a
+    # clamped row read as a disagreement or, worse, as a pass.
+    out("")
+    out(f"  ...AND DAYS {day + 1}-{day + CARRY_DAYS} ON THE SAME LEDGER, "
+        f"WHICH IS WHERE THE CLAMP LIVES")
+    disagree, clamped_rows, carried_in = [], set(), dict(j.standing)
+    for d in range(day + 1, day + 1 + CARRY_DAYS):
+        before = dict(j.standing)
+        w_b, fired_b, j = ledger_day(at=at, seed=seed, step_min=step_min,
+                                     day=d, ledger=j)
+        if not fired_b:                                      # pragma: no cover
+            raise RuntimeError(f"day {d} fired nothing -- an empty carry is "
+                               f"not a carry")
+        add = {}
+        for kind, subj, detail in w_b.facts:
+            if kind != "standing":
+                continue
+            whose, _, faction = subj.partition(":")
+            if whose != PLAYER:
+                continue
+            b = ledger_block(whose, faction)
+            if b is None:                                    # pragma: no cover
+                continue
+            add[b] = round(add.get(b, 0.0) + float(detail), 4)
+        for b in sorted(add):
+            raw = round(before.get(b, 0.0) + add[b], 4)
+            pred = round(max(JN.STANDING_MIN, min(JN.STANDING_MAX, raw)), 4)
+            got_b = j.standing.get(b, 0.0)
+            hit = abs(raw - pred) > 1e-6
+            if hit:
+                clamped_rows.add(b)
+            if abs(got_b - pred) > 1e-6:
+                disagree.append((d, b, raw, pred, got_b))
+            out(f"      day {d} {b:16s} {before.get(b, 0.0):+8.2f} "
+                f"{add[b]:+8.2f} = {raw:+9.2f} -> ledger {got_b:+9.2f}"
+                + (f"   (CLAMPED at {JN.STANDING_MIN:+.0f}/"
+                   f"{JN.STANDING_MAX:+.0f}: {raw - pred:+.2f} point(s) "
+                   f"discarded, and the prediction says so)" if hit else ""))
+    n += 1
+    check(any(abs(v) > 1e-9 for v in carried_in.values()) and not disagree,
+          f"A CARRIED, NON-ZERO LEDGER: days {day + 1}-{day + CARRY_DAYS} run "
+          f"on day {day}'s own journal.Journal and every row holds "
+          f"clamp(previous + today) -- so the carry is asserted and "
+          f"STANDING_MIN/MAX is named as the reason for any shortfall rather "
+          f"than swallowing one",
+          f"carried in {carried_in}; {len(disagree)} disagreement(s) "
+          f"{disagree[:4]}")
+    # AND THE CLAMP MUST ACTUALLY HAVE FIRED, OR THE BRANCH ABOVE IS DEAD.
+    # The first draft of this ran ONE extra day, on which nothing reached
+    # +/-100, so the prediction and the naive sum were identical everywhere
+    # and the whole point of the check -- that the equality survives the bound
+    # -- went untested. `CARRY_DAYS` is set to the number of days it takes for
+    # a row to reach the bound on the shipped content, and this assertion is
+    # what stops that number rotting silently if the content changes.
+    n += 1
+    check(bool(clamped_rows),
+          f"...and at least one row ACTUALLY HIT the bound inside those "
+          f"{CARRY_DAYS} days, so the clamped branch of the prediction is "
+          f"exercised rather than merely allowed for",
+          f"rows that clamped: "
+          f"{sorted(clamped_rows) or 'NONE -- raise CARRY_DAYS'}")
     return n
 
 
@@ -5326,9 +5596,14 @@ def accept(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
                          distinct world states with the diffs named -- FOR
                          EVERY CLASS IN THE TABLE, not for the one this
                          signature used to name
+      2c. THE CONTROL    one class ARMED so its two acting stances differ only
+                         in a headline -- step 2 must fail it, and the
+                         predicate step 2 used before INV-1090 must pass it
       2b. THE LEDGER     and at least one of those deltas lands on the
                          `journal.Journal` a player carries, survives the save
-                         round trip, and equals what the world facts claim
+                         round trip, equals what the world facts claim, and
+                         still does after two further days on the SAME ledger
+                         with `move_standing`'s +/-100 clamp having fired
       3. THE RATE        >=2 meaningful incidents a station-hour near the
                          player, denominator printed, asserted against the
                          NARROWEST reading of "near"
@@ -5345,6 +5620,18 @@ def accept(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
     every one of them that class. One row of a table is not the table.
     `cid`/`place` are kept so the old exemplar is still printed in full, and
     the assertion is now `stance_table`'s.
+
+    IT NEEDS A DECK, AND THAT IS DELIBERATE. One of the checks below reads the
+    line `journal.gd` prints at install and compares it to
+    `journal.STANDING_BLOCKS`; it is the only assertion here made against the
+    runtime rather than against Python. Until this session it was SKIPPED when
+    `station/generated/scene/boot.json` was absent, and skipped without
+    counting -- so a fresh worktree got `45/45` and a checkout with a deck got
+    `46/46`, both reading as a clean pass, with the one engine-side statement
+    of the whole acceptance silently gone in the first. The denominator is now
+    a constant and the missing engine is a FAILURE with the command to fix it
+    in the message. Symlink or copy `station/generated/scene` from a checkout
+    that has one, or run `python3 station/journal.py --gate`, which builds.
     """
     del _FAILED[:]
     n = 0
@@ -5365,6 +5652,11 @@ def accept(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
     out("")
     n_ok, n_tot, _fails = stance_table(out=out, seed=seed, check=check)
     n += 2
+    # AND THE CONTROL ON THE PREDICATE ITSELF. `stance_table` above says 30 of
+    # 30; this says what that 30 is made of, by collapsing one class onto a
+    # headline and requiring the count to move. Without it the line above is
+    # a number with no demonstrated way to fail. INV-1090.
+    n += flavour_control(out=out, check=check, seed=seed)[0]
     n += ledger_gate(out=out, at=at, seed=seed, step_min=step_min)
     n += near_gate(out=out, at=at, seed=seed, step_min=step_min)
     n += absence_gate(out=out, at=at, seed=seed, step_min=step_min)
@@ -5561,7 +5853,7 @@ def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
     for k in CLASSES:
         _inc, worlds, _sets, _uniq = three_ways(k.cid, ctx=ctx, hour=hour,
                                                 seed=seed)
-        d = len({worlds[s].fingerprint() for s in STANCES})
+        d = len({worlds[s].delta_fingerprint() for s in STANCES})
         (three if d == 3 else two if d == 2 else one).append(k.cid)
     out(f"  3 distinct: {len(three)}   2 distinct: {len(two)} {two}   "
         f"1: {len(one)} {one}")
@@ -5586,17 +5878,61 @@ def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
           "and no class collapses all three stances into one world -- a class "
           "the player cannot change is a cutscene",
           f"{one}")
+    n += flavour_control(out=out, check=check, hour=hour, seed=seed)[0]
 
+    # THE OTHER ONE-ROW CHECK, AND IT SURVIVED THE ROUND THAT REMOVED THE
+    # FIRST. Round 3's headline was that `accept()` had stopped asking the
+    # three-outcome question of one hardcoded class and started asking it of
+    # the table. This check -- "every stance owns a fact the other two do not"
+    # -- was still `demo = "INC-PICK"`, one row, five lines below the
+    # table-wide one it was written to complement. CLAUDE.md's rule is that a
+    # fix applied to an instance and not to the rule is a fix that will be
+    # needed again, and here it was needed again in the same function.
+    #
+    # `demo` is KEPT and still printed in full, because a table of counts with
+    # no worked example is unreadable; what changed is which of the two the
+    # assertion is made on.
     demo = "INC-PICK"
     out("")
     stance_report(demo, out=out, ctx=ctx, hour=hour, seed=seed)
-    _inc, worlds, sets, uniq = three_ways(demo, ctx=ctx, hour=hour, seed=seed)
+    thin, subset = [], []
+    for k in CLASSES:
+        _i, _w, s_, u = three_ways(k.cid, ctx=ctx, hour=hour, seed=seed)
+        c = {st: len(u[st]) for st in STANCES}
+        if not (c[HELPS] and c[REPORTS]):
+            thin.append((k.cid, c))
+        if not c[ABSENT]:
+            subset.append(k.cid)
+    # AND THE ABSENT ROW IS A DIFFERENT QUESTION, MEASURED RATHER THAN
+    # ASSERTED. The first draft of this check demanded all THREE stances own a
+    # unique meaningful fact and it failed 11 of 30 -- every single failure
+    # `absent: 0`, and NOT ONE acting stance short. CLAUDE.md's rule: a number
+    # that fails 100% on one side of a line and 0% on the other is a
+    # structural fact, not a list of jobs.
+    #
+    # The fact is that on those classes the absent world is a strict SUBSET:
+    # you were not there, so the aid rations were not spent and the standing
+    # did not move, and nothing happened INSTEAD. That is a legitimate third
+    # outcome and demanding a unique absent delta would be demanding every
+    # class invent a consequence for the player's absence. What must hold is
+    # that the absent world still DIFFERS, and `delta_fingerprint() == 3`
+    # above is exactly that assertion. So the count is printed, not gated.
+    out(f"  BOTH ACTING STANCES OWN A MEANINGFUL FACT THE OTHER TWO DO NOT: "
+        f"{len(CLASSES) - len(thin)} of {len(CLASSES)} classes")
+    for cid, counts in thin:
+        out(f"    FAIL {cid}: {counts}")
+    out(f"  and on {len(subset)} of {len(CLASSES)} the ABSENT world is a "
+        f"strict subset -- it owns no delta of its own because nothing "
+        f"happened instead; it is still a distinct world by the count above: "
+        f"{subset}")
     n += 1
-    check(all(uniq[s] for s in STANCES),
-          f"...and on {demo} every stance owns at least one fact the other "
-          f"two do not -- which is the difference between three outcomes and "
-          f"one outcome with three labels",
-          {s: len(uniq[s]) for s in STANCES})
+    check(not thin,
+          f"...and on EVERY one of the {len(CLASSES)} classes -- not just on "
+          f"{demo}, which is the one row this check asked until now -- BOTH "
+          f"acting stances own at least one MEANINGFUL fact the other two do "
+          f"not, which is the difference between three outcomes and one "
+          f"outcome with three labels",
+          f"{len(thin)} thin: {thin}")
 
     # ------------------------------------------------------------------
     # E.  A CONSEQUENCE THAT PERSISTS TO DAY N+1
@@ -5622,15 +5958,19 @@ def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
           "is in the brig on day 2, by name and by charge",
           f"{len(still)} custody rows carried")
     n += 1
-    check(w2.fingerprint() != w2f.fingerprint(),
+    # THE SAME RULE AS INV-1090, APPLIED HERE TOO. This is a DIFFER assertion,
+    # so it counts the MEANINGFUL half: a day 2 that carried nothing forward
+    # but printed one different headline would satisfy `fingerprint()`.
+    check(w2.delta_fingerprint() != w2f.delta_fingerprint(),
           "...and day 2 is a DIFFERENT DAY because of day 1: the same seed, "
           "the same class table and the same places, run once with day 1's "
           "consequences carried in and once without, produce different "
-          "worlds. If they matched, nothing persisted",
-          f"{w2.fingerprint()} against {w2f.fingerprint()}")
-    d_only = w2.named() - w2f.named()
-    out(f"  {len(d_only)} named fact(s) exist on day 2 ONLY because of day 1; "
-        f"first: {sorted(d_only)[0] if d_only else '(none)'}")
+          "worlds -- in MEANINGFUL deltas, not in the day's headlines. If "
+          "they matched, nothing persisted",
+          f"{w2.delta_fingerprint()} against {w2f.delta_fingerprint()}")
+    d_only = set(w2.deltas()) - set(w2f.deltas())
+    out(f"  {len(d_only)} MEANINGFUL fact(s) exist on day 2 ONLY because of "
+        f"day 1; first: {sorted(d_only)[0] if d_only else '(none)'}")
     n += 1
     check(len(d_only) > 0,
           "and the difference is NAMED FACTS, enumerable, not a hash that "

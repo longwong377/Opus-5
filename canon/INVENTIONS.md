@@ -13023,3 +13023,57 @@ indistinguishable from a lurker's in the ledger, which nothing currently wants.
 **The gate.** `--trade` asserts `sum(k.startswith("player:") for k in purses) == 1` on the
 gate's own ledger, on a world tick, and on the artefact the launched shipped writer produces
 (**68 purses: 1 player (`player:downbelow`), 67 `lurker:`**).
+
+## INV-1090 — a distinctness gate reads the MEANINGFUL half of the world, never the whole log
+
+**What.** `station/incident.py::World.delta_fingerprint()` hashes only facts whose kind is in
+`MEANINGFUL` — custody, docket, seizure, standing, stock, work_order, card, casualty, camp,
+grievance. Every DIFFER assertion in the module now counts distinct `delta_fingerprint`s:
+`three_ways` (whose `sets`/`uniq` are built from `deltas()` rather than `named()`),
+`stance_report`, `stance_table`, `stance_sweep`, `gate()`'s per-class count, and the day-2
+persistence check. `fingerprint()` — the whole fact log — is kept and is now documented as
+usable only for SAMENESS assertions, where including `news` and `rumour` makes it strictly
+stronger. Both numbers are printed side by side by `stance_report`, and the line says in words
+when they disagree.
+
+**Why.** Session 4t round 3 tightened the pass band of this gate from `len(three) >= 20` to
+`== len(CLASSES) - len(STANCE_EXEMPT)` and reported "30 of 30 incident classes resolve into
+three distinct world states". The band was then correct and **the measured quantity was still
+wrong**: every count was made on `fingerprint()`, which hashes the four kinds `MEANINGFUL`
+deliberately excludes — `news`, `unsolved`, `berth`, `rumour`. A reviewer rewrote `_res_liner`
+so helping and reporting had identical consequences and differed only in a headline string,
+and the tightened gate still reported `ok INC-LINER 3 of 3` while `--accept` passed 45/45.
+SYS-14's own CHECK says the stances must differ "in NAMED facts … not merely in a log string",
+and `news`/`rumour` **are** log strings. This is the INC-PSICOP collapse the round claimed to
+have closed: that one only failed because its two branches were character-for-character
+identical, and one differing word would have hidden it exactly as it hid INC-LINER.
+
+**What constrained it.** `MEANINGFUL` is not a new list — it is SYS-14's, already in the module
+and already used by the absence gate. Restricting to it costs no exemption: measured over the
+shipped table, MEANINGFUL-only distinctness is **1,557 of 1,557** class × place × hour
+combinations, and `STANCE_EXEMPT` stays empty.
+
+**What would overturn it.** A kind moving between `MEANINGFUL` and the flavour set. `berth` is
+the arguable one — a liner alongside is arguably a world state rather than a headline — and it
+is currently outside. Moving it in would loosen this gate, so it needs a written reason.
+
+## INV-1091 — the ledger gate carries a real journal for CARRY_DAYS = 2 further days
+
+**What.** `station/incident.py::ledger_gate` runs day 1 on a fresh `journal.Journal`, then runs
+days 2 and 3 **on that same object**, predicting each row as `clamp(previous + today)` against
+`journal.STANDING_MIN/MAX` = ±100 and asserting the ledger equals the prediction. A second
+assertion requires that at least one row **actually hit** the bound inside those days.
+
+**Why.** On a fresh journal the equality "the ledger holds what the world facts say" is true
+for a reason that has nothing to do with the ledger working — nothing has accumulated, so
+nothing has met the clamp. A reviewer measured the consequence: carried to day 3,
+`move_standing` discards points in silence and the old check would have called that agreement.
+
+**What constrained it.** Two days, and the number is derived rather than picked: `criminal`
+runs about −44/day at `customs_north`, reaching −100 on day 3 and not on day 2. One extra day
+left the clamped branch of the prediction dead. The "a row actually clamped" assertion is what
+stops `CARRY_DAYS` going stale in silence if the content's rates change — measured on the
+shipped content, day 3 discards **18.00 points** on `criminal`.
+
+**What would overturn it.** A change to `STANDING_MIN/MAX`, or a rate change that moves which
+day the bound is reached on; either makes the second assertion fail loudly rather than quietly.
