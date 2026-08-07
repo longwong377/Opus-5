@@ -148,6 +148,28 @@ jobs:
         continue-on-error: true
         run: python3 station/coldstart.py --g8
 
+      # WHAT THE PLAYER KNOWS -- SYS-16's knowledge items, CAST-05's memory and
+      # standing, and PLY-05's compression. `docs/MASTER-PLAN.md` R7 counted the
+      # journal ten times in the spec and zero times in the plan, and its own
+      # argument for building it beside the save is one line: *"a journal with
+      # no save is a notebook that forgets"*.
+      #
+      # THE SELF-TEST IS THE PART CI CAN RUN. The acceptance test --
+      # `python3 station/journal.py --gate` -- launches Godot three times per
+      # case (learn, QUIT, recall) and needs a BUILT deck, which CI has never
+      # had; it is skipped here rather than faked, and `--gate` says SKIP with
+      # the command that would fix it. What runs is the 32 offline checks and
+      # the manifest emit, which is also what keeps `station/generated/
+      # journal.json` reproducible -- `tools/wiring.py` reported it as "on disk
+      # but not rebuilt by CI" until this step existed, which is the committed-
+      # artefact staleness defect this repository has now had four times.
+      - name: The journal, its refusals, and the id GDScript must agree with
+        id: sjournal
+        continue-on-error: true
+        run: |
+          python3 station/journal.py --selftest
+          python3 station/journal.py --emit
+
       # C&C READS AND ACTS ON REAL STATION STATE. `plant_systems` gained a
       # failure model in 4q and `grep -c 'cnc' station/plant_systems.py` was
       # ZERO -- the room whose whole purpose is watching the station watched
@@ -1260,6 +1282,8 @@ jobs:
             echo "FAILED: scondition"; fail=1; fi
           if [ "${{ steps.ssave.outcome }}" != "success" ]; then
             echo "FAILED: ssave"; fail=1; fi
+          if [ "${{ steps.sjournal.outcome }}" != "success" ]; then
+            echo "FAILED: sjournal"; fail=1; fi
           if [ "${{ steps.sshellfit.outcome }}" != "success" ]; then
             echo "FAILED: sshellfit"; fail=1; fi
           if [ "${{ steps.saaa_selftest.outcome }}" != "success" ]; then

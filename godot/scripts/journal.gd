@@ -125,6 +125,8 @@ var _jumps: int = 0
 var _jumped_h: float = 0.0
 var _lived_h: float = 0.0
 var _minting := true
+## What the clock ran at before compression, so a rate can be put back.
+var _boot_rate: float = -1.0
 
 
 func _init() -> void:
@@ -330,7 +332,8 @@ func _apply_compression() -> void:
 	# THE BOOT RATE IS MULTIPLIED, NOT REPLACED. `main.gd` exports `clock_rate`
 	# and `--rate=` already overrides it; a compression that SET the rate would
 	# silently discard whichever of those the player was running at.
-	_clock.rate = float(_clock.rate) * mult
+	_boot_rate = float(_clock.rate)
+	_clock.rate = _boot_rate * mult
 	print("journal: TIME COMPRESSION x%.0f -- the clock now runs at %.4f "
 		% [mult, float(_clock.rate)]
 		+ "station hours a second, THROUGH the simulation")
@@ -830,17 +833,39 @@ func _phase_compress(host) -> void:
 	var crowd0: int = (int(_life.visible_count()) if _life != null else -1)
 	var moved0: float = (float(_clock.hour()) if _clock != null else 0.0)
 	var facts0: int = facts.size()
+	# HOW MANY FRAMES A CONTINUOUS RUN OF THIS WINDOW COSTS, derived from the
+	# clock's own rate and the engine's own physics tick rather than counted
+	# after the fact -- because the control below has to be given the SAME
+	# number of frames, and a control that ran fewer is a control a reader can
+	# fairly dismiss.
+	var per_frame: float = maxf(float(_clock.rate)
+		/ float(Engine.physics_ticks_per_second), 1e-9)
+	var need := int(ceil(SLEEP_H / per_frame))
 	var jump := _args().has("jump")
 	if jump:
 		# THE THING PLY-05 FORBIDS, run deliberately so the difference is a
 		# measurement rather than an argument. `set_hour` is `life.gd`'s own
 		# jump and its docstring says "a jump is indistinguishable from having
 		# waited" -- which is true of the CLOCK and false of the world.
+		#
+		# AND THE COMPRESSION IS PUT BACK AFTERWARDS, which is the part that
+		# makes this control answer the obvious objection. Without it the jump
+		# satisfies the loop on frame ZERO, and a reader is entitled to say the
+		# control witnessed nothing because it was never given a frame to
+		# witness in. With the rate back at its boot value the control runs the
+		# SAME %d frames the subject runs, over the SAME 7.25 station hours of
+		# arrival -- and still hears nothing, because the hours arrived instead
+		# of passing.
 		_clock.set_hour(fposmod(float(_clock.hour()) + SLEEP_H, 24.0))
-		print("COMPRESS: JUMPED %.2f h (control) -- nothing was lived through"
-			% SLEEP_H)
+		if _boot_rate > 0.0:
+			_clock.rate = _boot_rate
+		print("COMPRESS: JUMPED %.2f h (control), rate back to %.4f h/s -- the "
+			% [SLEEP_H, float(_clock.rate)]
+			+ "same %d frames follow and nothing in them was lived through"
+			% need)
 	var frames := 0
-	while float(_clock.hours_abs()) - h0 < SLEEP_H and frames < 4000:
+	while (float(_clock.hours_abs()) - h0 < SLEEP_H or frames < need) \
+			and frames < 4000:
 		await get_tree().physics_frame
 		frames += 1
 	var advanced: float = float(_clock.hours_abs()) - h0
