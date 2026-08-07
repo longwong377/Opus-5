@@ -463,6 +463,22 @@ func _save_ledger() -> bool:
 ## Put the player's live purse back into the ledger document. Called after
 ## every move of money or goods, so the delta is one `_save_ledger` away from
 ## disk at all times.
+##
+## IT WRITES TWO KEYS AND DELIBERATELY NOT A THIRD, AND THE THIRD IS THE RUNG.
+## `st["tier"]`/`st["tier_name"]` are `player.py::state()`'s REPORT of the
+## frozen card, and a conviction does not edit a card -- it writes a record. So
+## the demotion goes into `st["record"]` through `convict()` below, and the rung
+## is re-derived from that record on the next load by `player.gd::rung_of`.
+##
+## THIS LOOKS LIKE THE BUG AND IS THE FIX. Session 4t round 2 shipped with the
+## reload broken -- launch 2 opened a revoked card still reading `transit` --
+## and the obvious repair is three characters here: also write `st["tier"]`.
+## That repair works and is wrong. It stores the rung as a fact, which is what
+## `player.py`'s own comment forbids ("Restoring them would be a second copy of
+## a derivation, which is how a saved tier survives a conviction"), and it would
+## leave every OTHER reader of that field -- a save written by Python, a purse
+## minted by `enforcement.prog_ledger`, a hand-edited ledger -- still trusting a
+## number nobody re-derived. The fix went to the rule instead. Do not add it.
 func _sync_purse() -> void:
 	if _player == null or _led.is_empty() or String(_player.npc_id) == "":
 		return
@@ -494,6 +510,19 @@ func watch(body: Node3D) -> void:
 					% [_player.npc_id, _player.person, _player.tier_name,
 						_player.credits, _player.carrying.size(),
 						_player.carry_cap])
+				# AND WHERE THAT RUNG CAME FROM, because the line above is the
+				# one a reload gate reads and a NAME is not evidence that
+				# anything was derived. `player.gd::rung_of` computes the rung
+				# off the record; this prints it beside the number the DOCUMENT
+				# carried, so "the engine derived it" and "the engine echoed a
+				# stored field" are two distinguishable lines rather than one.
+				# Session 4t round 2 shipped with them indistinguishable and
+				# the reload was false for six days -- see `player.gd`'s header.
+				print("interact: rung %d %s DERIVED, document reported %d %s "
+					% [int(_player.tier), String(_player.tier_name),
+						int(_player.tier_stored),
+						String(st.get("tier_name", "-"))]
+					+ "-- %s" % String(_player.rung_why))
 		else:
 			print("interact: no ledger at %s -- nothing can be bought"
 				% ledger_path())

@@ -104,8 +104,17 @@ var person := ""
 var credits := -1.0
 var carrying: Array[String] = []
 var carry_cap := 0
+## THE RUNG, AND IT IS A READING RATHER THAN A STORED FIELD -- see `rung_of`.
 var tier := -99
 var tier_name := ""
+## Why the rung reads what it reads, in one line, so a gate can assert on the
+## DERIVATION and not only on the answer. Printed by `interact.gd::watch`.
+var rung_why := ""
+## The number the DOCUMENT carried, kept beside the derived one. `st["tier"]` is
+## `player.py::state()`'s report of the card at save time; when the two differ,
+## the record moved and the report did not, which is exactly the case a reload
+## has to get right.
+var tier_stored := -99
 ## Standing hip height and a fitted seat height, metres, for THIS person.
 var hip_m := 0.0
 var seat_m := 0.0
@@ -131,12 +140,213 @@ func set_purse(st: Dictionary) -> void:
 	for x in st.get("carrying", []):
 		carrying.append(String(x))
 	carry_cap = int(st.get("carry_cap", 0))
-	tier = int(st.get("tier", -99))
-	tier_name = String(st.get("tier_name", ""))
+	tier_stored = int(st.get("tier", -99))
+	# THE RUNG IS THE ONE FIELD HERE THAT IS **NOT** TAKEN AS HANDED IN, and the
+	# comment above this block used to say all four were. See `rung_of`.
+	var r: Array = rung_of(st)
+	tier = int(r[0])
+	tier_name = String(r[1])
+	rung_why = String(r[2])
 	hip_m = float(st.get("hip_m", 0.0))
 	seat_m = float(st.get("seat_m", 0.0))
 	recline_m = float(st.get("recline_m", 0.0))
 	wake_h = float(st.get("wake_h", -1.0))
+
+
+# ===========================================================================
+#  THE RUNG IS READ OFF THE RECORD, NOT REMEMBERED -- `consequence.tier_of`
+# ===========================================================================
+## WHAT WAS WRONG, STATED ONCE, because it is instance ten of this project's
+## signature defect and the most refined one yet. Session 4t round 2 built the
+## whole arrest chain correctly: `interact.gd::convict` writes the demotion into
+## the RECORD (`visa_revoked`, `revoked_from`, `convictions`) exactly where
+## `player.py` wants it, and the ledger on disk carried three convictions, a
+## revoked visa and 619.89 cr gone. And then:
+##
+##   * `interact.gd::_sync_purse` writes back `credits` and `carrying` and NEVER
+##     `tier`/`tier_name` -- correctly, because `player.py` deliberately refuses
+##     to store the rung as a fact;
+##   * this function read `tier = int(st.get("tier", -99))` verbatim off that
+##     stale stored field and derived nothing;
+##   * so a second launch on the very file the first one wrote opened it as
+##     `interact: purse player:g2c (IVANOVA, AMIS, transit)`. **The money
+##     persisted, the record persisted, the punishment did not.**
+##
+## And the gate was GREEN, because its reload check re-derived the rung in
+## PYTHON (`consequence.tier_of`) -- a call the shipped Godot path never makes.
+## A gate that recomputes the answer cannot notice that the shipped path never
+## computes it.
+##
+## THE MINIMAL FIX IS THE WRONG FIX. Having `_sync_purse` also write `st["tier"]`
+## works and stores the rung as a fact, which is the thing `player.py`'s own
+## comment forbids: *"Restoring them would be a second copy of a derivation,
+## which is how a saved tier survives a conviction."* So the fix is at the RULE,
+## the way `_fine_of` and `_cell_of` were fixed one file over: the rung is
+## COMPUTED here, from the record, against the baked ladder.
+##
+## AND IT IS `consequence.tier_of`'S RULE AND NOT A SECOND ONE. That function
+## has exactly three branches over the record -- custody, revocation, otherwise
+## the card's own reading -- and this is those three. The card's own reading is
+## the one thing the engine genuinely cannot recompute (it needs `arrival.
+## entry_class`, a five-branch visa parser), so `st["tier"]` is used for THAT
+## and only that: as the report of the frozen card it is documented to be.
+const LADDER_REL := "../station/generated/scene/enforcement.json"
+
+var _ladder: Dictionary = {}
+var _ladder_read := false
+
+
+func _ladder_table() -> Dictionary:
+	if _ladder_read:
+		return _ladder
+	_ladder_read = true
+	var p := ProjectSettings.globalize_path("res://").path_join(
+		LADDER_REL).simplify_path()
+	var f := FileAccess.open(p, FileAccess.READ)
+	if f == null:
+		# LOUD, NOT SILENT. Without the ladder this body cannot derive a rung,
+		# and falling back to the stored report is precisely the defect above.
+		# It says so and takes the report, so the gate goes red on the reload
+		# rather than passing on a number nobody computed.
+		print("player: no consequence ladder at %s -- the rung on this card is "
+			% p + "the STORED REPORT and a demotion will not survive a reload. "
+			+ "Run `python3 station/enforcement.py --bake`")
+		return _ladder
+	var d = JSON.parse_string(f.get_as_text())
+	if typeof(d) == TYPE_DICTIONARY:
+		_ladder = d
+	return _ladder
+
+
+func _tier_named(nm: String) -> int:
+	var tiers: Dictionary = _ladder_table().get("tiers", {})
+	for k in tiers:
+		if String(tiers[k]) == nm:
+			return int(String(k))
+	return -99
+
+
+func _tier_label(t: int, fallback: String) -> String:
+	var tiers: Dictionary = _ladder_table().get("tiers", {})
+	return String(tiers.get(str(t), fallback))
+
+
+## Is a revocation DUE on this record at this rung? `consequence._dispose`'s own
+## two thresholds, read from the bake rather than written here.
+##
+## WHY THE THRESHOLDS ARE CONSULTED AT ALL when `visa_revoked` already answers
+## it: the flag is the REPORT of a decision and the ladder is the RULE, and this
+## takes either. A record carrying two grade-2 convictions on a revocable rung
+## with the flag unset is a record whose writer did not apply the disposal --
+## which is the same class of defect as the one this function exists for, one
+## level down. It is resolved towards the rule, never away from it: nothing here
+## can un-revoke a card.
+func _revocation_due(rung: int, rec: Dictionary) -> Dictionary:
+	var t := _ladder_table()
+	var rv: Dictionary = t.get("revocable", {})
+	if not rv.has(str(rung)):
+		return {"due": false, "falls_to": rung,
+			"why": "the ladder prices no rung %d" % rung}
+	var to = rv[str(rung)]
+	if to == null:
+		return {"due": false, "falls_to": rung,
+			"why": "rung %d holds no permission an Ombuds can withdraw" % rung}
+	var grades: Dictionary = t.get("offence_grade", {})
+	var ord_n := 0
+	var ser_n := 0
+	var ungraded := 0
+	for k in (rec.get("convictions", []) as Array):
+		if not grades.has(String(k)):
+			ungraded += 1
+			continue
+		var g := int(grades[String(k)])
+		if g == 2:
+			ord_n += 1
+		elif g >= 3:
+			ser_n += 1
+	var ns := int(t.get("revoke_on_serious", 1))
+	var no := int(t.get("revoke_on_ordinary", 2))
+	var tail := ("" if ungraded == 0
+		else " (%d conviction(s) the bake does not grade)" % ungraded)
+	if ns > 0 and ser_n >= ns:
+		return {"due": true, "falls_to": int(to),
+			"why": "%d serious conviction(s), the ladder revokes at %d%s"
+				% [ser_n, ns, tail]}
+	if no > 0 and ord_n >= no:
+		return {"due": true, "falls_to": int(to),
+			"why": "%d ordinary conviction(s), the ladder revokes at %d%s"
+				% [ord_n, no, tail]}
+	return {"due": false, "falls_to": rung,
+		"why": "%d ordinary / %d serious, under the ladder's %d / %d%s"
+			% [ord_n, ser_n, no, ns, tail]}
+
+
+## `[rung, name, why]` for the purse `st`. `consequence.tier_of`, in the engine.
+func rung_of(st: Dictionary) -> Array:
+	var card := int(st.get("tier", -99))
+	var card_nm := String(st.get("tier_name", ""))
+	# THE CONTROL THAT SHOWS THIS IS LOAD-BEARING. `--player-stored-rung` is the
+	# pre-fix line, one branch wide: the rung is whatever the document last
+	# reported. A run with it must come back from a revocation still holding the
+	# permission, and the progression gate must go RED. If it does not, this
+	# whole function is decoration.
+	if _stored_rung_forced():
+		return [card, card_nm,
+			"CONTROL --player-stored-rung: taken verbatim from the document, "
+			+ "which is the defect this function exists for"]
+	var rec = st.get("record")
+	if typeof(rec) != TYPE_DICTIONARY:
+		return [card, card_nm,
+			"no record on this card -- the rung is the card's own reading"]
+	# 1. CUSTODY OUTRANKS EVERYTHING. `tier_of` branch 1.
+	if bool(rec.get("in_custody", false)):
+		var dt := -1
+		return [dt, _tier_label(dt, "detained"),
+			"in custody -- the card reads nothing until the Ombuds sits"]
+	# 2. WAS A PERMISSION TAKEN? The rung it was taken FROM is the record's own
+	#    `revoked_from` when there is one, because `st["tier"]` is by then the
+	#    stale report and testing revocability against a stale rung is how this
+	#    would quietly stop working the day a second demotion lands.
+	var flag := bool(rec.get("visa_revoked", false))
+	var from_rung := card
+	var rf := String(rec.get("revoked_from", ""))
+	if rf != "":
+		var f := _tier_named(rf)
+		if f != -99:
+			from_rung = f
+	var due: Dictionary = _revocation_due(from_rung, rec)
+	if flag or bool(due["due"]):
+		# `tier_of` branch 2, verbatim: "the conditional permission is gone, so
+		# the card reads the way a card with no permission reads". The ladder
+		# supplies which rung that is; NO_STATUS is the only floor `REVOCABLE`
+		# ever names, and it is read rather than written down.
+		var to := (int(due["falls_to"]) if bool(due["due"]) else 0)
+		var why := String(due["why"])
+		var src := ""
+		if flag and bool(due["due"]):
+			src = "the record and the ladder agree -- " + why
+		elif flag:
+			src = ("the record says revoked; the ladder does not require it ("
+				+ why + ")")
+		else:
+			src = ("THE RECORD DOES NOT SAY REVOKED AND THE LADDER SAYS IT IS "
+				+ "DUE (" + why + ") -- the rule wins")
+		return [to, _tier_label(to, "no_status"),
+			"revoked from %s: %s" % [(rf if rf != "" else card_nm), src]]
+	# 3. OTHERWISE THE CARD'S OWN READING, which is the one thing here the
+	#    engine cannot recompute -- `arrival.entry_class` is the visa parser and
+	#    it does not exist in GDScript. This is `st["tier"]` used AS the report
+	#    `player.py::state()` documents it to be.
+	return [card, card_nm,
+		("the card's own reading; the record takes nothing ("
+			+ String(due["why"]) + ")")]
+
+
+func _stored_rung_forced() -> bool:
+	for a in OS.get_cmdline_user_args():
+		if String(a) == "--player-stored-rung":
+			return true
+	return false
 
 
 func has_purse() -> bool:

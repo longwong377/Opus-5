@@ -521,6 +521,23 @@ def table(keys=None, day: int = 1, seed: str = "b5", ledger: str = None,
         "restricted_from": restricted_sources(),
         "demoting_offence": DEMOTING_OFFENCE,
         "tiers": {str(t): cq.tier_name(t) for t in (cq.DETAINED,) + cq.RUNGS},
+        # WHICH RUNGS HOLD SOMETHING AN OMBUDS CAN TAKE, AND WHAT THEY FALL TO.
+        # `consequence.REVOCABLE`, whose two `None`s are the whole political
+        # content of that module: diplomatic immunity and EA citizenship are not
+        # withdrawable by an Ombuds, and the floor has nothing left below it.
+        # Baked because `godot/scripts/player.gd` derives the rung off the
+        # record at load and needs the RULE rather than a transcription of it --
+        # a `REVOCABLE` written into GDScript would be the second description of
+        # one decision that hard rule 4 exists against, and would drift the
+        # first time this table moved. INV-1025.
+        "revocable": {str(t): (None if v is None else int(v))
+                      for t, v in cq.REVOCABLE.items()},
+        # AND WHAT COUNTS TOWARDS THE THRESHOLD. `revoke_on_ordinary` and
+        # `revoke_on_serious` above are counts of grade-2 and grade-3+
+        # convictions (`Record.ordinary()` / `.serious()`), so a reader holding
+        # the thresholds and no grades cannot apply them. EVERY offence, not the
+        # three `offence` carries: a record on disk may name any of the eleven.
+        "offence_grade": {k: int(v[1]) for k, v in cq.OFFENCE.items()},
         "offence": {k: dict(_offence_row(k)) for k in
                     (REFUSAL_OFFENCE, MOVED_ON_OFFENCE, DEMOTING_OFFENCE)},
         "places": rows,
@@ -1513,8 +1530,8 @@ def godot_binary():
     return None
 
 
-def _run(extra, timeout=240, verbose=False, ledger_src=None):
-    """One launch of the shipped scene, and TWO things about it are deliberate.
+def _run(extra, timeout=240, verbose=False, ledger_src=None, ledger_at=None):
+    """One launch of the shipped scene, and THREE things about it are deliberate.
 
     A TIMEOUT IS A RESULT. `--no-enforcement` stops `interact.gd` building the
     node at all, which is the pre-4r tree exactly -- and in that tree nothing
@@ -1533,15 +1550,35 @@ def _run(extra, timeout=240, verbose=False, ledger_src=None):
     temp directory. The run is then repeatable AND the claim is stronger: the
     caller reads the copy back off disk and reports the delta, so the verdict
     rests on a FILE having changed rather than on the engine saying it did.
+
+    AND IT RETURNS THAT FILE, which is what makes a SECOND launch possible.
+    `ledger_at=<path>` launches on an existing document instead of a fresh copy
+    -- the document a previous launch wrote -- so "quit, reload, still demoted"
+    can be asked of the engine rather than of Python. Session 4t round 2's gate
+    re-derived the reload rung with `consequence.tier_of` and passed while the
+    shipped Godot path derived nothing; a gate that recomputes the answer cannot
+    notice that the shipped path never computes it. See `_prog_gate`.
+
+    Returns `(verdict, output, ledger_path)`.
     """
     g = godot_binary()
     if g is None:
-        return None, "no godot binary"
+        return None, "no godot binary", None
     import shutil                                                 # noqa: PLC0415
     import tempfile                                               # noqa: PLC0415
-    tmp = tempfile.mkdtemp(prefix="arrest-gate-")
-    led = os.path.join(tmp, "economy.json")
-    shutil.copyfile(ledger_src or LEDGER, led)
+    if ledger_at:
+        # THE SECOND SESSION OPENS THE FIRST ONE'S FILE. Not a copy of it: a
+        # copy would prove the format round-trips and this has to prove the
+        # DOCUMENT does. The "before" for the delta line is a snapshot taken
+        # here, so the delta still describes this launch alone.
+        led = ledger_at
+        base = led + ".before"
+        shutil.copyfile(led, base)
+    else:
+        tmp = tempfile.mkdtemp(prefix="arrest-gate-")
+        led = os.path.join(tmp, "economy.json")
+        base = ledger_src or LEDGER
+        shutil.copyfile(base, led)
     cmd = [g, "--headless", "--path", GODOT_DIR, "--", "--no-coldstart",
            "--arrest-gate", "--ledger=" + led] + list(extra)
     try:
@@ -1549,20 +1586,19 @@ def _run(extra, timeout=240, verbose=False, ledger_src=None):
                              timeout=timeout)
     except subprocess.TimeoutExpired:
         return None, ("no verdict in %d s -- nothing in this build answered "
-                      "--arrest-gate" % timeout)
-    out = res.stdout + res.stderr + "\n" + _ledger_delta(ledger_src or LEDGER,
-                                                         led)
+                      "--arrest-gate" % timeout), led
+    out = res.stdout + res.stderr + "\n" + _ledger_delta(base, led)
     if verbose:
         print(out)
     m = re.search(r"^%s gate=(\S+)(.*)$" % GATE_TAG, out, re.M)
     if not m:
-        return None, out
+        return None, out, led
     d = {"gate": m.group(1)}
     for tok in m.group(2).split():
         if "=" in tok:
             k, v = tok.split("=", 1)
             d[k] = v
-    return d, out
+    return d, out, led
 
 
 def _purse(path):
@@ -1764,6 +1800,134 @@ def _prog_money(out: str, d: dict) -> bool:
     return good
 
 
+_PURSE_RE = re.compile(
+    r"^interact: purse (\S+) \((.+?), (\S*)\) ([\d.]+) cr, carrying (\d+)/(\d+)",
+    re.M)
+_DERIVED_RE = re.compile(
+    r"^interact: rung (-?\d+) (\S+) DERIVED, document reported (-?\d+) (\S+) "
+    r"-- (.*)$", re.M)
+_CARDGATE_RE = re.compile(
+    r"^ARREST gate: (\S+), rung (-?\d+)\((\S*)\) against need (-?\d+)", re.M)
+_NOREFUSE_RE = re.compile(
+    r"^ARREST gate=FAIL -- nothing on this deck refuses a tier(-?\d+) card",
+    re.M)
+
+# THE SECOND LAUNCH'S FLAGS, AND THE EMPTY BAG IS THE WHOLE POINT. With
+# contraband in it, `enforcement.gd::_pick` opens a stop at any place that READS
+# a card, so a refusal would prove the search branch works and would say nothing
+# about the rung. With the bag emptied, `_pick`'s only trigger is
+# `tier < place.need` -- so a stop happening at all IS a tier-gated door
+# refusing this card, and no stop happening is the card still being admitted.
+# That is exactly the sentence THE-GAME  5 is about, asked of the engine.
+RELOAD_FLAGS = ("--enforce-no-contraband",)
+
+
+def _prog_reload(led: str, pl, mr, verbose=False) -> bool:
+    """QUIT, RELOAD, STILL DEMOTED -- ASKED OF THE ENGINE.
+
+    THE DEFECT THIS EXISTS FOR, and it is instance ten of this project's
+    signature failure in its most refined form. Round 2's reload check was
+    `_reload_line`: Python opening the document the engine wrote and calling
+    `consequence.tier_of`. It passed. It could not have failed, because the
+    thing it tested was its own recomputation -- and the SHIPPED Godot path made
+    no such call. `interact.gd::_sync_purse` never wrote the rung back (rightly)
+    and `player.gd::set_purse` read `st["tier"]` verbatim (wrongly), so a second
+    session opened a revoked card as `interact: purse player:g2c (IVANOVA,
+    AMIS, transit)`. The money persisted, the record persisted, the punishment
+    did not. **A gate that re-derives the answer in Python cannot notice that
+    the shipped path never derives it.**
+
+    So this relaunches the engine on the file the engine just wrote and asserts
+    on THE SECOND LAUNCH'S OWN PRINTED LINES:
+
+      1. its purse line names the demoted rung, not the one the card was issued
+         at -- that is the acceptance sentence, in the engine's own words;
+      2. its derivation line says the rung was DERIVED and reports the stale
+         number the document still carries, so "computed" and "echoed" are
+         distinguishable;
+      3. a tier-gated door refuses it -- `ARREST gate: <place>, rung r(name)
+         against need n` with `r < n`. With the bag empty that stop can only
+         have been opened by the rung;
+      4. and Python's `tier_of` on the same file agrees. THAT is the control's
+         place: beside the engine's answer, never in front of it. If the two
+         disagree the gate goes red and the disagreement is the finding.
+    """
+    import shutil                                                 # noqa: PLC0415
+    ok = True
+
+    def ck(name, okv, detail=""):
+        nonlocal ok
+        ok = ok and bool(okv)
+        print("    %s %-46s %s" % ("ok  " if okv else "FAIL", name, detail))
+
+    print("  THE SECOND LAUNCH -- the engine reopens the file the engine wrote:"
+          " `--arrest-gate %s --ledger=<that file>`" % " ".join(RELOAD_FLAGS))
+    py_rung, py_name = None, ""
+    if mr:
+        py_rung = int(mr.group(1))
+        mn = re.search(r"reload rung=-?\d+\(([^)]*)\)", mr.group(0))
+        py_name = mn.group(1) if mn else ""
+    # THE CONTROL FIRST, ON A COPY, so the subject's file is untouched by it.
+    ctl = led + ".stored"
+    shutil.copyfile(led, ctl)
+    cd, cout, _c = _run(RELOAD_FLAGS + ("--player-stored-rung",), verbose=verbose,
+                        ledger_at=ctl)
+    cp = _PURSE_RE.search(cout or "")
+    cnr = _NOREFUSE_RE.search(cout or "")
+    ctl_name = cp.group(3) if cp else "-"
+    ck("CONTROL --player-stored-rung reads the stale field",
+       cd is not None and ctl_name == pl.tier_name,
+       "purse `%s` (the card was issued at `%s`); %s"
+       % (ctl_name, pl.tier_name,
+          ("and nothing refuses a tier%s card" % cnr.group(1)) if cnr
+          else ("verdict %s" % (cd["gate"] if cd else "NONE"))))
+    d, out, _l = _run(RELOAD_FLAGS, verbose=verbose, ledger_at=led)
+    if d is None:
+        for line in (out or "").splitlines()[-20:]:
+            print("      | " + line)
+        ck("the second launch reached a verdict", False, "no ARREST line")
+        return False
+    p = _PURSE_RE.search(out)
+    dv = _DERIVED_RE.search(out)
+    cg = _CARDGATE_RE.search(out)
+    nr = _NOREFUSE_RE.search(out)
+    for m in (p, dv, cg):
+        if m:
+            print("      | " + m.group(0))
+    if nr:
+        print("      | " + nr.group(0))
+    ck("launch 2 opened the purse launch 1 wrote", p is not None,
+       "" if p else "no `interact: purse` line in the second launch")
+    if p is None:
+        return False
+    eng_name = p.group(3)
+    ck("...and its OWN line names the demoted rung",
+       eng_name != pl.tier_name and eng_name != "",
+       "purse reads `%s`; the card was issued at `%s`" % (eng_name,
+                                                          pl.tier_name))
+    ck("...the rung was DERIVED, not echoed from the document",
+       dv is not None and int(dv.group(1)) != int(dv.group(3)),
+       ("engine %s %s, document still reports %s %s -- %s"
+        % (dv.group(1), dv.group(2), dv.group(3), dv.group(4), dv.group(5)))
+       if dv else "no `interact: rung ... DERIVED` line")
+    ck("a tier-gated door REFUSES that card",
+       cg is not None and int(cg.group(2)) < int(cg.group(4)),
+       ("%s reads the card at rung %s(%s) against need %s"
+        % (cg.group(1), cg.group(2), cg.group(3), cg.group(4))) if cg
+       else ("nothing on this deck refuses a tier%s card" % nr.group(1))
+       if nr else "no `ARREST gate:` line")
+    ck("...and the stop actually opened", int(d.get("refused", 0) or 0) > 0,
+       "refused=%s detained=%s at %s" % (d.get("refused"), d.get("detained"),
+                                         d.get("place")))
+    ck("PYTHON agrees with the engine (`consequence.tier_of`)",
+       py_rung is not None and dv is not None
+       and int(dv.group(1)) == py_rung and eng_name == py_name,
+       "engine rung %s(%s), tier_of rung %s(%s)"
+       % ((dv.group(1) if dv else "-"), eng_name,
+          ("-" if py_rung is None else py_rung), py_name or "-"))
+    return ok
+
+
 def _prog_gate(verbose=False) -> dict:
     """THE ACCEPTANCE, IN THE SHIPPED SCENE: arrested, held, fined, DEMOTED.
 
@@ -1790,7 +1954,7 @@ def _prog_gate(verbose=False) -> dict:
           "--no-coldstart --arrest-gate %s`" % " ".join(PROG_FLAGS))
     print("  the card this run opens: %s, rung %d %s, %.2f cr"
           % (pl.card.card_name, pl.tier, pl.tier_name, pl.credits))
-    d, out = _run(PROG_FLAGS, verbose=verbose, ledger_src=src)
+    d, out, led1 = _run(PROG_FLAGS, verbose=verbose, ledger_src=src)
     if d is None:
         for line in out.splitlines()[-25:]:
             print("    | " + line)
@@ -1853,22 +2017,52 @@ def _prog_gate(verbose=False) -> dict:
     mr = re.search(r"^ARREST reload rung=(-?\d+)\([^)]*\) from a clean card at "
                    r"rung (-?\d+)\(", out, re.M)
     reloaded = bool(mr) and int(mr.group(1)) < int(mr.group(2))
-    print("  %s RELOADED from the file the engine wrote: %s"
+    print("  %s the PYTHON control on that file (`consequence.tier_of`): %s"
           % ("ok  " if reloaded else "FAIL",
              mr.group(0)[7:] if mr else "no reload line"))
     ok = ok and reloaded
+    # AND THE HOLD IS AN ADDRESS AND NOT A FLOOR IN THIS CONTAINER, SAID OUT
+    # LOUD. `floor=-1.00` in the verdict above means the ray under the body at
+    # the brig hit nothing, because red/2/1 is not a built deck here. Every
+    # other number on that line is about a thing that happened; this one is
+    # about a thing that could not be measured, and it used to scroll past
+    # inside a PASS. It is not made a failure -- building red/2/1 is not this
+    # gate's subject and a gate that goes red for an unbuilt deck reports the
+    # wrong defect -- but it is named, and the containment test that CAN run
+    # (was the body inside the brig's own register box) is asserted instead.
+    fl = float(d.get("floor", -1.0) or -1.0)
+    inbox = str(d.get("brig", "0/0")).split("/")
+    held_ok = (len(inbox) == 2 and inbox[0] == inbox[1]
+               and int(inbox[0] or 0) > 0)
+    print("  %s the brig hold: %d of %d inside the register box, floor=%.2f "
+          "-- %s" % ("ok  " if held_ok else "FAIL",
+                     int(inbox[0] or 0), int(inbox[-1] or 0), fl,
+                     ("a floor was found" if fl >= 0.0 else
+                      "NO FLOOR: red/2/1 is not built in this container, so "
+                      "the hold is an ADDRESS and not a surface. Containment "
+                      "is asserted; standing on it is not")))
+    ok = ok and held_ok
+    ok = _prog_reload(led1, pl, mr, verbose=verbose) and ok
     print("  PROGRESSION CONTROLS -- each removes one input; the demotion must "
           "stop happening")
     for flags, why in PROG_CONTROLS:
-        cd, cout = _run(flags, verbose=verbose, ledger_src=src)
+        cd, cout, _cl = _run(flags, verbose=verbose, ledger_src=src)
         cm = re.search(r"tier=(-?\d+)->(-?\d+)", cout)
         fell = bool(cm) and int(cm.group(2)) < int(cm.group(1)) \
             and int(cm.group(2)) >= 0
-        good = not fell
+        # A CONTROL THAT ABORTS BEFORE DOING THE THING IT NAMES MUST NOT SCORE
+        # `ok`. This was `good = not fell`, and `fell` is False when the run
+        # printed no `tier=` at all -- so a control that died on a missing
+        # binary, a stale sidecar or a GDScript parse error passed silently,
+        # which is the same defect as an assertion that cannot fail. The run
+        # must reach a VERDICT (`ARREST gate=...`, PASS or FAIL, either is an
+        # answer) and the rung must not have fallen.
+        good = (cd is not None) and not fell
         print("    %s %-46s %-52s -- %s"
               % ("ok  " if good else "FAIL", " ".join(flags), why,
                  ("tier %s -> %s" % (cm.group(1), cm.group(2))) if cm
-                 else "no verdict"))
+                 else ("gate=%s, no demotion reported" % cd["gate"])
+                 if cd is not None else "NO VERDICT -- the run did not answer"))
         ok = ok and good
     print("  ARREST-PROG %s" % ("PASS" if ok else "FAIL"))
     return {"ok": ok, "verdict": d, "tier_before": t0, "tier_after": t1}
@@ -1884,12 +2078,12 @@ def gate(verbose=False, legacy=False, progression=False) -> dict:
     print("ARREST SOMEBODY COMES -- "
           "`godot --headless --path godot -- --no-coldstart --arrest-gate`")
     if legacy:
-        d, out = _run(("--enforce-legacy",), verbose=verbose)
+        d, out, _l = _run(("--enforce-legacy",), verbose=verbose)
         print("  --enforce-legacy (the build before this session): %s"
               % (("no verdict -- " + out.splitlines()[-1][:80]) if d is None
                  else " ".join(f"{k}={v}" for k, v in d.items())))
         return {"ok": d is not None and d.get("gate") == "FAIL"}
-    d, out = _run((), verbose=verbose)
+    d, out, _l = _run((), verbose=verbose)
     if d is None:
         print("  no ARREST verdict printed")
         for line in out.splitlines()[-25:]:
@@ -1915,7 +2109,7 @@ def gate(verbose=False, legacy=False, progression=False) -> dict:
     ok = ok and on_disk
     print("  ARREST CONTROLS -- each changes one input and must move the verdict")
     for flags, why in GATE_CONTROLS:
-        cd, cout = _run(flags, verbose=verbose)
+        cd, cout, _cl = _run(flags, verbose=verbose)
         good = cd is None or cd.get("gate") == "FAIL"
         said = ((cout.splitlines() or ["no verdict"])[-1][:64]
                 if cd is None else
@@ -1975,12 +2169,23 @@ ENSURE = (
 
 
 def _table_is_current(path: str = None) -> bool:
-    """Does the sidecar on disk carry everything `enforcement.gd` reads?
+    """Does the sidecar on disk carry everything the ENGINE reads?
 
     A table with no places is not a table (see above), and a table with no
     `draw_check` is a table the engine cannot price a fine from -- it will
     refuse, loudly and correctly, and the failure will read as a defect in the
     arrest chain rather than as a stale artefact.
+
+    AND THE SAME DEFECT A FOURTH TIME, which is why `revocable` and
+    `offence_grade` are checked here the day they are added rather than the day
+    somebody notices. A table baked before session 4t round 3 has places, a
+    draw check and a fine band -- so it passed -- and it carries neither of the
+    two keys `godot/scripts/player.gd::rung_of` derives the rung from. That
+    build reloads a revoked card still reading `transit`, which is the exact
+    defect this session closed, arriving by way of a stale artefact.
+
+    `enforcement.gd` is no longer the only consumer, so the docstring no longer
+    says it is.
     """
     path = path or OUT_JSON
     try:
@@ -1993,6 +2198,13 @@ def _table_is_current(path: str = None) -> bool:
     if not (d.get("draw_check") or []):
         return False
     if int(d.get("brig_cells", 0)) <= 0:
+        return False
+    # THE RELOAD'S OWN TWO KEYS -- `player.gd::rung_of`. `revocable` may hold
+    # `None` values legitimately, so the test is on the KEY SET and not on
+    # truthiness; a `{}` is a table that revokes nothing, anywhere, ever.
+    if len(d.get("revocable") or {}) != len(cq.REVOCABLE):
+        return False
+    if len(d.get("offence_grade") or {}) != len(cq.OFFENCE):
         return False
     off = d.get("offence") or {}
     row = off.get(DEMOTING_OFFENCE) or {}
