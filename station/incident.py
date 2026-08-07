@@ -1083,6 +1083,100 @@ def _memo_places(name, fn):
     return _memo(("places", name), lambda: tuple(fn()))
 
 
+_SPEC_INC_PLACES = {}
+
+
+def spec_incident_places(path=None):
+    """{INC-id: frozenset(place keys)} -- read out of `docs/spec/PLACES.md`.
+
+    THE SPEC NAMES WHERE EACH CLASS HAPPENS AND NOTHING HAD EVER READ IT.
+    §0.2's table gives the vocabulary and `spec_ids` already parses that; the
+    per-place rows below it carry a second, finer statement -- each PLC row ends
+    with a line `- incidents: INC-A, INC-B (why)` -- and every class in this
+    file chose its own places from a `directory.PLACES` function query instead.
+    Those two can disagree silently, and they did: `cargo_bays` names INC-CONTRA
+    and `customs_halls()` does not contain it, which is the whole of the
+    unreachable `stock` write (see `_scanned`).
+
+    Parsed rather than transcribed, for the reason this project keeps
+    relearning: a list copied into code is a second copy of a fact, and the copy
+    is the one that goes stale. `--gate` asserts coverage both ways and prints
+    what each side has that the other does not.
+    """
+    import re
+    path = SPEC_PLACES if path is None else path
+    hit = _SPEC_INC_PLACES.get(path)
+    if hit is not None:
+        return hit
+    out = {}
+    key = None
+    with open(path) as f:
+        for line in f:
+            m = re.match(r"^###\s+PLC-\d+\s+`([a-z0-9_]+)`", line)
+            if m:
+                key = m.group(1)
+                continue
+            if key is None or not line.startswith("- incidents:"):
+                continue
+            for cid in re.findall(r"INC-[A-Z]+", line):
+                out.setdefault(cid, set()).add(key)
+    out = {k: frozenset(v) for k, v in out.items()}
+    _SPEC_INC_PLACES[path] = out
+    return out
+
+
+# THE FOUR ROWS WHERE THE SPEC IS DESCRIBING WHERE AN INCIDENT LANDS RATHER
+# THAN WHERE IT HAPPENS, each with the spec's own words for why. A blanket
+# "every class must cover its spec row" assertion would put a dock accident
+# inside a medlab and a customs quarantine in a garden, so the exemption is
+# NAMED here instead of the assertion being dropped -- a class added later with
+# no binding to its own spec row still fails.
+SPEC_ARRIVAL_ONLY = {
+    # PLC-medlab_one: "quiet 03:00-06:00 except INC-QUAR" and PLC-isolation:
+    # "INC-QUAR routes patients here unattended" -- the patient ARRIVES.
+    "INC-QUAR": "the isolation path is where a quarantine ENDS; it originates "
+                "at the scan hall (TRAFFIC 9)",
+    # PLC-medlab_one: "INC-DUST (victims arrive)". PLC-dark_star's "a deal in
+    # the back booth is the classic seed" IS origination and is an open finding
+    # rather than an exemption -- see the gaps line below.
+    "INC-DUST": "medlab_one is where the victim is treated; the bars are an "
+                "OPEN finding, not an exemption",
+    # PLC-council_chamber lists INC-NC, and the class already fires in 21
+    # crowd places. A stand-off in the chamber is a scene the class can carry;
+    # the chamber is not in `crowd_places` because nobody queues in it.
+    "INC-NC": "already fires in 21 crowd places; the council chamber is an "
+              "open finding about crowd_places, not a broken binding",
+    # PLC-the_garden / garden_town / alien_sector list INC-GQE, which is a
+    # CUSTOMS seizure of a liturgical plant -- the garden is where the plant is
+    # wanted, the hall is where it is taken.
+    "INC-GQE": "the seizure happens at the scan; the garden and the quarter "
+               "are who it is taken FROM (FACTIONS 11.3)",
+}
+
+
+def spec_places_of(cid):
+    """The register places `docs/spec/PLACES.md` itself names for one class."""
+    return tuple(sorted(k for k in spec_incident_places().get(cid, ())
+                        if q_of(k) is not None))
+
+
+def _plus_spec(cid, base):
+    """A place query WIDENED to cover the spec's own row for that class.
+
+    APPLIED TO THE RULE, NOT TO THE ENTRY. The temptation on finding
+    `cargo_bays` missing from INC-CONTRA was to write `customs_halls() +
+    ("cargo_bays",)` in that one row -- which is exactly the fix CLAUDE.md
+    records being applied twice to `BESPOKE_GEOMETRY` and needed a third time,
+    because a fix to one entry of a table leaves the table's shape wrong. This
+    is the shape: any class may be declared here as "the function query, plus
+    whatever the spec says", and the gate asserts the result covers the spec for
+    EVERY class, not just the ones that were noticed.
+    """
+    def places():
+        return tuple(dict.fromkeys(tuple(base()) + spec_places_of(cid)))
+    return places
+
+
 def customs_halls():
     return _memo_places("halls", lambda: _by_function("immigration"))
 
@@ -1389,9 +1483,61 @@ def _r_elev(ctx, place, hour):
     return ELEVATORS * ELEVATOR_CYCLES_PER_H / ELEVATOR_MTBF_CYCLES
 
 
+# WHAT COMES OFF A SHIP THAT NOBODY LOOKS INSIDE. INV-792.
+#
+# INC-CONTRA now fires on the cargo side as well as at the scan halls (see
+# `_scanned`), and `hall_souls_per_hour` is a CUSTOMS number -- souls a minute
+# through one hall, from `traffic.hall_rate`. Using it at a cargo bay would be a
+# rate borrowed from a different denominator, which is the defect this file's
+# own MTBF check caught once already ("a derivation is not checked until its own
+# units are").
+#
+# The cargo denominator is the spec's own: `docs/spec/PLACES.md` PLC-`cargo_bays`
+# prices the transshipment ledger at **4,000-5,000 t/day through SYS-02/04**. A
+# consignment is a container, not a ship -- 26 freighters a day carrying 4,500 t
+# is 173 t each, and the leak is one crate in a stack rather than a whole hull.
+# CONTAINER_T is the one invented number here and it is bracketed rather than
+# guessed: 20 t is a standard intermodal payload, and the two ends that constrain
+# it are that a cargo unit small enough to carry by hand would make the manifest
+# meaningless and one bigger than a shuttle bay would not fit through the mouth.
+# The share that carries something is `arrival.CONTRABAND_P` REUSED rather than a
+# second constant, exactly as `arrival` itself reused it for 6.6's leak -- "one
+# in a hundred goes wrong" is the same claim on either side of the hull.
+#
+# Overturned by: any figure for B5 cargo unit mass, or any seizure volume for the
+# cargo side. It produces ~2.2 leaks a station-day across the cargo places, which
+# is the number `--gate` prints; a rate that produced less than one a day would
+# make LAW-CRIME:858's route decorative, and one that produced dozens would make
+# smuggling the norm rather than a crime.
+CARGO_T_PER_DAY = 4500.0        # docs/spec/PLACES.md PLC-cargo_bays, auth 5
+CONTAINER_T = 20.0              # INV-792, authority 5
+
+
+def cargo_consignments_per_hour(ctx, place, hour):
+    """Containers landing at ONE cargo place in one station-hour.
+
+    The day's tonnage over the day's own arrival curve, split across the cargo
+    places the register actually has, so adding a cargo bay to the register
+    moves the per-place rate rather than the station total.
+    """
+    n = max(1, len(_cargo_side()))
+    curve = tr.rate_per_hour(hour % 24.0)
+    day = sum(tr.rate_per_hour(float(h)) for h in range(24)) or 1.0
+    return (CARGO_T_PER_DAY / CONTAINER_T) * (curve / day) / n
+
+
+def _cargo_side():
+    """The places INC-CONTRA can leak through -- its own places, less the halls
+    that screen. Derived from `_scanned` so the two cannot disagree."""
+    return _memo("cargo_side", lambda: tuple(
+        k for k in BY_ID["INC-CONTRA"].places() if not _scanned(k)))
+
+
 def _r_contra(ctx, place, hour):
     _ref, _rfd, con, _exp, _med = card_outcomes()
-    return hall_souls_per_hour(ctx, place, hour) * con
+    if _scanned(place):
+        return hall_souls_per_hour(ctx, place, hour) * con
+    return cargo_consignments_per_hour(ctx, place, hour) * ar.CONTRABAND_P
 
 
 def _r_refused(ctx, place, hour):
@@ -2296,11 +2442,45 @@ def _res_elev(inc, w, st):
         _standing(w, "player", "earthforce", +0.5)
 
 
+def _scanned(place_key):
+    """Does this place SCREEN what passes through it?
+
+    THE DISCRIMINATOR THAT WAS WRONG, AND THE SHAPE OF THE FAILURE NAMED IT.
+    `spec_check --red` reported INC-CONTRA as a declared write that cannot
+    happen: the SYS-14 row declares {custody, seizure, stock} and 72 resolutions
+    over its places produced stock **never**. The `else` limb below -- the leak
+    that puts an item on the black market -- was guarded by `_responded()`
+    alone, and `response_s` is 0.0 at BOTH customs halls at all 24 hours, so
+    that branch was unreachable by construction.
+
+    Read the shape before the size. Over the register `_responded` IS a real
+    discriminator -- 1,469 of 3,096 place-hours carry a non-zero wait -- and it
+    is a constant TRUE at exactly the two places this class was bound to. A
+    number that fails 100% on one side of a line is a structural fact, and the
+    structure here is that `_responded` asks the wrong question: **a uniform
+    standing in the room is not what finds concealed goods -- the SCANNER is.**
+    A customs hall finds contraband because `baggage_scanner` is in its interact
+    list and every soul crossing it goes through one. A cargo bay carries
+    `cargo_crane`, `container` and `manifest_terminal` and no scanner at all,
+    which is exactly why `security.BLACK_MARKET_ROUTE[0]` names it as the
+    route's ENTRY -- *"42 bays on a station that is not full, with spare volume
+    nobody inventories"* -- and why `docs/spec/PLACES.md` PLC-`cargo_bays` says
+    *"INC-CONTRA (the black-market route starts here -- LAW-CRIME:858)"*.
+
+    So a FIND now needs both: a place that screens, and somebody to hand it to.
+    Neither the spec nor the station was edited to make the other pass. The
+    class had been bound to two of the four places the spec names for it, and
+    its resolution asked about response time where it should have asked about
+    the scanner. INV-791.
+    """
+    return place_key in frozenset(customs_halls())
+
+
 def _res_contra(inc, w, st):
     person = inc.cast[0]
     item = _contra_item(inc)
     if st == ABSENT:
-        if _responded(inc):
+        if _scanned(inc.place) and _responded(inc):
             _seize(w, inc, item, person)
             _arrest(w, inc, person, f"possession of {item}")
         else:
@@ -2968,7 +3148,8 @@ CLASSES = (
           lambda p, h, s: _cast1(p, h, s, "crew"),
           ("unit down", "INC-HOLD forms", "guild grievance line"),
           _res_elev, window_s=1800.0),
-    Klass("INC-CONTRA", "contraband find at scan", customs_halls, _r_contra,
+    Klass("INC-CONTRA", "contraband find at scan",
+          _plus_spec("INC-CONTRA", customs_halls), _r_contra,
           lambda p, h, s: _cast1(p, h, s, "pax"),
           ("find", "seizure room PLC-003", "custody or fine"), _res_contra,
           window_s=300.0),
@@ -3120,9 +3301,11 @@ def books_custody(cid, stance=ABSENT, hour=13.0, seed="b5"):
 # 9.  THE TICK -- a rate, drawn, in a place, at an hour
 # ===========================================================================
 class Incident:
-    __slots__ = ("cid", "place", "day", "hour", "cast", "window_s", "seed")
+    __slots__ = ("cid", "place", "day", "hour", "cast", "window_s", "seed",
+                 "stance")
 
     def __init__(self, cid, place, day, hour, cast, window_s, seed):
+        self.stance = ABSENT
         self.cid = cid
         self.place = place
         self.day = day
@@ -3165,7 +3348,8 @@ RAGDOLL_OF = {
 }
 
 
-def visible_bodies(places, day=1, seed="b5", step_min=None, hours=24):
+def visible_bodies(places, day=1, seed="b5", step_min=None, hours=24,
+                   observer=None):
     """One station-day of incidents that put a body on the deck, over `places`.
 
     THE HALF THAT KEEPS GOING MISSING. `station/npc/ragdoll.py` builds a body
@@ -3178,15 +3362,32 @@ def visible_bodies(places, day=1, seed="b5", step_min=None, hours=24):
     Returns a list of plain dicts, ordered by hour, each carrying what the
     runtime needs and nothing it can recompute:
 
-        {"cid", "place", "hour", "who", "species", "dead", "impulse_n_s"}
+        {"cid", "place", "hour", "who", "species", "dead", "impulse_n_s",
+         "stance", "if_helped"}
 
     `who` and `species` come from the incident's own CAST -- a named resident
     with a home and a job, not "a body". That is the difference between a
     person collapsing and a prop falling over.
+
+    `stance` AND `if_helped` ARE THE FORK, BAKED, AND THE HONEST STATEMENT OF
+    WHERE IT STOPS. `boot.py::_collapses` calls this with no observer, and that
+    is correct rather than an oversight: at bake time the player has not chosen
+    anything, so every row is the ABSENT day -- what this deck does when nobody
+    intervenes. What the row can carry is what the choice is WORTH, and
+    `if_helped` says whether this body would still be lying on the deck had the
+    player helped, resolved through the class's own HELPS branch rather than
+    guessed. Passing an `observer` resolves the day under a live player instead.
+
+    **What is NOT wired, said out loud so silence is not read as completeness:**
+    nothing in `godot/scripts/` reads `if_helped` yet. Making the choice live at
+    runtime needs `main.gd::_fire_collapses` to consult it and `boot.py` to pass
+    an observer; both belong to another agent this session and the patch is
+    written out in `scratchpad/PATCHES-4t-g3_incidents.md` rather than applied.
     """
     ctx = Ctx(day=day, seed=seed)
     kw = {} if step_min is None else {"step_min": step_min}
-    _w, fired = headless_day(ctx, scope=tuple(places), hours=hours, **kw)
+    _w, fired = headless_day(ctx, scope=tuple(places), hours=hours,
+                             observer=observer, **kw)
     out = []
     for i in fired:
         row = RAGDOLL_OF.get(i.cid)
@@ -3196,9 +3397,36 @@ def visible_bodies(places, day=1, seed="b5", step_min=None, hours=24):
         sp = i.cast[0].species if i.cast else "human"
         out.append({"cid": i.cid, "place": i.place, "hour": round(i.hour, 4),
                     "who": who, "species": sp, "dead": row["dead"],
-                    "impulse_n_s": row["impulse_n_s"]})
+                    "impulse_n_s": row["impulse_n_s"],
+                    "stance": i.stance,
+                    "if_helped": _body_survives_help(i.cid)})
     out.sort(key=lambda r: (r["hour"], r["place"], r["cid"]))
+    print("incident.visible_bodies: %d collapse row(s) over %d place(s), "
+          "observer=%s" % (len(out), len(tuple(places)),
+                           observer.describe() if observer else "none (absent)"),
+          file=sys.stderr)
     return out
+
+
+_HELP_KEEPS = {}
+
+
+def _body_survives_help(cid):
+    """Does the HELPS branch stop this person hitting the deck?
+
+    Resolved, not tabulated: the class's own HELPS world is compared against its
+    ABSENT world for a casualty row naming the same person. INC-SICK helped is
+    somebody walked to a medlab; INC-BRAWL helped is "separated before injury".
+    A fifth table of class ids would be a fifth thing to keep in step.
+    """
+    hit = _HELP_KEEPS.get(cid)
+    if hit is None:
+        _inc, worlds, _s, _u = three_ways(cid)
+        a = {f[1] for f in worlds[ABSENT].facts if f[0] == "casualty"}
+        h = {f[1] for f in worlds[HELPS].facts if f[0] == "casualty"}
+        hit = bool(a) and not (a & h)
+        _HELP_KEEPS[cid] = hit
+    return hit
 
 
 def live_classes(ctx, place, hour):
@@ -3314,8 +3542,16 @@ def scope_places(scope=None):
 
 
 def simulate(ctx, world=None, start_h=13.0, window_min=WINDOW_MIN,
-             step_min=STEP_MIN, scope=None, classes=None):
-    """One window of station time over a set of places. No observer.
+             step_min=STEP_MIN, scope=None, classes=None, observer=None):
+    """One window of station time over a set of places.
+
+    `observer` IS CONSULTED AFTER THE DRAW AND NEVER BEFORE IT, which is the
+    line SYS-14 draws: *"none of them requires the player to exist"*. The rate
+    functions cannot see it, the cast cannot see it, the Incident is built
+    identically either way -- it decides only the STANCE that Incident is
+    resolved in. `absence()` asserts the two streams are identical and the two
+    worlds are not, which is that separation measured rather than asserted.
+    Passing None resolves everything ABSENT, exactly as before.
 
     THE DRAW IS PER STEP, NOT PER HOUR, and that is deliberate even though a
     per-hour Poisson count would be cheaper and exactly step-invariant. A
@@ -3356,7 +3592,9 @@ def simulate(ctx, world=None, start_h=13.0, window_min=WINDOW_MIN,
                                   f"{ctx.seed}-{ctx.day}-{si}-{c}")
                     inc = Incident(k.cid, place, ctx.day, hour, cast,
                                    k.window_s, ctx.seed)
-                    k.resolve(inc, w, ABSENT)
+                    inc.stance = (ABSENT if observer is None
+                                  else observer.stance(inc))
+                    k.resolve(inc, w, inc.stance)
                     fired.append(inc)
                     w.log.append(inc)
                     _WORLD_HEAT.clear()
@@ -3440,6 +3678,141 @@ def near(inc, at, radius_m=None):
 
 
 # ===========================================================================
+# 9b.  THE OBSERVER -- a player standing in the middle of it
+# ===========================================================================
+# WHAT WAS MISSING, AND `simulate`'s OWN DOCSTRING SAID SO IN GOOD FAITH.
+# It read: *"`simulate` takes no observer on purpose -- SYS-14's player surface
+# clause is 'none of them requires the player to exist', and a generator that
+# can see the camera is a cutscene director."* That is right about the RATE and
+# it was being used to justify something wider: with no observer anywhere, every
+# incident on the station resolved ABSENT, forever. `three_ways` replayed ONE
+# hand-picked incident three ways into three fresh worlds, which is a check on
+# the class table; **no day the player was in had ever been run.**
+#
+# So MASTER-PLAN A2's promise -- *"is drawn into events that would have happened
+# without them, changes how they end"* -- had a first half and no second, and
+# `docs/THE-GAME.md` §7's absence row (*"a player-absent day != a player-present
+# day in the same seed"*) was red with nothing that could turn it green.
+#
+# THE SPLIT THAT KEEPS SYS-14 HONEST. An Observer may not touch a rate. It is
+# consulted at exactly one point -- after the draw, after the cast is named,
+# after the Incident exists -- to choose the STANCE it is resolved in. `--absence`
+# asserts that the two runs fire the IDENTICAL incident stream (same class, same
+# place, same minute, same named cast) and differ only in what the world does
+# about them. A generator that noticed the camera would fail that assertion, and
+# it is the first thing the gate checks rather than a remark.
+#
+# WITNESSING IS THE PROBE, NOT A RADIUS SOMEBODY CHOSE. `Probe` already resolves
+# the district cell plus its adjacent cells ONCE at construction, for the reason
+# SYS-14 gives -- *"never a floating radius an implementation can shrink"* -- and
+# `sight_m()` is `populace.corridor_sight_m()`, read at call time off the
+# corridor it describes. An Observer witnesses an incident when it is in the
+# probe AND inside that sight line. Both halves are printed with every number
+# this file reports, so the denominator is never implicit. INV-790.
+
+def policy_absent(inc):
+    """The player is standing there and does nothing. NOT the same as not being
+    there, and the difference is the whole point of having a control: this
+    returns ABSENT for a witnessed incident, so a run under it must be
+    BYTE-IDENTICAL to a run with no observer at all."""
+    del inc
+    return ABSENT
+
+
+def policy_helps(inc):
+    del inc
+    return HELPS
+
+
+def policy_reports(inc):
+    del inc
+    return REPORTS
+
+
+_BOOKS = {}
+
+
+def policy_citizen(inc):
+    """REPORT what the station would already punish; HELP what it would not.
+
+    DERIVED FROM THE CLASS TABLE RATHER THAN LISTED. The tempting version of a
+    mixed policy is a hand-written set of class ids -- which is a third copy of
+    the table and the copy that goes stale. `books_custody(cid)` already asks
+    the only question that matters here, and it asks it by RESOLVING the class:
+    does the absent branch put somebody in the brig? If it does, this is a crime
+    and a bystander's act is to report it. If it does not -- a collapse, a
+    child, a fault, a lockout -- the act is to help.
+
+    It is memoised because `books_custody` resolves three worlds per call and
+    the day loop asks per incident.
+    """
+    hit = _BOOKS.get(inc.cid)
+    if hit is None:
+        hit = books_custody(inc.cid)
+        _BOOKS[inc.cid] = hit
+    return REPORTS if hit else HELPS
+
+
+POLICIES = {"absent": policy_absent, "helps": policy_helps,
+            "reports": policy_reports, "citizen": policy_citizen}
+
+
+class Observer:
+    """WHERE THE PLAYER IS STANDING, AND WHAT THEY DO ABOUT WHAT THEY SEE.
+
+    `at`       a register place. The probe volume is built from it, once.
+    `policy`   (incident) -> stance, for incidents this observer WITNESSES.
+    `radius_m` the sight line. Defaults to `sight_m()`, never to a literal.
+    `hours`    which station-hours the player is actually awake and out. An
+               observer that is present for all 24 is a player who never
+               sleeps, so the default is the waking day and it is stated.
+
+    Nothing here is consulted by any rate function. `witnessed` and `acted` are
+    counters the gate reads so the rate NEAR THE PLAYER is a measurement rather
+    than an estimate.
+    """
+
+    def __init__(self, at, policy="citizen", radius_m=None, hours=None):
+        self.at = at
+        self.probe = Probe(at)
+        self.policy = POLICIES[policy] if isinstance(policy, str) else policy
+        self.policy_name = policy if isinstance(policy, str) else \
+            getattr(policy, "__name__", "custom")
+        self.radius_m = sight_m() if radius_m is None else float(radius_m)
+        self.hours = None if hours is None else frozenset(int(h) % 24
+                                                          for h in hours)
+        self.witnessed = []
+        self.acted = {ABSENT: 0, HELPS: 0, REPORTS: 0}
+
+    # -- the two halves of "near", kept separate so both can be reported ----
+    def in_probe(self, inc):
+        return inc.place in self.probe
+
+    def present(self, inc):
+        return self.hours is None or int(inc.hour) % 24 in self.hours
+
+    def witnesses(self, inc):
+        return (self.present(inc) and self.in_probe(inc)
+                and distance_m(inc.place, self.at) <= self.radius_m)
+
+    def stance(self, inc):
+        if not self.witnesses(inc):
+            return ABSENT
+        self.witnessed.append(inc)
+        st = self.policy(inc)
+        if st not in STANCES:                                # pragma: no cover
+            raise ValueError(f"{st} is not a stance")
+        self.acted[st] += 1
+        return st
+
+    def describe(self):
+        awake = "all 24 h" if self.hours is None else \
+            f"{len(self.hours)} waking h"
+        return (f"a player at {self.at} ({self.policy_name}), {awake}, "
+                f"sight {self.radius_m:.1f} m, probe {self.probe.describe()}")
+
+
+# ===========================================================================
 # 10.  THE THREE STANCES
 # ===========================================================================
 def three_ways(cid, ctx=None, place=None, hour=13.0, seed="b5"):
@@ -3489,15 +3862,126 @@ def stance_report(cid, out=print, **kw):
 # ===========================================================================
 # 11.  A HEADLESS DAY, AND THE DAY BOUNDARY
 # ===========================================================================
-def headless_day(ctx, world=None, step_min=STEP_MIN, scope=None, hours=24):
+def headless_day(ctx, world=None, step_min=STEP_MIN, scope=None, hours=24,
+                 observer=None):
     """Twenty-four station-hours over `scope`, carrying the world through."""
     w = World(day=ctx.day) if world is None else world
     fired = []
     for h in range(hours):
         w, f = simulate(ctx, w, start_h=float(h), window_min=60.0,
-                        step_min=step_min, scope=scope)
+                        step_min=step_min, scope=scope, observer=observer)
         fired.extend(f)
     return w, fired
+
+
+# ===========================================================================
+# 11b.  THE ABSENCE GATE -- a day you were in against the same day you were not
+# ===========================================================================
+def stream_of(fired):
+    """The incident STREAM as a comparable set of named facts.
+
+    Deliberately NOT the world: class, place, minute and the named cast. This
+    is the quantity that must be IDENTICAL between a player-present day and a
+    player-absent one, because it is everything the generator decided before any
+    observer was consulted. If it moves, the player has become a rate.
+    """
+    return tuple(sorted((i.cid, i.place, round(i.hour, 4),
+                         "+".join(_who(c) for c in i.cast)) for i in fired))
+
+
+def absence(at="customs_north", policy="citizen", day=1, seed="b5",
+            scope=None, hours=24, step_min=STEP_MIN, radius_m=None,
+            awake=None):
+    """THE ABSENCE GATE. The same seed, twice: nobody there, then somebody.
+
+    `docs/THE-GAME.md` §7: *"the antagonists act without you -- a player-absent
+    day != a player-present day in the same seed"*, listed red. MASTER-PLAN A2
+    wants the other half in the same breath: the player *"is drawn into events
+    that would have happened without them, changes how they end"*. Those are two
+    assertions about one pair of runs and this returns both:
+
+      same        the incident streams are IDENTICAL -- would have happened
+      differ      the world states are NOT -- changes how they end
+
+    SCOPE. The default is the observer's own probe volume, and that is lossless
+    rather than convenient: an Observer can only change an incident it
+    witnesses, and it witnesses nothing outside the probe, so every place beyond
+    it contributes the same facts to both worlds by construction. `--absence
+    --full` runs the whole register and prints that the extra 126 places moved
+    nothing, which is the control on this paragraph rather than a restatement
+    of it.
+    """
+    obs = Observer(at, policy=policy, radius_m=radius_m, hours=awake)
+    scope = obs.probe.places if scope is None else scope
+    wa, fa = headless_day(Ctx(day=day, seed=seed), scope=scope, hours=hours,
+                          step_min=step_min)
+    wp, fp = headless_day(Ctx(day=day, seed=seed), scope=scope, hours=hours,
+                          step_min=step_min, observer=obs)
+    # BOTH RUNS MUST HAVE PRODUCED SOMETHING. A diff of two runs that both died
+    # is not a diff -- this project once recorded an A/B as IDENTICAL when both
+    # halves had raised the same IndexError and written empty files.
+    if not fa or not fp:                                     # pragma: no cover
+        raise RuntimeError(f"a run produced nothing: absent={len(fa)} "
+                           f"present={len(fp)} -- an empty A/B is not an A/B")
+    return {
+        "observer": obs,
+        "scope": tuple(scope),
+        "absent": (wa, fa),
+        "present": (wp, fp),
+        "same_stream": stream_of(fa) == stream_of(fp),
+        "only_absent": sorted(wa.named() - wp.named()),
+        "only_present": sorted(wp.named() - wa.named()),
+        "fingerprints": (wa.fingerprint(), wp.fingerprint()),
+    }
+
+
+def near_rate_day(at="customs_north", day=1, seed="b5", hours=24,
+                  step_min=STEP_MIN, radius_m=None, policy="citizen"):
+    """Incidents per station-hour NEAR THE PLAYER, measured over a whole day.
+
+    SYS-14's floor is *">=2 meaningful incidents per station-hour inside a fixed
+    probe volume"* and `--gate` has always answered it ANALYTICALLY, at one
+    hour, by summing the class rates. That is the right headline and it is not a
+    measurement of what a player experiences: it does not draw, it does not
+    apply the sight line, and it is taken at 13:00 -- the busiest hour of the
+    arrival curve.
+
+    This runs the day and counts what the Observer actually saw, hour by hour,
+    with every term of the denominator printed: the probe's places, its metric
+    span, its floor area, the sight radius and its source. "Near" is metres and
+    places here, never a feeling.
+    """
+    obs = Observer(at, policy=policy, radius_m=radius_m)
+    w, fired = headless_day(Ctx(day=day, seed=seed), scope=obs.probe.places,
+                            hours=hours, step_min=step_min, observer=obs)
+    per_h = {}
+    for i in obs.witnessed:
+        per_h[int(i.hour) % 24] = per_h.get(int(i.hour) % 24, 0) + 1
+    # MEANINGFUL = SYS-14's own word, and it defines it: "the incident writes
+    # >=1 world delta". Counted by resolving the witnessed classes rather than
+    # assumed, so a class that writes only a log string would not be counted.
+    meaningful = {c for c in {i.cid for i in obs.witnessed}
+                  if _writes_delta(c)}
+    seen = [i for i in obs.witnessed if i.cid in meaningful]
+    return {
+        "observer": obs, "world": w, "fired": fired,
+        "witnessed": obs.witnessed, "meaningful": seen,
+        "per_hour": len(seen) / float(hours),
+        "by_hour": per_h, "acted": dict(obs.acted),
+        "in_scope": len(fired),
+    }
+
+
+_DELTA_OK = {}
+
+
+def _writes_delta(cid):
+    hit = _DELTA_OK.get(cid)
+    if hit is None:
+        _inc, worlds, _s, _u = three_ways(cid)
+        hit = any(worlds[st].deltas() for st in STANCES)
+        _DELTA_OK[cid] = hit
+    return hit
 
 
 def two_days(at="customs_north", step_min=STEP_MIN, seed="b5", scope=None,
@@ -3780,6 +4264,103 @@ def _verdict(fired, rate, w, probe):
     return len(bad), 6, bad
 
 
+def absence_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
+                 policy="citizen", day=1, full=False):
+    """THE ABSENCE GATE, printed and asserted. Returns the number of checks.
+
+    Three assertions and they are not the same assertion three times:
+
+      1. the two runs FIRE THE SAME INCIDENTS. This is the one that keeps
+         SYS-14's *"none of them requires the player to exist"* true, and it is
+         checked FIRST because everything below it is worthless if the player
+         has become a rate.
+      2. the two WORLDS DIFFER, in named facts, listed by kind.
+      3. the CONTROL: the same run again under `policy=absent` -- a player who
+         is standing right there and does nothing -- must be BYTE-IDENTICAL to
+         the run with no player at all. That is what makes assertion 2 evidence
+         about the STANCE rather than about having built a second code path.
+    """
+    out("")
+    r = absence(at=at, policy=policy, day=day, seed=seed, step_min=step_min,
+                scope=None if not full else tuple(p["key"] for p in dr.PLACES))
+    obs = r["observer"]
+    wa, fa = r["absent"]
+    wp, fp = r["present"]
+    out(f"THE ABSENCE GATE -- {obs.describe()}")
+    out(f"  the same seed ({seed}), day {day}, over {len(r['scope'])} place(s): "
+        f"{len(fa)} incidents absent, {len(fp)} present")
+    n = 0
+    n += 1
+    check(r["same_stream"],
+          "THE PLAYER IS NOT A RATE: a player-present day fires the IDENTICAL "
+          "incident stream -- same class, same place, same minute, same named "
+          "cast. They are drawn into events that would have happened without "
+          "them",
+          f"{len(set(stream_of(fa)) ^ set(stream_of(fp)))} stream row(s) differ")
+    n += 1
+    kinds_a = {f[0] for f in r["only_absent"]}
+    kinds_p = {f[0] for f in r["only_present"]}
+    check(r["fingerprints"][0] != r["fingerprints"][1]
+          and (r["only_absent"] or r["only_present"]),
+          "...AND THEY CHANGE HOW THEY END: the two worlds differ in named "
+          "facts, not in a log string",
+          f"{len(r['only_absent'])} fact(s) only in the absent world "
+          f"({', '.join(sorted(kinds_a)) or 'none'}), "
+          f"{len(r['only_present'])} only in the present one "
+          f"({', '.join(sorted(kinds_p)) or 'none'})")
+    out(f"  witnessed {len(obs.witnessed)} of {len(fp)} in scope; acted "
+        f"{obs.acted[HELPS]} helps / {obs.acted[REPORTS]} reports / "
+        f"{obs.acted[ABSENT]} stood by")
+    out(f"  custody absent {len(wa.custody)} -> present {len(wp.custody)}; "
+        f"deltas {len(wa.deltas())} -> {len(wp.deltas())}")
+    for f in r["only_present"][:3]:
+        out(f"    only because you were there: {f[0]}/{f[1]} = {f[2]}")
+    for f in r["only_absent"][:3]:
+        out(f"    only because you were not: {f[0]}/{f[1]} = {f[2]}")
+
+    # --- the control -------------------------------------------------------
+    c = absence(at=at, policy="absent", day=day, seed=seed, step_min=step_min,
+                scope=r["scope"])
+    n += 1
+    check(c["fingerprints"][0] == c["fingerprints"][1]
+          and not c["only_absent"] and not c["only_present"],
+          "CONTROL: a player who is standing right there and DOES NOTHING "
+          "produces a byte-identical world to no player at all -- so the "
+          "difference above is the stance and not the second code path",
+          f"{c['fingerprints']}, "
+          f"{len(c['only_absent']) + len(c['only_present'])} fact(s) apart, "
+          f"{len(c['observer'].witnessed)} witnessed under the null policy")
+    return n
+
+
+def near_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
+              day=1):
+    """THE RATE NEAR THE PLAYER, MEASURED OVER A DAY, denominator printed."""
+    out("")
+    r = near_rate_day(at=at, day=day, seed=seed, step_min=step_min)
+    obs = r["observer"]
+    p = obs.probe
+    out("THE RATE NEAR THE PLAYER, over a whole station-day rather than at the "
+        "curve's busiest hour")
+    out(f"  DENOMINATOR, every term of it: probe = {p.describe()}; "
+        f"sight = {obs.radius_m:.1f} m (populace.corridor_sight_m); "
+        f"window = 24 station-hours at {step_min:.0f}-min steps")
+    out(f"  {len(r['witnessed'])} witnessed, {len(r['meaningful'])} of them "
+        f"MEANINGFUL (SYS-14's word: the class writes >=1 world delta) "
+        f"= {r['per_hour']:.3f}/station-hour against a floor of {RATE_FLOOR}")
+    busy = sorted(r["by_hour"].items(), key=lambda x: -x[1])[:3]
+    quiet = sorted(r["by_hour"].items(), key=lambda x: x[1])[:3]
+    out(f"  busiest hours {busy}; quietest {quiet}; "
+        f"{len(r['fired'])} fired in the probe of which "
+        f"{len(r['witnessed'])} were inside the sight line")
+    check(r["per_hour"] >= RATE_FLOOR,
+          f"SYS-14's floor, MEASURED near the player rather than summed at "
+          f"13:00: >={RATE_FLOOR} meaningful incidents per station-hour "
+          f"witnessed from a fixed post over a whole day",
+          f"{r['per_hour']:.3f}/h")
+    return 1
+
+
 def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
          window_min=WINDOW_MIN, seed="b5"):    # noqa: C901
     del _FAILED[:]
@@ -4024,6 +4605,12 @@ def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
           "and the difference is NAMED FACTS, enumerable, not a hash that "
           "differs for an unstated reason",
           f"{len(d_only)}")
+
+    # ------------------------------------------------------------------
+    # E2.  THE PLAYER: the absence gate and the rate NEAR them
+    # ------------------------------------------------------------------
+    n += absence_gate(out=out, at=at, seed=seed, step_min=step_min)
+    n += near_gate(out=out, at=at, seed=seed, step_min=step_min)
 
     # ------------------------------------------------------------------
     # F.  THE SAME ASSERTIONS AGAINST THE STATE BEFORE THIS MODULE
@@ -4504,6 +5091,69 @@ def _selftest(out=print):                                       # noqa: C901
           "and NOT ONE of the eight new classes books somebody into the brig "
           "when the player is absent -- the framing claim, counted",
           str([c for c in LIVED_IN if books_custody(c)]))
+
+    # --- the spec's own per-place incident rows, read and checked ----------
+    n += 1
+    spec_map = spec_incident_places()
+    check(len(spec_map) >= 12 and "INC-CONTRA" in spec_map,
+          "docs/spec/PLACES.md's per-place `- incidents:` rows PARSE -- the "
+          "spec says where each class happens and nothing in this module had "
+          "ever read it",
+          f"{len(spec_map)} class(es) named across the PLC rows")
+    n += 1
+    orphan = {c: sorted(ks) for c, ks in spec_map.items()
+              if c in BY_ID and c not in SPEC_ARRIVAL_ONLY
+              and not any(BY_ID[c].here(k) for k in ks
+                          if q_of(k) is not None)}
+    check(not orphan,
+          "every class can happen in at least ONE of the places the spec names "
+          "for it, exempting the four whose spec rows describe ARRIVAL rather "
+          "than origination -- a class bound nowhere its own spec row puts it "
+          "is bound wrong, which is exactly how INC-CONTRA's `stock` write "
+          "became unreachable",
+          str(orphan))
+    n += 1
+    # THE REPORTED FINDING, kept visible rather than asserted, because the
+    # spec's `- incidents:` line mixes ORIGINATION with ARRIVAL: PLC-medlab_one
+    # lists INC-DUST "(victims arrive)" and INC-ACCIDENT "(casualties land
+    # here)", which are consequences of an incident elsewhere and not places it
+    # fires. Widening every class to its full spec row would put a dock accident
+    # inside a medlab. Asserting the ones that say ORIGINATION -- INC-CONTRA's
+    # "the black-market route starts here" -- is the honest half.
+    gaps = {c: sorted(k for k in ks
+                      if q_of(k) is not None and not BY_ID[c].here(k))
+            for c, ks in spec_map.items() if c in BY_ID}
+    gaps = {c: v for c, v in gaps.items() if v}
+    out(f"  spec rows a class does not cover (origination vs arrival, open): "
+        f"{sum(len(v) for v in gaps.values())} across {len(gaps)} class(es)")
+    check("INC-CONTRA" not in gaps,
+          "INC-CONTRA covers EVERY place docs/spec/PLACES.md names for it, "
+          "including the cargo bay whose row says in words 'the black-market "
+          "route starts here -- LAW-CRIME:858'",
+          str(gaps.get("INC-CONTRA")))
+
+    # --- and the write that could not happen, now reachable ----------------
+    n += 1
+    leaked = set()
+    for pk in BY_ID["INC-CONTRA"].places():
+        for h in (3.0, 9.0, 13.0, 19.0):
+            _i, worlds, _s, _u = three_ways("INC-CONTRA", place=pk, hour=h)
+            leaked |= {f[0] for f in worlds[ABSENT].facts}
+    check("stock" in leaked,
+          "INC-CONTRA's DECLARED `stock` write can actually happen -- "
+          "spec_check --red reported it as a declared write that cannot, and "
+          "the cause was `_responded()` being a constant TRUE at the only two "
+          "places the class was bound to (see `_scanned`)",
+          f"absent-branch kinds over its places: {sorted(leaked)}")
+    n += 1
+    # AND THE CONTROL: it must still be SEIZED where there is a scanner.
+    _i, wh, _s, _u = three_ways("INC-CONTRA", place="customs_north", hour=13.0)
+    kinds_hall = {f[0] for f in wh[ABSENT].facts}
+    check("custody" in kinds_hall and "stock" not in kinds_hall,
+          "CONTROL: at a hall that SCANS, the same class still ends in a "
+          "seizure and a custody row and nothing reaches the black market -- "
+          "so the leak is the scanner's absence and not a weakened rule",
+          f"customs_north absent-branch kinds: {sorted(kinds_hall)}")
     if _FAILED:
         for f in _FAILED:
             out(f"  FAIL {f}")
@@ -4517,6 +5167,19 @@ def main(argv=None):                                         # pragma: no cover
     ap.add_argument("--report", action="store_true")
     ap.add_argument("--day", action="store_true")
     ap.add_argument("--three-ways", action="store_true")
+    ap.add_argument("--three-outcomes", metavar="INC-ID", default=None,
+                    help="one class, three stances, diffed; fails if the "
+                         "three worlds are not three")
+    ap.add_argument("--absence", action="store_true",
+                    help="the same seeded day with and without a player")
+    ap.add_argument("--near", action="store_true",
+                    help="incidents per station-hour NEAR the player, "
+                         "measured over a day, denominator printed")
+    ap.add_argument("--policy", default="citizen",
+                    choices=sorted(POLICIES), help="what the player does")
+    ap.add_argument("--full", action="store_true",
+                    help="--absence over the whole register rather than the "
+                         "probe volume")
     ap.add_argument("--gate", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--at", default="customs_north")
@@ -4548,6 +5211,37 @@ def main(argv=None):                                         # pragma: no cover
         for cid, c in sorted(by.items(), key=lambda x: -x[1]):
             print(f"  {cid:14s} {c:5d}")
         return 0
+    if a.three_outcomes:
+        del _FAILED[:]
+        cid = a.three_outcomes.upper()
+        if cid not in BY_ID:
+            print(f"no such class: {cid}; have {sorted(BY_ID)}")
+            return 2
+        where = a.at if BY_ID[cid].here(a.at) else None
+        if a.at != "customs_north" and where is None:
+            print(f"{cid} cannot happen at {a.at}; its places are "
+                  f"{BY_ID[cid].places()}")
+            return 2
+        nd = stance_report(cid, place=where, hour=a.hour, seed=a.seed)
+        check(nd == 3,
+              f"{cid} resolves into THREE distinct world states, not two",
+              f"{nd} of 3")
+        for f in _FAILED:
+            print(f"  FAIL {f}")
+        return 0 if not _FAILED else 1
+    if a.absence:
+        del _FAILED[:]
+        absence_gate(at=a.at, seed=a.seed, step_min=a.step, policy=a.policy,
+                     full=a.full)
+        for f in _FAILED:
+            print(f"  FAIL {f}")
+        return 0 if not _FAILED else 1
+    if a.near:
+        del _FAILED[:]
+        near_gate(at=a.at, seed=a.seed, step_min=a.step)
+        for f in _FAILED:
+            print(f"  FAIL {f}")
+        return 0 if not _FAILED else 1
     if a.selftest:
         return 0 if _selftest() else 1
     if a.gate or not any((a.report, a.day, a.selftest, a.three_ways)):
