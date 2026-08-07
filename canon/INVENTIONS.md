@@ -12485,3 +12485,86 @@ For the bracing, any frame showing the C&C dome's springing from inside.
 
 **Authority 5** for the sigil's figure and the brace positions; **authority 1** for both being
 present at all.
+## INV-960 — six of seven out-of-res readers had no exported-build branch, and the launcher's working directory is what closes them
+
+**What.** `tools/package.sh`'s launcher `cd`s into `game/` before `exec`ing the engine, and the
+staged tree carries two relative symlinks — `game/station -> ../station`, `game/tools -> ../tools`.
+Both are load-bearing, not tidiness.
+
+**Why, and it is measured rather than reasoned.** `ProjectSettings.globalize_path("res://")`
+returns `""` in an exported build, because `res://` lives inside the `.pck` and has no place on
+disk. Seven scripts in `godot/scripts/` build an out-of-pack path from that call. **One** of them
+handles the empty case:
+
+| site | exported behaviour |
+|---|---|
+| `main.gd:2042` | `if base == "": base = OS.get_executable_path().get_base_dir()` — **correct** (INV-852) |
+| `dress_scene.gd:121` | raw — `FIXTURE_LIGHTING` resolved to the literal string `../tools/export_scene.py` |
+| `stream.gd:219` | raw — `cell_manifest.json` |
+| `interact.gd:414` | raw — the economy ledger |
+| `journal.gd:233` | raw, **and one level up** (`.get_base_dir()` rather than `path_join("..")`) |
+| `enforcement.gd:361` | raw |
+| `ragdoll.gd:1021` | raw |
+
+The one that is right is the one anybody ever launched from source and therefore tested. This is
+CLAUDE.md's own *"check every site of an idiom before deciding which one is wrong"* (session 4q,
+`fwd.cross(up)`) arriving by a new route — except here the majority is the broken side.
+
+**What it cost, measured on the round-1 tarball.** `dress: 0 light sources` against the source
+tree's **663**; `walk: gravity -- NO SPIN STATED ... mode=drum at 9.8100 m/s2` against the ring's
+derived **omega2=0.03523997 rad2/s2 (floor_g 0.7602 at r=211.55 m, period 33.470 s)** — which is
+precisely the state `walk.gd`'s own `--legacy-field` control calls *"what the shipped build did"*,
+so **INV-451's negative control was what the download actually shipped**; and
+`journal: 0 kinds, 0 ledgers, 0 timed calls ... hash MISMATCH` against `8 kinds, 8 ledgers, 62
+timed calls ... hash ok`. All three passed `MENUGATE verdict=PASS`.
+
+**What constrained the fix.** All six degrade to *a path relative to the process working
+directory* — `"".path_join("../tools/x")` is `../tools/x`. In the source tree `res://` **is**
+`<root>/godot/`, so `../tools/x` means `<root>/tools/x`. The staged layout mirrors that exactly,
+`game/` standing where `godot/` stood. So starting the process in `game/` makes five of the six
+land on the staged tree; `journal.gd`'s extra `get_base_dir()` wants one level higher, and the two
+symlinks make both readings resolve to one tree for zero bytes.
+
+**What would overturn it.** The real fix is a shared `_root()` carrying `main.gd`'s exported
+branch, applied to all six — written up in `scratchpad/PATCHES-4t-p5_firstrun.md`, and owned by
+whoever owns those files. When it lands, the `cd` and the symlinks become redundant and can go.
+The gates that will notice either way are `package.sh`'s dress/gravity assertions and its
+source-tree differential.
+
+## INV-961 — a packaging gate cannot be a hand-written list of what to ship, so this one diffs the download against the source tree
+
+**What.** `tools/package.sh` gained three gates, in increasing generality:
+
+1. **`--readers`** derives every out-of-`res://` path an engine script reads — `tools/wiring.py::engine_reads` for the `generated/` half, plus a scan for `"../…"` and `"res://../…"` literals, which wiring's regex cannot see because it requires the substring `generated/`. The build is refused if any derived reader that **exists on disk** is staged by nothing. Reads that do not exist are reported and are not fatal: that is wiring.py's question (nothing generates them), and conflating the two would make packaging fail for a content gap it cannot fix. Measured: **18 readers, 11 on disk, 7 never generated.**
+2. **Two named assertions on the artefact's own launch output** — `dress: <n>` light sources with n ≥ 1, and `walk: gravity -- omega2=`. Each names one silent degradation with one staged file behind it.
+3. **The source-tree differential.** The same command is run against the source tree and the two logs are compared after normalising absolute-vs-`../` paths and elapsed times. Every differing line is something packaging did.
+
+**Why the third exists when the second already passes.** Because (2) can only fail for a
+degradation its author already knew about, which is the shape of every gate this project has had
+to write twice. `journal.gd` was a **third** silent degradation, in a file nobody had looked at,
+and no named assertion would have caught it. The differential found it on its first run.
+
+**What constrained it.** Two things legitimately differ and neither is a defect: absolute paths
+(the whole point of the relocation test) and elapsed times, both normalised. There is exactly
+**one** exemption — `main: the arrival sidecar names … rebased onto …`, which is package-only *by
+construction* because the source tree has nothing to rebase, and which a separate assertion
+already **requires** in the packaged run, so exempting it is strictly weaker than the check that
+remains. A second exemption should be argued as hard; a growing exemption list is how a
+differential becomes decoration.
+
+**And it asserts both halves produced output.** CLAUDE.md records this project recording an A/B as
+IDENTICAL when both halves had died on the same `IndexError` and written empty files. Two empty
+logs diff clean. `_differential` fails with *"the differential is VACUOUS"* below 20 lines on
+either side; the control is `timeout 900 /bin/true` in place of the source run, which fires it.
+
+**What would overturn it.** A standing difference that is genuinely benign and not a path or a
+time — the crowd-library error is the near miss, and it is identical on both sides only because no
+`crowd_lod*.glb` has ever been generated. If one is, and the packager does not stage it, the
+differential will say so; that is the gate working, not a false positive.
+
+**The negative controls, all four run and all four fired:** deleting the `tools/export_scene.py`
+row from `DATA` → `--readers` exit 1, `--check` exit 1; deleting the launcher's `cd` → *"THE BUILD
+IS DIMINISHED -- no light sources"*, staged build destroyed, **while the same run printed
+`MENUGATE verdict=PASS`**; deleting the two symlinks → the differential reports journal's three
+lines and destroys the build; replacing the source run with `/bin/true` → *"the differential is
+VACUOUS -- source produced 0 lines"*.
