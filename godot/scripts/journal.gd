@@ -1414,9 +1414,21 @@ func _phase_compress(host) -> void:
 	#              `life.gd`'s Director, `deck_rooms` is what
 	#              `broadcast.audible_at` says this deck can hear, and a run
 	#              through a station with neither is a run through nothing.
-	#              With `crowd 0->0` on the line, as it was in round one's own
-	#              output, this verdict is now FAIL.
-	var world := (_life != null and not deck_rooms.is_empty() and crowd1 > 0)
+	#              plus `dialogue.gd::count()`, which is how many people are
+	#              actually standing on this deck. A run through a station
+	#              with none of those is a run through nothing.
+	#
+	# AND `crowd1` IS REPORTED RATHER THAN GATED, which is a measurement and
+	# not a concession. The first version of this clause required
+	# `crowd1 > 0` and FAILED THE SUBJECT: `life.gd::visible_count()` reads
+	# **0** in this phase on a deck that demonstrably has 83 speaking people
+	# on it, because the Director's visible set is its own streamed crowd
+	# rather than the baked cast. Gating on a counter that reads zero on a
+	# CORRECT build is how a gate gets quietly relaxed two sessions later.
+	# The honest fix is to gate on the population this phase can actually
+	# see, and to leave the other number printed where somebody can ask.
+	var cast := (int(_dlg().count()) if _dlg() != null else 0)
+	var world := (_life != null and not deck_rooms.is_empty() and cast > 0)
 	var ok: bool = (advanced >= SLEEP_H * 0.9
 		and _witnessed >= WITNESS_FLOOR and minted >= WITNESS_FLOOR and world)
 	print("COMPRESS gate=%s advanced=%.3f h in %d frames (wanted %.2f), "
@@ -1428,8 +1440,8 @@ func _phase_compress(host) -> void:
 		% [crowd0, crowd1, _hour_moves(moved0, float(_clock.hour())),
 			(int(_dlg().count()) if _dlg() != null else 0),
 			float(_clock.rate)]
-		+ "world=%s (life=%s rooms=%d)"
-		% [str(world), str(_life != null), deck_rooms.size()])
+		+ "world=%s (life=%s rooms=%d cast=%d)"
+		% [str(world), str(_life != null), deck_rooms.size(), cast])
 	for e in entries():
 		print("COMPRESS heard | " + e)
 	get_tree().quit(0 if ok else 1)
