@@ -25,7 +25,8 @@ WHAT CHANGED, AND IT IS THE ONLY THING THAT NEEDED TO. The refusal is about
 So this file writes exactly those five, under the stem `green_1_0`, from the
 drum's own generators. Nothing downstream needs to know the drum was built by a
 different route, which is the whole point: **the pipeline must not special-case
-it.**
+it.** INV-1228 records the packaging decision and the two derivations inside it;
+INV-1227 the uniform LOD, INV-1229 the collision proxies, INV-1230 the crowd.
 
 WHAT GOES IN, AND WHERE EACH PIECE COMES FROM
 
@@ -106,7 +107,7 @@ DRESSING_KINDS = ("tree", "copse", "gantry", "shed", "silo", "spire", "jetty",
 # the drum floor are a diameter and the full axial run apart, so anything past
 # that hypotenuse is further than any eye can be from any feature. The LOD
 # ladder's first switch is `scale * LOD_RATIOS[0]`, so scaling by the drum's own
-# diagonal over that ratio guarantees level 0 everywhere. -- INV-471
+# diagonal over that ratio guarantees level 0 everywhere. -- INV-1227
 def _lod0_scale():
     diag = math.hypot(2.0 * dg.FLOOR_R, dg.Z1 - dg.Z0)
     return diag / max(dd.LOD_RATIOS[0], 1e-9)
@@ -306,7 +307,7 @@ def feature_boxes(level=0):
     put" -- and `drum_dressing._to_world` is exactly that function for the drum,
     yaw included. A world AABB of a 22 x 13 m block standing at 45 degrees is
     25 x 25 m, and the four metres of that which is air is four metres a player
-    walks into and cannot see.
+    walks into and cannot see. -- INV-1229
     """
     fld = dd.field()
     V, T = [], []
@@ -443,6 +444,39 @@ def drum_rooms(schema, profile, boxes):
 # THE PEOPLE ON THE DRUM
 # ---------------------------------------------------------------------------
 
+def crowd_lod_for(area_m2):
+    """The crowd LOD for an OPEN place of this area, off the baked ladder.
+
+    NOT `populace.corridor_lod`, and the reason is that its premise is a
+    corridor: it takes `corridor_sight_m(radius, width)` -- a chord problem,
+    "how far can a body see down a corridor that curves away from it" -- and
+    halves it. Handed the Garden's 600 m width that formula returns a 1,140 m
+    sight line, which is not a sight line, it is the formula outside its domain.
+
+    An open place is a patch of ground, so the honest distance is the mean
+    separation of two uniformly-random points in a disc of the same area:
+    `128 R / (45 pi)`, R = sqrt(A/pi). A standard result, not a number chosen
+    here. The Garden's 35,734 m2 gives R = 106.6 m and a mean of 96.5 m; a
+    78 m2 bar gives 4.5 m.
+
+    AND IT IS SNAPPED TO `populace.crowd_ladder()`, WHICH IS THE BAKED SET.
+    `tools/bake_crowd.py` writes `crowd_lod<N>.glb` for the ladder's rungs --
+    2, 4 and 8 -- and `walk.gd::_load_crowd_libs` resolves the mesh by that
+    name. `corridor_lod` returns an index into `body.lod_chain()`, which is ten
+    levels long, so seven of its ten possible answers name a library file that
+    was never baked. Ring decks happen to land on 4 and the drum happened to
+    land on 8; nothing was making that true. -- INV-1230
+    """
+    import populace as _pop                                       # noqa: PLC0415
+    R = math.sqrt(max(area_m2, 1e-9) / math.pi)
+    mean_m = 128.0 * R / (45.0 * math.pi)
+    ladder = _pop.crowd_ladder()
+    for hi, lod in ladder:
+        if mean_m < hi:
+            return lod, mean_m
+    return ladder[-1][1], mean_m
+
+
 def drum_crowd(boxes, hour=None):
     """Walkers on the drum ground, per register place. Returns (rows, stats).
 
@@ -472,10 +506,11 @@ def drum_crowd(boxes, hour=None):
         u = (b["angle_deg"] / 360.0) % 1.0
         w = min(max((b["z_m"] - dg.Z0) / (dg.Z1 - dg.Z0), 0.0), 1.0)
         ground_r = dg.FLOOR_R - dg.sample(u, w)[0]
+        lod, mean_m = crowd_lod_for(b["across_m"] * b["along_m"])
         _v, _t, _g, st = _pop.populate_corridor(
             f"{SECTOR}/{RING}/{DECK}/{b['key']}", ground_r, b["half_z_m"],
             arc_deg, b["angle_deg"] - b["half_deg"], b["z_m"],
-            served=(b["key"],), hour=hour, instanced=True)
+            served=(b["key"],), hour=hour, instanced=True, lod=lod)
         moved = 0.0
         for r in st.get("instances", ()):
             a = math.atan2(r["y"], r["x"])
@@ -491,6 +526,7 @@ def drum_crowd(boxes, hour=None):
                       "placed": len(st.get("instances", ())),
                       "area_m2": round(st.get("area_m2", 0.0), 1),
                       "lod": st.get("lod"),
+                      "mean_sight_m": round(mean_m, 1),
                       "reseated_max_m": round(moved, 3)})
     return rows, stats
 
@@ -718,6 +754,17 @@ def main(argv=None):
         side_s = time.time() - t0
 
         probe = _floor_probe(CV, CT)
+        # AND THE DRUM'S OWN GATE, WHICH IS SLOPE AND NOT LIP.
+        # `collision.floor_steps` asks for the largest step between neighbouring
+        # samples, which is exactly right on a corridor -- flat by design, so any
+        # lip is a defect -- and fails a perfectly good hill: this ground rises
+        # 0.24 m between adjacent lattice points, which is 3.5 degrees, which is
+        # a field. `drum_walk.slope_report` asks what a CharacterBody3D actually
+        # decides, rise over run against `floor_max_angle`, per emitted triangle
+        # against the local radial. Run on the SHIPPED ground rather than on the
+        # function that made it.
+        slope = DW.slope_report(gv, gt)
+        slope.pop("histogram", None)
 
         row = {
             "key": STEM, "ok": True,
@@ -749,6 +796,8 @@ def main(argv=None):
                 "rooms_built": used,
                 "crowd_by_place": cstats,
                 "floor_probe": probe,
+                "ground_slope": slope,
+                "floor_max_deg": DW.FLOOR_MAX_DEG,
                 "gravity_m_s2": round(DW.gravity_m_s2(schema), 4),
                 "seconds": {"fixed": round(fixed_s, 1),
                             "ground": round(ground_s, 1),
@@ -771,13 +820,18 @@ def main(argv=None):
               f"{rboxes} room)")
         print(f"    floor probe: {probe['hit']}/{probe['samples']} radial "
               f"casts land, r {probe['radius_min_m']}..{probe['radius_max_m']} m")
+        print(f"    ground slope: worst {slope['max_deg']:.2f} deg, "
+              f"{slope['over_floor_angle']} of {slope['triangles']:,} triangles "
+              f"over Godot's {DW.FLOOR_MAX_DEG:.0f} deg floor_max_angle "
+              f"(gravity {DW.gravity_m_s2(schema):.4f} m/s2, radial)")
         print(f"    {side['actors']} actors / {side['crowd']} crowd / "
               f"{side['interact']} interactables")
         for k in sorted(hits):
             print(f"       {k:<16} {hits[k]:>9,} tri")
         for c in cstats:
             print(f"       crowd {c['key']:<14} {c['placed']:>4} people over "
-                  f"{c['area_m2']:>10,.0f} m2, lod {c['lod']}, "
+                  f"{c['area_m2']:>10,.0f} m2, lod {c['lod']} "
+                  f"(mean {c['mean_sight_m']:.0f} m), "
                   f"re-seated <= {c['reseated_max_m']} m")
     except Exception as e:                                        # noqa: BLE001
         tb = traceback.format_exc()

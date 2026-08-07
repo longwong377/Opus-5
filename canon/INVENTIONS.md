@@ -13589,3 +13589,156 @@ change, and so no two of the four are one figure rotated.
 replace the fitted lobe counts with traced outlines. The devices are authority 5 as figures and
 authority 1 as a COUNT (four), a placement (lower third) and a contrast rule (opposite the
 cloth).
+
+---
+
+## INV-1227 — the LOD scale that makes a static drum deck level 0 everywhere
+
+**Authority 5 (derived from the drum's own extents).** `tools/export_drum.py::_lod0_scale()`.
+
+`drum_dressing.dressing_set(eye, scale)` resolves every feature's level from its distance to a
+single eye, through `switch_distances(scale) = scale * LOD_RATIOS`, `LOD_RATIOS = (1.0, 3.2,
+9.0)`. That is right for a shot and wrong for a shipped deck: a deck has no eye, and baking one
+eye's ladder into a merged mesh means everything on the far side of the barrel is a level-3 blob
+for a player who then walks over there.
+
+**What constrained it.** The scale must be large enough that no feature can be further from the
+chosen eye than the first switch, and the largest possible separation of two points on the drum
+floor is the hypotenuse of a diameter and the full axial run: `hypot(2 * FLOOR_R, Z1 - Z0)` =
+`hypot(556.6, 2588.4)` = 2,647.6 m. Dividing by `LOD_RATIOS[0]` = 1.0 gives the scale. Any larger
+value is equally correct and none is smaller, so this is the least scale that does the job rather
+than a padded one.
+
+**What it costs, measured.** Level 0 over all 1,945 point features and 138 lines is **788,080
+triangles** against 188,884 at level 1 and 42,846 at level 3. That is 52% of the drum deck's
+render mesh and it is spent deliberately: the alternative is a station whose far half is
+permanently coarse.
+
+**What would overturn it.** Runtime LOD on the drum's dressing — `drum_dressing` already has the
+whole ladder and the switch distances, and a streamer that swapped a cell's dressing by distance
+would make this constant unnecessary rather than wrong. Also overturned by `LOD_RATIOS[0]`
+ceasing to be 1.0, which the expression already tracks.
+
+---
+
+## INV-1228 — the habitat drum ships as deck `green_1_0`, and how its geometry is addressed
+
+**Authority 5 (a packaging decision, not a physical claim).** `tools/export_drum.py`.
+
+`tools/export_station.py` refuses `green/1` because `deck.NOT_RING_DECKS` says so, and that
+refusal is correct — the drum is an open barrel with a heightfield floor and no ring corridor. But
+downstream nothing cares how a deck was assembled: `tools/bake_station.py`,
+`station/route_walk.py`, `station/agenda.py` and `godot/scripts/stream.gd` all address a deck as
+five files and a manifest row. So the drum is written as those five files under the stem
+`green_1_0` — the register's own (sector, ring, deck) for all twelve drum locations — and nothing
+downstream needs a special case.
+
+**Two derivations inside it are the substance.**
+
+*The ground is the whole drum at one stride.* `drum_walk.collision_stride()` derives stride 1
+(stride 2 measures 0.193 m of error against `rooms.TRIM_MAX_PROUD_M` = 0.100 m), and
+`ground_patch` is called for all 280 patches at that stride: **573,440 triangles**, render and
+collision from the same call. Not `visible_set(eye)`, for INV-1227's reason, and uniform rather
+than mixed because `drum_walk.ground_shell` already establishes that a uniform stride makes every
+shared edge vertex come from the same `_vertex(ia, iz)` on both sides — the seam is exact rather
+than repaired, and a heightfield with holes in it is thirty kilometres of falling outward.
+
+*A triangle belongs to the register place whose footprint contains its centroid.* The footprint
+arithmetic is `tools/bake_station.py::place_rows`' — `foot` is (across_m, along_m), across is an
+arc, half-angle is `degrees((across/2) / r)` — and the twelve footprints are tested smallest
+first, because they nest (`earharts` is 5 x 16 m inside `garden_town`'s 50 x 300). Four
+structural parts are attributed by an explicit table instead, because they are not resolved by
+containment: the two end caps are 2,588 m apart and `drum_endcaps` has one address, the guideway
+runs the whole length and `drum_tram` has one.
+
+**Why the prefix has to be applied per triangle and not per span.** `interact.sidecar` reads the
+place out of the group name, splitting on `interact.PLACE_SEP` — so an unprefixed drum has twelve
+locations and zero interactables by construction. And `dressing_set` emits feature by feature in
+kind order, so two adjacent `garden_trunk` runs can be a tree at 10 degrees and a tree at 200:
+run-length-encoding first and attributing the span's centroid afterwards gives that span a
+centroid in the middle of the drum and an interactable box 1,749 m across. Prefixing per triangle
+splits the run exactly at the footprint boundary.
+
+**Measured, at the hour the build ran.** 1,521,066 render triangles in 47,289 groups (128.0 MB
+glTF); 627,056 collision triangles (52.7 MB); ground slope worst 16.6 degrees against Godot's 45;
+200 of 200 radial casts land on floor between r 257.2 and 280.9 m.
+
+**What would overturn it.** A streaming unit smaller than a deck — `stream.gd::bake()` already
+cuts a deck on `interior.deck_cell`'s 20-degree grid, and if the drum ever needs its own grid this
+single-artefact packaging is the thing that has to change. Also overturned by any register place
+moving off green/1/0.
+
+---
+
+## INV-1229 — the drum's collision proxies: one oriented box per standing feature
+
+**Authority 5 (derived by measurement off the prototype meshes).**
+`tools/export_drum.py::feature_boxes()`.
+
+The drum carries 1,945 standing features and 51,026 triangles of townscape, and a ground shell
+alone lets a player walk through every building on it. Three rules, each with a reason that is a
+measurement rather than a preference:
+
+*One box per feature, taken from the prototype's own emitted mesh.* `drum_dressing.prototype` is
+the same call `dressing_set` renders from, so the collider cannot describe a different object than
+the one on screen — hard rule 4. Not `collision.prop_boxes` over the merged dressing: its
+connected-component pass is O(boxes^2) in a Python loop and the merged field yields thousands.
+
+*The box is ORIENTED, not a world AABB.* It goes through `collision.boxes_mesh(box, place_fn)`
+with `place_fn = drum_dressing._to_world(..., yaw, scale)` — which is the mapping the feature was
+rendered through, yaw included. The alternative was measured: a 22 x 13 m town block standing at
+45 degrees has a world AABB of about 25 x 25 m, and four metres of that is air a player walks into
+and cannot see.
+
+*A tree's collider is its TRUNK.* The box is taken over the prototype triangles named
+`garden_trunk` / `garden_branch` only. A broadleaf's full bounding box is about 5 m across because
+of the crown, and shipping that gives every one of the drum's 283 trees and 100 copses an
+invisible five-metre cylinder.
+
+**What is deliberately NOT solid, stated rather than omitted quietly.** Hedgerows, park hedges and
+reed margins: a ribbon's world AABB is a whole field, so colliding them needs a box per resampled
+segment and that is not in this pass — a player currently walks through hedges. Foliage: a crown
+is not a wall. The trams: they are moving vehicles and a baked collider would be a wall standing
+where a car used to be. Water: `garden_water` and `ground_water` are things you fall into.
+
+**Measured.** 3,021 feature boxes + 27 townscape boxes (via `prop_boxes` on the townscape's 51,026
+triangles alone, with a `garden_*` solid predicate, because `rooms.is_solid` knows only the room
+vocabulary and keeps nothing) + 121 room boxes = 36,228 triangles of proxy against 627,056 total.
+
+**What would overturn it.** A per-segment hedge collider; a runtime collider for the tram cars
+driven by the same phase the render uses; or convex-hull colliders, which would end the
+orientation argument entirely.
+
+---
+
+## INV-1230 — the crowd LOD for an open place, snapped to the baked ladder
+
+**Authority 5 (a standard geometric result plus the project's own budget table).**
+`tools/export_drum.py::crowd_lod_for()`.
+
+`populace.corridor_lod(radius_m, width_m)` chooses a body LOD from
+`npc/schedule.NPC_BUDGET["lod"]`'s distance bands, using half of
+`populace.corridor_sight_m(radius, width)` as the distance. That function solves a chord problem —
+"how far can a body see down a corridor that curves away from it" — and handed the Garden's 600 m
+width it returns a **1,140 m** sight line. That is not a sight line, it is the formula outside its
+domain.
+
+**What constrained the replacement.** An open place is a patch of ground, not a tube, so the
+honest distance is the mean separation of two uniformly-random points in a disc of the same area:
+`128 R / (45 pi)` with `R = sqrt(A / pi)`. Standard, not chosen here. The Garden's 35,734 m2 gives
+R = 106.6 m and a mean of 96.5 m; Earhart's 78 m2 gives 4.5 m. Those go into the same
+`NPC_BUDGET` bands `corridor_lod` uses.
+
+**And the result is snapped to `populace.crowd_ladder()`, which is the set that is actually
+baked.** `tools/bake_crowd.py` writes `crowd_lod<N>.glb` for the ladder's rungs — **2, 4 and 8** —
+and `godot/scripts/walk.gd::_load_crowd_libs` resolves a walker's mesh by that filename.
+`corridor_lod` returns an index into `body.lod_chain()`, which is **ten** levels long, so seven of
+its ten possible answers name a library file that was never baked and would leave that deck's
+walkers meshless. Ring decks land on 4 and the drum's first build landed on 8; nothing in the code
+was making that true. **This is a live latent defect in `station/populace.py`, recorded here
+because this task may not edit that file** — the fix is for `corridor_lod` to snap to
+`crowd_ladder()` the way this function does.
+
+**What would overturn it.** Runtime LOD swapping on `npc.gd` (which already holds each person's
+parts), which would make any bake-time choice provisional; or a crowd library baked at every rung
+of `lod_chain()`, which would remove the snapping constraint but not the domain error.
