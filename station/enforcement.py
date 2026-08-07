@@ -1700,9 +1700,19 @@ def _reload_line(before: dict, after: dict) -> str:
 # `--arrest-contraband` puts an `economy.GOODS`-classed contraband good in the
 # bag through `player.gd::take`, which is the call a played session makes.
 PROG_FLAGS = ("--arrest-contraband",)
+# AND THE FIRST CONTROL'S DESCRIPTION WAS WRONG UNTIL ROUND 3, which is worth a
+# sentence because the row scored `ok` for six days on a run that never reached
+# the thing it claimed to test. `--enforce-no-contraband` empties the bag, and
+# with an empty bag `enforcement.gd::_pick`'s only trigger is `tier < need` --
+# so on a rung-2 card, on a deck whose highest need is 2, NO STOP OPENS AT ALL.
+# The finding is real and is the mirror of the acceptance (`_prog_reload` runs
+# the same flags on a rung-0 card and a door refuses it), but "same stop, empty
+# bag" described a stop that did not happen, and the old test -- `good = not
+# fell` -- could not tell that from a run that had done the work and taken
+# nothing. It now has to reach a verdict, and the row says what the verdict is.
 PROG_CONTROLS = (
     (("--enforce-no-contraband",),
-     "same stop, EMPTY BAG -- grade 1, and nothing is taken"),
+     "EMPTY BAG at rung 2: nothing on this deck even stops you"),
     (("--arrest-contraband", "--enforce-legacy"),
      "the node reads no table -- the build before session 4r"),
     (("--arrest-contraband", "--enforce-no-detain"),

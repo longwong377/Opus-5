@@ -12706,3 +12706,42 @@ asserted equal to the triangles actually built.
 **What would overturn it.** Vertex normals on the ground, which would remove the faceting this
 exists to break and leave only the displacement; a character controller whose step tolerance drops
 under 0.08 m; a finer lattice.
+
+## INV-1025 — The rung a card reads is DERIVED at load from the record, and the ladder outranks the flag
+
+**What.** `godot/scripts/player.gd::rung_of` computes the player's tier when the purse is loaded,
+instead of reading the `tier` field the document carries. It is `consequence.tier_of`'s three
+record branches and nothing else: in custody → `detained`; a withdrawn permission → the rung
+`REVOCABLE` says it falls to; otherwise the card's own reading, which is the stored `tier` used AS
+the report `player.py::state()` documents it to be. Two new keys are baked into
+`station/generated/scene/enforcement.json` so the engine reads the rule rather than a transcription
+of it — `revocable` (`consequence.REVOCABLE`, six rungs, two of them `None`) and `offence_grade`
+(all eleven of `consequence.OFFENCES`, because a record on disk may name any of them).
+
+**And where the record's flag and the ladder disagree, the LADDER wins.** A record carrying two
+grade-2 or one grade-3 conviction on a revocable rung is treated as revoked even if
+`visa_revoked` is unset, and the line printed says so in capitals. The resolution is one-way:
+nothing in this function can un-revoke a card, so a `visa_revoked` set by hand or by Python still
+takes the permission whatever the convictions say.
+
+**Why.** Session 4t round 2 built the entire arrest chain correctly and shipped the punishment
+un-persisted. `interact.gd::_sync_purse` writes `credits` and `carrying` back and deliberately not
+the rung — right, because `player.py` refuses to store a rung as a fact — and `set_purse` then read
+`st["tier"]` verbatim. A second launch on the very file the first one wrote opened three
+convictions, a revoked visa and 619.89 cr gone, and printed `interact: purse player:g2c (IVANOVA,
+AMIS, transit)`. The money persisted, the record persisted, the demotion did not, and
+`THE-GAME.md` §5's whole argument is that failure is demotion **plus** a record.
+
+**Constrained by.** It must be `tier_of`'s rule and not a second one — a second visa reading in
+GDScript is exactly the drift hard rule 4 exists against — so the one branch the engine cannot
+recompute (`arrival.entry_class`, a five-branch visa parser) is the one that still comes from the
+document. The minimal repair, having `_sync_purse` write `st["tier"]` back, was rejected on
+`player.py`'s own stated grounds: *"Restoring them would be a second copy of a derivation, which is
+how a saved tier survives a conviction."* And the thresholds had to be baked rather than written
+down, because `REVOKE_ON_ORDINARY`/`REVOKE_ON_SERIOUS` are INV-345's numbers and a GDScript copy of
+them would be a second place to change when INV-345 is overturned.
+
+**What would overturn it.** A visa parser in the engine, which would remove the last stored input
+and make the rung wholly derived; a design in which a conviction really does edit the card rather
+than open a record; or evidence that a revocation can be lifted, which would break the one-way
+resolution above.
