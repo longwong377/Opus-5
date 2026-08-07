@@ -1,0 +1,11 @@
+FAIL  the shell's floor sits on the render mesh's floor  -- render floor r=None, shell floor r=211.528
+  corridor at z=7186.48, near face 7185.18; rooms fall short by 0.00-58.00 m (widest bay_elevators) -- these are bridged by vestibules
+  6 doors, vestibules 0.40-58.40 m
+  signage: 2,136 triangles over 292 lettering spans; 12504 flush-decal edges, 0 in the solid
+  arrivals board: 1,840 triangles, 6 movements listed at 10h; 04h lists 0408, 10h lists 1007
+  notice board: 2,540 triangles; at S3E05 'REPORT SUSPICIOUS ACTIVITY AT ', at S2E01 'FOLLOW ALL CUSTOMS PROCEDURES.'
+FAIL  ...and every reason is one the assembler can actually give  -- [('docking_bay', 'has a builder'), ('components', 'compose raised: "mooring_clamps: components.py owns this place and no place-')]
+  module-owned: 2 assembled generically, 1 of them have an unused builder (docking_bay)
+  943 furniture boxes, 11,316 collision triangles for them
+42/44 passed
+rc=1
