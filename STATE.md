@@ -120,10 +120,28 @@ source tree right?*** Here it was not, for nine sessions.
   the cell set still sums to it, and only the `.glb` survived the export. The cells are correct
   (206 baked, `ok: true`, and they load and free at runtime); the *freshness proof* cannot run.
   Either keep the OBJ in `export_station.py` or teach `cells_describe` to count a GLB.
-- **`0 of 408 residents bound`** at spawn. Not shown to be wrong — the spawn is a corridor cell
-  and the room cells are outside the 66.1 m stream radius — but it has **not** been proven right
-  either. The honest test is `boot.py --axial-gate`, which walks a body between cells and asserts
-  arrival at a NAMED place, and it has not been run against this deck.
+- ~~**`0 of 408 residents bound`** at spawn is unproven~~ — **CLOSED, and it passed.**
+  `boot.py --axial-gate --deck blue_0_0`:
+
+  ```
+  AXIALGATE verdict=PASS handoff=PASS arrival=obs_dome_2@blue_0_0_c04z15 x108 groups
+  floor_m=1507.4  crossings=20  loads=35 frees=30  offfloor=0/21546
+  ghost_frames=0  double_loads=0  abandoned=0  lag_frames=0  max_activate_ms=7.8
+  ```
+
+  A body walked the ring corridor at z=7186 to **Observation Dome 2** and back — 1,507.4 m of
+  floor, 20 cell hand-offs, **0 of 21,546 frames off the floor**, standing on 108 mesh groups of
+  the named place when it said it had arrived. The `0 of 408 bound` line at spawn was the honest
+  report of a corridor cell outside the room cells' 66.1 m radius, not a defect.
+
+- **THE BUDGET IS RED, AND IT IS THE ONE REAL FAILURE IN THE RUN.** Peak resident set
+  **359,584 tri against a 180,000 budget — 2.00×** — over on **2,589 frames**, with the resident
+  set peaking at 7 cells. `stream.gd`'s stated policy is to keep the cells and print rather than
+  pop one, so this degrades framerate rather than geometry. It is content cost, not a streamer
+  defect (`double_loads=0`, `abandoned=0`, `lag_frames=0`, `max_activate_ms=7.8`). Either the
+  cells are cut too coarse for this budget — 17 z-bands of **73.8 m** is a long cell — or the
+  budget is wrong for this content. **Nothing in this container can measure the framerate cost**;
+  see `docs/AAA-STANDARD.md`, "What this rubric cannot judge".
 - **Nothing here has been judged for craft.** The nine items' scores (five 3s, four 2s, no 4s)
   were taken on the dev tree and are unaffected by any of this.
 
