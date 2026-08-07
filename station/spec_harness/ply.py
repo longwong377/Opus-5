@@ -715,7 +715,104 @@ def _ply07(text):                                                # noqa: C901
                 "`python3 station/journal.py --gate` and no static tier can "
                 "settle it" % (len(back), len(back.people),
                                len(back.standing))))
+    out += _minters_have_a_player_on_them()
     return out
+
+
+#: The GDScript minters PLY-07 and CAST-05 are about, and the observer each
+#: one must be reachable from. A minter whose only caller is the acceptance
+#: gate is this repository's ninth-instance defect arriving one level down:
+#: the machinery is finished, tested, and nothing a PLAYER does ever runs it.
+_MINTERS = ("given_name", "note_talk", "move_standing", "walked_leg")
+
+
+def _minters_have_a_player_on_them():
+    """DOES ANYTHING BUT THE TEST EVER MINT? Asked of the source, statically.
+
+    THIS CHECK EXISTS BECAUSE A REVIEWER FOUND ITS ABSENCE. Round one of
+    session 4t shipped `given_name`, `note_talk`, `learn_route` and
+    `learn_tell` with *"no caller anywhere except `journal.gd::_phase_learn`
+    -- the gate itself"*, and every gate in this project passed, because each
+    of them scores a PART against a standard and a part with no caller still
+    meets its standard.
+
+    So the question asked here is the one that was missing: for each minter,
+    is it called from a function `_process` can reach? `_compression_claims`
+    already asserts the other half -- that `main.gd` builds this node
+    unconditionally -- and the two together are the shipped path.
+
+    WHAT IT CANNOT SETTLE is whether the observer FIRES. Only
+    `python3 station/journal.py --gate` runs it, and that gate now presses
+    the T key through the viewport rather than calling a minter.
+    """
+    gd = os.path.join(ROOT, "godot", "scripts", "journal.gd")
+    if not os.path.exists(gd):
+        return [(False, "godot/scripts/journal.gd does not exist")]
+    src = open(gd, encoding="utf-8").read()
+    bodies = _gd_bodies(src)
+    watched = _gd_reachable(bodies, "_process")
+    # THE QUESTION IS REACHABILITY, NOT A NAMED CALLER. Asking "is
+    # `given_name` called by `_watch_talk`" is a check on today's factoring
+    # and would fail the moment the mint moved one function down -- which it
+    # did, into `_note_opened`, while the caller stayed on the shipped path
+    # the whole time. What the rule is actually about is whether ANY function
+    # `_process` reaches ever mints.
+    bad, good = [], []
+    for minter in _MINTERS:
+        callers = sorted(f for f, b in bodies.items()
+                         if f != minter and re.search(r"\b%s\s*\(" % minter, b))
+        on_path = [f for f in callers if f in watched]
+        if on_path:
+            good.append("%s<-%s" % (minter, on_path[0]))
+        else:
+            bad.append("%s (callers: %s -- none reached from _process)"
+                       % (minter, ", ".join(callers) or "NONE"))
+    out = [(not bad,
+            "all %d journal minters are reached from journal.gd::_process "
+            "(%s), so a player who talks or walks writes their own journal"
+            % (len(_MINTERS), " ".join(good)) if not bad else
+            "minters with no player on them: " + "; ".join(bad))]
+    # AND THE GATE MUST NOT BE THE CALLER: `_phase_learn` calling a minter
+    # directly is precisely what round one did.
+    learn = bodies.get("_phase_learn", "")
+    direct = sorted(m for m in _MINTERS
+                    if re.search(r"\b%s\s*\(" % m, learn))
+    out.append((not direct,
+                "the acceptance gate's learn phase calls no minter directly "
+                "-- it drives the world and the observer does the writing"
+                if not direct else
+                "the gate mints for itself: " + ", ".join(direct)))
+    return out
+
+
+def _gd_bodies(src):
+    """`{func_name: its body}` for a GDScript file. By `func` lines, no more."""
+    out, name, buf = {}, None, []
+    for line in src.split("\n"):
+        m = re.match(r"^func\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(", line)
+        if m:
+            if name:
+                out[name] = "\n".join(buf)
+            name, buf = m.group(1), []
+            continue
+        if name is not None:
+            buf.append(line)
+    if name:
+        out[name] = "\n".join(buf)
+    return out
+
+
+def _gd_reachable(bodies, root):
+    """Every function `root` reaches, transitively, by name."""
+    seen, stack = set(), [root]
+    while stack:
+        f = stack.pop()
+        if f in seen or f not in bodies:
+            continue
+        seen.add(f)
+        for m in re.finditer(r"\b(_[A-Za-z0-9_]+)\s*\(", bodies[f]):
+            stack.append(m.group(1))
+    return seen
 
 
 def _compression_claims():
