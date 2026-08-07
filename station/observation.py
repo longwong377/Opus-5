@@ -296,6 +296,14 @@ L_BLUE = "cc_light_strip"                  # CASTS: omni, 0.243,0.546,1.000,
 # nobody can see. The cure is one constant used wherever two solids meet:
 # solids OVERLAP by `LAP_M`, or they are separated by a reveal. They never
 # abut. `_selftest` gates the count at zero and the control is in this file.
+# The palette's own names, in one list, so `_selftest`'s control can withdraw
+# it and count what is left. A control that names the constants somewhere else
+# is a second copy of the palette.
+_PALETTE = ("M_WALL", "M_WALL_UP", "M_PIER", "M_BRONZE", "M_GOLD", "M_STONE",
+            "M_STONE_D", "M_RECESS", "M_METAL", "M_GRILLE", "M_CLOTH_B",
+            "M_CLOTH_P", "M_SIGIL", "M_GLOW_B", "M_RIBBON", "L_COVE",
+            "L_BLUE", "D_FRAME", "D_PALE", "D_TRIM", "D_DECK")
+
 LAP_M = 0.02
 # The angular half-gap between two ring segments. At the rotunda's r = 7.00 m,
 # 0.010 rad is 70 mm -- a reveal a person sees, not a tolerance.
@@ -560,16 +568,28 @@ def _vestibule(v, t, g, prog):
          (hw + WALL_T_M, 0.0, z1))
     pre = "worship" if prog["kind"] == "rotunda" else "transit"
     for s in (-1, 1):
-        _box(v, t, g, f"{pre}_wall", (s * hw, 0.0, z0),
+        _box(v, t, g, f"{pre}_wall", (s * hw, -0.02, z0),
              (s * (hw + WALL_T_M), VEST_H_M, z1))
-    _box(v, t, g, f"{pre}_soffit", (-hw - WALL_T_M, VEST_H_M, z0),
-         (hw + WALL_T_M, VEST_H_M + 0.18, z1))
+    _box(v, t, g, f"{pre}_soffit", (-hw - WALL_T_M - 0.004, VEST_H_M - LAP_M,
+                                    z0 - 0.004),
+         (hw + WALL_T_M + 0.004, VEST_H_M + 0.18, z1 + 0.004))
     # THE DOORWAY, as PIECES round the aperture -- never a solid with a hole
     # punched through it. `bespoke.doorway_wall` owns the dimensions so three
     # modules cannot agree about them by hand and then stop agreeing.
-    _bsp.doorway_wall(lambda n, lo, hi: _box(v, t, g, n, lo, hi),
-                      f"{pre}_wall", -hw - WALL_T_M, hw + WALL_T_M,
-                      0.0, VEST_H_M, z1, z1 + WALL_T_M)
+    # THE PIECES ARE INFLATED BY 2 mm SO THEY OVERLAP RATHER THAN ABUT.
+    # `bespoke.doorway_wall` owns the dimensions -- three modules may not agree
+    # about them by hand and then stop agreeing -- and it emits a head and two
+    # jambs that meet on exact planes, which welds into two non-manifold edges
+    # per room (INV-761). Inflating what it hands back keeps its arithmetic and
+    # separates the faces; the aperture loses 4 mm of a 2.20 m clear width,
+    # against `kit.PROVISIONAL["door_width_m"]` of 1.50, and
+    # `near_face_opening` is asserted against that in `_selftest`.
+    _bsp.doorway_wall(
+        lambda n, lo, hi: _box(v, t, g, n,
+                               (lo[0] - 0.002, lo[1] - 0.002, lo[2] - 0.002),
+                               (hi[0] + 0.002, hi[1] + 0.002, hi[2] + 0.002)),
+        f"{pre}_wall", -hw - WALL_T_M, hw + WALL_T_M,
+        0.0, VEST_H_M, z1, z1 + WALL_T_M)
     # A portal frame, AT THE CHAMBER END and not at the aperture. It belongs at
     # the aperture and it may not stand there, and the measurement is the
     # reason: `kit.door_frame` carries a sliding leaf's pocket on one side, so
@@ -616,18 +636,18 @@ def _recessed_panel(v, t, g, r, ro, a0, a1, y0, y1,
     da = min(0.055, (a1 - a0) * 0.22)
     dy = min(0.14, (y1 - y0) * 0.16)
     # the field, set back, and OVERLAPPING the frame rather than abutting it
-    _seg(v, t, g, field, r + depth, ro, a0 + da * 0.5, a1 - da * 0.5,
+    _seg(v, t, g, field, r + depth, ro + 0.004, a0 + da * 0.5, a1 - da * 0.5,
          y0 + dy * 0.5, y1 - dy * 0.5)
     # the frame: two stiles and two rails, each a separate closed solid
     _seg(v, t, g, frame, r, ro, a0, a0 + da, y0, y1)
     _seg(v, t, g, frame, r, ro, a1 - da, a1, y0, y1)
-    _seg(v, t, g, frame, r, ro, a0 + da - LAP_M * 0.1, a1 - da + LAP_M * 0.1,
-         y0, y0 + dy)
-    _seg(v, t, g, frame, r, ro, a0 + da - LAP_M * 0.1, a1 - da + LAP_M * 0.1,
-         y1 - dy, y1)
+    _seg(v, t, g, frame, r - 0.006, ro + 0.002,
+         a0 + da - LAP_M * 0.1, a1 - da + LAP_M * 0.1, y0, y0 + dy)
+    _seg(v, t, g, frame, r - 0.006, ro + 0.002,
+         a0 + da - LAP_M * 0.1, a1 - da + LAP_M * 0.1, y1 - dy, y1)
     if bead:
-        _seg(v, t, g, bead, r - 0.012, r + 0.02,
-             a0 + da * 0.6, a1 - da * 0.6, y1 - dy - 0.024, y1 - dy + 0.006)
+        _seg(v, t, g, bead, r - 0.014, r + 0.018,
+             a0 + da * 0.62, a1 - da * 0.62, y1 - dy - 0.024, y1 - dy + 0.006)
     return v, t, g
 
 
@@ -668,7 +688,7 @@ def _lattice_panel(v, t, g, r, a, half_a, y0, y1, bars=9, rungs=6):
         _seg(v, t, g, M_PIER, r - 0.36, r - 0.12, a0 - 0.018, a1 + 0.018,
              yy0, yy1)
     for s in (-1, 1):
-        _seg(v, t, g, M_PIER, r - 0.36, r - 0.12,
+        _seg(v, t, g, M_PIER, r - 0.366, r - 0.114,
              a + s * half_a - 0.018, a + s * half_a + 0.018,
              y0 - 0.22, y1 + 0.22)
     for yy in (y0 + 0.05, y1 - 0.05):
@@ -830,7 +850,7 @@ def _rotunda_chamber(v, t, g, prog):
         # room people queue in is scuffed part-metallic bronze and the field
         # above it is matte brown, which is a difference in ROUGHNESS as well
         # as in value and therefore survives a change of lighting.
-        _seg(v, t, g, M_PIER, r - 0.055, ro, b0, b1, 0.0, 0.155)
+        _seg(v, t, g, M_PIER, r - 0.055, ro + 0.004, b0, b1, -0.02, 0.155)
         # THE PALE VERTICAL SLAT BAND at waist height, right around the room,
         # standing proud of a dark recess so it reads as a lit ribbon rather
         # than as a bright wall.
@@ -883,8 +903,9 @@ def _rotunda_chamber(v, t, g, prog):
         _seg(v, t, g, M_BRONZE, r - 0.07, ro, b0, b1,
              ROT_SILL_M - 0.09, ROT_SILL_M + LAP_M)
         for f0, f1 in ((0.0, 0.035), (1.0 - 0.035 / (b1 - b0), 1.0)):
-            _seg(v, t, g, M_PIER, r, ro, b0 + (b1 - b0) * f0,
-                 b0 + (b1 - b0) * f1, ROT_SILL_M, ROT_HEAD_M)
+            _seg(v, t, g, M_PIER, r + 0.005, ro + 0.005,
+                 b0 + (b1 - b0) * f0, b0 + (b1 - b0) * f1,
+                 ROT_SILL_M - LAP_M, ROT_HEAD_M + LAP_M)
         # THE STOREY ABOVE THE WINDOW, as a framed and recessed panel rather
         # than a slab. This is the surface round 1 called "flat panelled wall".
         _recessed_panel(v, t, g, r, ro, b0, b1, ROT_HEAD_M - LAP_M,
@@ -935,10 +956,10 @@ def _rotunda_chamber(v, t, g, prog):
             a0 = math.tau * (i + 0.14) / m + ea
             a1 = math.tau * (i + 0.86) / m + ea
             _seg(v, t, g, M_STONE if tier % 2 == 0 else M_WALL_UP,
-                 rr, ro, a0, a1, y0, y0 + 0.30)
+                 rr, ro, a0, a1, y0, y0 + 0.30 + LAP_M)
             if tier == ROT_CORBEL_TIERS - 1:
-                _seg(v, t, g, M_GOLD, rr - 0.030, rr + 0.02, a0, a1,
-                     y0 + 0.245, y0 + 0.285)
+                _seg(v, t, g, M_GOLD, rr - 0.030, rr + 0.02, a0 + 0.004,
+                     a1 - 0.004, y0 + 0.245, y0 + 0.285)
 
     # THE COVE. One per bay, tucked behind the corbel lip -- and it is the
     # room's first real source. See `_cove_ring`.
@@ -1036,13 +1057,19 @@ def _dome_coffers(v, t, g, r, y0, rise, ribs, ea, seg=48,
     band = band or M_GOLD
     for i in range(ribs):
         a = math.tau * (i + 0.5) / ribs + ea
-        _dome_rib(v, t, g, minor, r, y0, rise, a, 0.15, 0.07)
+        _dome_rib(v, t, g, minor, r, y0, rise, a, 0.26, 0.11)
     for f in bands:
         rr = (r - 0.03) * math.cos(f * math.pi / 2.0)
         yy = y0 + (rise - 0.03) * math.sin(f * math.pi / 2.0)
-        h = 0.11 + 0.05 * f
+        h = 0.15 + 0.09 * f
+        # the raised band, and a SHADOW GAP set deeper beneath it. A band with
+        # nothing under it is a line; a band over a recess is a step, and a
+        # step is what makes a dome legible from shading alone.
+        _revolve(v, t, g, M_RECESS,
+                 [(rr + 0.02, yy - 0.10), (rr + 0.02, yy + h + 0.06),
+                  (rr - 0.20, yy + h + 0.06), (rr - 0.20, yy - 0.10)], seg)
         _revolve(v, t, g, band,
-                 [(rr, yy), (rr, yy + h), (rr - 0.10, yy + h), (rr - 0.10, yy)],
+                 [(rr, yy), (rr, yy + h), (rr - 0.16, yy + h), (rr - 0.16, yy)],
                  seg)
     return v, t, g
 
@@ -1071,7 +1098,7 @@ def _dome_solid(v, t, g, name, r, y0, rise, thick, seg):
     return v, t, g
 
 
-def _dome_rib(v, t, g, name, r, y0, rise, a, w, d, steps=9):
+def _dome_rib(v, t, g, name, r, y0, rise, a, w, d, steps=9, f_max=0.92):
     """One broad radial rib on the dome's inner face, along a meridian."""
     c, s = math.cos(a), math.sin(a)
     tc, ts = -math.sin(a), math.cos(a)
@@ -1079,7 +1106,13 @@ def _dome_rib(v, t, g, name, r, y0, rise, a, w, d, steps=9):
     t0 = len(t)
     rings = []
     for i in range(steps + 1):
-        f = i / steps
+        # STOP SHORT OF THE AXIS. At f = 1 the meridian radius is zero and this
+        # rib's four-point ring collapses to one point, which welds into edges
+        # used by four triangles -- 32 non-manifold edges per dome, times four
+        # rib families, which was two thirds of the whole count. A crown boss
+        # covers the last 8% of the meridian, and a rib that runs to a pinch is
+        # geometry nobody can see (session 3x, `portal_frame`).
+        f = f_max * i / steps
         rr = (r - 0.02) * math.cos(f * math.pi / 2.0)
         yy = y0 + (rise - 0.02) * math.sin(f * math.pi / 2.0)
         ri = max(0.0, rr - d)
@@ -1148,8 +1181,9 @@ def _rotunda_fittings(v, t, g, prog, r, n, ea):
     rise = 0.165
     for i in range(ROT_STEPS):
         zz = -r * 0.42 - i * 0.30
-        _box(v, t, g, M_STONE, (-1.35, 0.0, zz - 0.30 - LAP_M),
-             (1.35, rise * (i + 1), zz))
+        hw_i = 1.35 - 0.004 * i
+        _box(v, t, g, M_STONE, (-hw_i, -0.006 * i, zz - 0.30 - LAP_M),
+             (hw_i, rise * (i + 1), zz))
         _box(v, t, g, M_BRONZE, (-1.34, rise * (i + 1) - 0.035, zz - 0.30),
              (1.34, rise * (i + 1) + 0.014, zz - 0.235))
     top = rise * ROT_STEPS
@@ -1249,6 +1283,61 @@ def _rotunda_fittings(v, t, g, prog, r, n, ea):
 # ---------------------------------------------------------------------------
 # The domes -- the C&C frame's glazing, from inside
 # ---------------------------------------------------------------------------
+# THE DOMES' PALETTE IS COOL AND THE ROTUNDA'S IS WARM, and that is a decision
+# rather than an oversight. `reference/03-sector-blue/comand and contorl.webp`
+# is a cold blue-grey room with blue light courses and warm console glow; the
+# rotunda's frame is warm bronze throughout. Two rooms in two sectors that look
+# alike would be `deck.py --degeneracy`'s question answered wrongly at the level
+# of material rather than of geometry. Same idiom, different register.
+D_FRAME = "prop_workbench_rib"          # furn_shop_steel 0.470 r0.58 met0.95
+D_PALE = "prop_diagnostic_bed_panel"    # furn_clinical   0.500,0.512,0.535
+D_TRIM = "prop_catwalk_rib"             # steel_catwalk_tread 0.266 met0.30
+D_DECK = "prop_deck_marking_deck_joint"  # bay_deck_marking 0.405,0.299,0.308
+
+
+def _strut(v, t, g, name, p0, p1, rad, seg=6):
+    """A capped strut between two arbitrary points -- the angled bracing.
+
+    `LOCATIONS.md` §169 reads the C&C dome at authority 1 as *"a large circle
+    on radial spoke mullions with a broad concentric ring band, set in a flat-
+    panelled bulkhead WITH ANGLED BRACING"*. Every other clause of that
+    sentence was built and the bracing was not, because every primitive in this
+    module is axis-aligned or a solid of revolution and neither can make a
+    diagonal. This is the missing primitive, and it is closed at both ends.
+    """
+    ax = [p1[i] - p0[i] for i in range(3)]
+    L = math.sqrt(sum(c * c for c in ax)) or 1e-9
+    ax = [c / L for c in ax]
+    up = (0.0, 1.0, 0.0) if abs(ax[1]) < 0.92 else (1.0, 0.0, 0.0)
+    e0 = [up[1] * ax[2] - up[2] * ax[1], up[2] * ax[0] - up[0] * ax[2],
+          up[0] * ax[1] - up[1] * ax[0]]
+    m0 = math.sqrt(sum(c * c for c in e0)) or 1e-9
+    e0 = [c / m0 for c in e0]
+    e1 = [ax[1] * e0[2] - ax[2] * e0[1], ax[2] * e0[0] - ax[0] * e0[2],
+          ax[0] * e0[1] - ax[1] * e0[0]]
+    n0 = len(v)
+    for k in range(seg):
+        th = math.tau * k / seg
+        c, s = math.cos(th) * rad, math.sin(th) * rad
+        v.append(tuple(p0[i] + c * e0[i] + s * e1[i] for i in range(3)))
+        v.append(tuple(p1[i] + c * e0[i] + s * e1[i] for i in range(3)))
+    t0 = len(t)
+    for k in range(seg):
+        a0 = n0 + 2 * k
+        b0 = n0 + 2 * ((k + 1) % seg)
+        t += [(a0, b0, b0 + 1), (a0, b0 + 1, a0 + 1)]
+    cap0 = len(v)
+    v.append(tuple(p0))
+    for k in range(seg):
+        t.append((cap0, n0 + 2 * ((k + 1) % seg), n0 + 2 * k))
+    cap1 = len(v)
+    v.append(tuple(p1))
+    for k in range(seg):
+        t.append((cap1, n0 + 2 * k + 1, n0 + 2 * ((k + 1) % seg) + 1))
+    g.append((name, t0, len(t)))
+    return v, t, g
+
+
 def _dome_chamber(v, t, g, prog):
     r = prog["r"]
     ro = r + WALL_T_M
@@ -1267,11 +1356,11 @@ def _dome_chamber(v, t, g, prog):
     # body falls through and the collision shell has no way to say so.
     if prog.get("well"):
         wr = r * GALLERY_WELL_FRAC
-        _revolve(v, t, g, "transit_deck",
+        _revolve(v, t, g, D_DECK,
                  [(0.0, -0.25), (wr, -0.25), (wr, -0.43), (0.0, -0.43)], seg)
-        _revolve(v, t, g, "transit_rib",
-                 [(wr, 0.0), (wr + 0.12, 0.0), (wr + 0.12, -0.25),
-                  (wr, -0.25)], seg)
+        _revolve(v, t, g, D_TRIM,
+                 [(wr - 0.01, 0.0), (wr + 0.12, 0.0), (wr + 0.12, -0.28),
+                  (wr - 0.01, -0.28)], seg)
         for i in range(n * 2):
             a = math.tau * i / (n * 2)
             _cyl(v, t, g, "prop_gallery_rail",
@@ -1287,68 +1376,107 @@ def _dome_chamber(v, t, g, prog):
         a1 = a0 + math.tau / n
         if abs(((a0 + a1) / 2.0 - ea + math.pi) % math.tau - math.pi) < 1e-6:
             continue
+        b0, b1 = a0 + GAP_A, a1 - GAP_A
         # THE WALL STOPS AT THE SILL -- see the rotunda's own note above and
         # INV-024. A dome whose viewports are buried in its wall is a dome
         # with no view, which is the whole of what this room is for.
-        _prism(v, t, g, "transit_wall", _ring_quad(r, ro, a0, a1), 0.0, 0.95)
-        _prism(v, t, g, "transit_wall", _ring_quad(r, ro, a0, a1),
-               0.95 + VIEWPORT_H_M, DOME_WALL_M)
-        _prism(v, t, g, "transit_dado", _ring_quad(r - 0.05, r, a0, a1),
-               0.0, 0.95)
+        #
+        # AND BOTH STOREYS ARE FRAMED PANELS RATHER THAN SLABS. Round 1's
+        # finding on this program was *"roughly 80% of the frame is flat
+        # panelled wall"*, and it was one prism per storey per bay. See
+        # `_recessed_panel`, which both programs now call.
+        _recessed_panel(v, t, g, r, ro, b0, b1, 0.155 - LAP_M, 0.95,
+                        frame=D_FRAME, field="transit_wall", depth=0.065)
+        _recessed_panel(v, t, g, r, ro, b0, b1, 0.95 + VIEWPORT_H_M,
+                        DOME_WALL_M, frame=D_FRAME, field="transit_wall",
+                        depth=0.065)
+        # THE SKIRTING, where the wear is. A cool dark tread metal against the
+        # grey panel: a difference in metallic as well as in value, so it
+        # survives a change of lighting rather than vanishing under one.
+        _seg(v, t, g, D_TRIM, r - 0.055, ro + 0.004, b0, b1, -0.02, 0.155)
+        _seg(v, t, g, "transit_dado", r - 0.05, r, b0, b1, 0.155 - LAP_M,
+             0.86 + LAP_M)
         # THE VIEWPORT, set into the bay -- `rooms.PROPS['viewport']`'s own
         # 2.4 x 1.4 m, converted to an angle at this radius rather than to a
         # second number.
         half = VIEWPORT_W_M / 2.0 / r
         am = (a0 + a1) / 2.0
-        _prism(v, t, g, "prop_viewport",
-               _ring_quad(r + 0.055, ro - 0.055, am - half, am + half),
-               0.95, 0.95 + VIEWPORT_H_M)
+        _seg(v, t, g, "prop_viewport", r + 0.055, ro - 0.055,
+             am - half, am + half, 0.95, 0.95 + VIEWPORT_H_M)
         # THE SAME DIVISION THE ROTUNDA'S WINDOWS CARRY, and for both of its
         # reasons -- see the note there. A dark bar in the glass plane so the
         # window has lines for `density.py --machinery` to find, and a pale
-        # cover strip proud of it so a viewer sees them: at 4 m
-        # `docs/engine-4k-dome2-half.png` showed each viewport as one black
-        # rectangle. **This is the fix applied to the rule and not to the
-        # instance** -- it was found on the rotunda and both programs carry it,
-        # which is session 4h's own lesson about the registry table.
+        # cover strip proud of it so a viewer sees them. **This is the fix
+        # applied to the rule and not to the instance** -- it was found on the
+        # rotunda and both programs carry it, which is session 4h's own lesson
+        # about the registry table.
         for f in (0.34, 0.66):
             ba = am - half + 2.0 * half * f
-            _prism(v, t, g, "prop_viewport",
-                   _ring_quad(r + 0.02, ro - 0.02, ba - 0.010, ba + 0.010),
-                   0.98, 0.92 + VIEWPORT_H_M)
-            _prism(v, t, g, "transit_mullion",
-                   _ring_quad(r - 0.05, r + 0.03, ba - 0.014, ba + 0.014),
-                   0.97, 0.93 + VIEWPORT_H_M)
+            _seg(v, t, g, "prop_viewport", r + 0.02, ro - 0.02,
+                 ba - 0.010, ba + 0.010, 0.98, 0.92 + VIEWPORT_H_M)
+            _seg(v, t, g, D_PALE, r - 0.05, r + 0.03, ba - 0.014, ba + 0.014,
+                 0.97, 0.93 + VIEWPORT_H_M)
         ym = 0.95 + VIEWPORT_H_M * 0.46
-        _prism(v, t, g, "prop_viewport",
-               _ring_quad(r + 0.02, ro - 0.02, am - half + 0.01,
-                          am + half - 0.01), ym - 0.020, ym + 0.020)
-        _prism(v, t, g, "transit_mullion",
-               _ring_quad(r - 0.05, r + 0.03, am - half + 0.01,
-                          am + half - 0.01), ym - 0.028, ym + 0.028)
+        _seg(v, t, g, "prop_viewport", r + 0.02, ro - 0.02,
+             am - half + 0.01, am + half - 0.01, ym - 0.020, ym + 0.020)
+        _seg(v, t, g, D_PALE, r - 0.05, r + 0.03, am - half + 0.01,
+             am + half - 0.01, ym - 0.028, ym + 0.028)
         # The jambs either side of the glass, and the head and sill reveals.
-        for aa, bb in ((a0, am - half), (am + half, a1)):
+        for aa, bb in ((b0, am - half), (am + half, b1)):
             if bb - aa > 1e-4:
-                _prism(v, t, g, "transit_wall", _ring_quad(r, ro, aa, bb),
-                       0.95, 0.95 + VIEWPORT_H_M)
-        _prism(v, t, g, "transit_cornice", _ring_quad(r - 0.05, ro, a0, a1),
-               0.95 + VIEWPORT_H_M, 0.95 + VIEWPORT_H_M + 0.09)
-        _prism(v, t, g, "transit_cornice", _ring_quad(r - 0.05, ro, a0, a1),
-               0.86, 0.95)
-        _prism(v, t, g, "transit_mullion",
-               _ring_quad(r - 0.06, r + 0.02, am - half - 0.03,
-                          am - half + 0.01), 0.95, 0.95 + VIEWPORT_H_M)
-        _prism(v, t, g, "transit_mullion",
-               _ring_quad(r - 0.06, r + 0.02, am + half - 0.01,
-                          am + half + 0.03), 0.95, 0.95 + VIEWPORT_H_M)
-        _prism(v, t, g, "light_wall_course",
-               _ring_quad(r - 0.07, r - 0.02, a0 + 0.03, a1 - 0.03),
-               DOME_WALL_M - 0.44, DOME_WALL_M - 0.30)
+                _seg(v, t, g, D_FRAME, r + 0.006, ro + 0.006, aa, bb,
+                     0.95 - LAP_M, 0.95 + VIEWPORT_H_M + LAP_M)
+        _seg(v, t, g, D_PALE, r - 0.05, ro, b0, b1, 0.95 + VIEWPORT_H_M - LAP_M,
+             0.95 + VIEWPORT_H_M + 0.09)
+        _seg(v, t, g, D_PALE, r - 0.05, ro, b0, b1, 0.86, 0.95 + LAP_M)
+        _seg(v, t, g, D_TRIM, r - 0.06, r + 0.02, am - half - 0.03,
+             am - half + 0.01, 0.95, 0.95 + VIEWPORT_H_M)
+        _seg(v, t, g, D_TRIM, r - 0.06, r + 0.02, am + half - 0.01,
+             am + half + 0.03, 0.95, 0.95 + VIEWPORT_H_M)
+        # THE BLUE WALL COURSE. `light_wall_course` is in
+        # `export_scene.FIXTURE_LIGHTING` -- omni, 22000 K, energy_rel 0.44,
+        # range 3.5 m, measured off the C&C frame -- so this one throws.
+        # Recessed behind its own dark reveal so it reads as a course in the
+        # wall and not as a painted stripe.
+        _seg(v, t, g, M_RECESS, r - 0.10, r - 0.062, b0 + 0.02, b1 - 0.02,
+             DOME_WALL_M - 0.50, DOME_WALL_M - 0.24)
+        _seg(v, t, g, "light_wall_course", r - 0.062, r - 0.02, b0 + 0.03,
+             b1 - 0.03, DOME_WALL_M - 0.44, DOME_WALL_M - 0.30)
+        # A SERVICE RISER every third bay, and a cable tray behind the dado --
+        # CRAFT 4's "a fitting is where a fitting would be needed". A watch
+        # room's consoles are fed from somewhere.
+        if i % 3 == 1:
+            _seg(v, t, g, M_METAL, r - 0.115, r - 0.035, am - 0.030,
+                 am + 0.030, 0.14, DOME_WALL_M - 0.52)
+            for k in range(3):
+                yy = 0.42 + k * 1.05
+                _seg(v, t, g, D_TRIM, r - 0.135, r - 0.020, am - 0.046,
+                     am + 0.046, yy - 0.036, yy + 0.036)
+        # THE REVEAL BETWEEN BAYS -- the bay rhythm gets a shadow in it, and no
+        # two ring solids share a face (INV-761).
+        _seg(v, t, g, M_RECESS, r + 0.055, ro, a1 - GAP_A * 1.6,
+             a1 + GAP_A * 1.6, 0.0, DOME_WALL_M)
+        _seg(v, t, g, D_FRAME, r - 0.075, r + 0.03, a1 - GAP_A * 1.1,
+             a1 + GAP_A * 1.1, 0.0, DOME_WALL_M)
 
     # THE CORNICE the dome springs from.
-    _revolve(v, t, g, "transit_cornice",
+    _revolve(v, t, g, D_PALE,
              [(r - 0.30, DOME_WALL_M), (ro, DOME_WALL_M),
               (ro, DOME_WALL_M - 0.22), (r - 0.30, DOME_WALL_M - 0.10)], seg)
+
+    # THE ANGLED BRACING. LOCATIONS.md §169, authority 1, and the one clause of
+    # it that had never been built -- see `_strut`. A pair of struts per bay
+    # from the head of each pier out to the dome's springing ring, which is
+    # where a brace is structurally FOR something as well as visible.
+    yb = DOME_WALL_M - 0.30
+    for i in range(n):
+        ab = math.tau * i / n - math.tau / (2 * n) + ea
+        for s in (-1, 1):
+            a2 = ab + s * math.tau / (2.6 * n)
+            _strut(v, t, g, D_TRIM,
+                   ((r - 0.06) * math.cos(ab), yb, (r - 0.06) * math.sin(ab)),
+                   ((r - 0.34) * math.cos(a2), DOME_WALL_M + 0.42,
+                    (r - 0.34) * math.sin(a2)), 0.045)
 
     # THE DOME, WITH THICKNESS, and the glazing under it.
     rise = r * DOME_RISE_FRAC
@@ -1359,10 +1487,14 @@ def _dome_chamber(v, t, g, prog):
     # because this is the same glass C&C looks through.
     for i in range(mull):
         a = math.tau * i / mull + ea
-        _dome_rib(v, t, g, "transit_mullion", r - 0.20, DOME_WALL_M, rise, a,
-                  0.13, 0.10)
+        _dome_rib(v, t, g, D_FRAME, r - 0.20, DOME_WALL_M, rise, a, 0.28, 0.13)
+    # AND THE BULKHEAD IS PANELLED, which is the other half of the same
+    # sentence and the reason the dome read as smooth plastic. Same call the
+    # rotunda's dome makes, in this room's own materials.
+    _dome_coffers(v, t, g, r - 0.20, DOME_WALL_M, rise, mull, ea, seg=seg,
+                  minor=D_TRIM, band=D_PALE, bands=(0.30, 0.58, 0.80))
     band = 0.55
-    _revolve(v, t, g, "transit_rib",
+    _revolve(v, t, g, D_PALE,
              [((r - 0.20) * math.cos(band * math.pi / 2) - 0.02,
                DOME_WALL_M + (rise - 0.02) * math.sin(band * math.pi / 2)),
               ((r - 0.20) * math.cos(band * math.pi / 2) - 0.02,
@@ -1385,52 +1517,52 @@ def _dome_fittings(v, t, g, prog, r, n, ea):
     """Shutters, ladders, consoles, benches, boards -- per PLC-002 / PLC-030."""
     # BLAST SHUTTER LEAVES, stowed round the springing. PLC-001 lists blast
     # shutters for the dome and PLC-002 makes the shutter master this room's
-    # control, so the leaves have to exist somewhere for it to close.
+    # control, so the leaves have to exist somewhere for it to close. Each leaf
+    # is a plate on a carrier with a stow rail, because a shutter that is one
+    # slab is a slab.
     if prog.get("shutters"):
         for i in range(n):
             a0 = math.tau * (i + 0.10) / n + ea
             a1 = math.tau * (i + 0.90) / n + ea
-            _prism(v, t, g, "prop_blast_door",
-                   _ring_quad(r - 0.62, r - 0.26, a0, a1),
-                   DOME_WALL_M - 0.06, DOME_WALL_M + 0.62)
-        _prism(v, t, g, "prop_console",
-               _ring_quad(r - 0.86, r - 0.20, ea + math.pi - 0.11,
-                          ea + math.pi + 0.11), 0.0, 1.12)
+            _seg(v, t, g, "prop_blast_door", r - 0.62, r - 0.28, a0, a1,
+                 DOME_WALL_M - 0.06, DOME_WALL_M + 0.60)
+            _seg(v, t, g, D_TRIM, r - 0.66, r - 0.60, a0 - 0.01, a1 + 0.01,
+                 DOME_WALL_M - 0.10, DOME_WALL_M + 0.64)
+            for f in (0.22, 0.78):
+                ac = a0 + (a1 - a0) * f
+                _seg(v, t, g, M_METAL, r - 0.70, r - 0.63, ac - 0.014,
+                     ac + 0.014, DOME_WALL_M - 0.02, DOME_WALL_M + 0.56)
+        _console(v, t, g, (r - 0.62) * math.cos(ea + math.pi),
+                 (r - 0.62) * math.sin(ea + math.pi), ea + math.pi)
 
     # THE SERVICE CRAWL's ladders. PLC-002 lists `service_ladder`.
     for i in range(prog.get("ladders", 0)):
         a = ea + math.pi * (0.55 + 0.90 * i)
+        _seg(v, t, g, M_RECESS, r - 0.20, r - 0.13, a - 0.075, a + 0.075,
+             0.18, DOME_WALL_M - 0.16)
         for k in range(9):
-            _prism(v, t, g, "prop_service_ladder",
-                   _ring_quad(r - 0.34, r - 0.16, a - 0.038, a + 0.038),
-                   0.30 + k * 0.30, 0.36 + k * 0.30)
+            _seg(v, t, g, "prop_service_ladder", r - 0.34, r - 0.16,
+                 a - 0.038, a + 0.038, 0.30 + k * 0.30, 0.36 + k * 0.30)
         for s in (-1, 1):
-            _prism(v, t, g, "prop_service_ladder",
-                   _ring_quad(r - 0.34, r - 0.16, a + s * 0.042,
-                              a + s * 0.056), 0.24, DOME_WALL_M - 0.20)
+            _seg(v, t, g, "prop_service_ladder", r - 0.34, r - 0.16,
+                 a + s * 0.042, a + s * 0.056, 0.24, DOME_WALL_M - 0.20)
 
     # THE CONSOLES: PLC-002's dome-status console, PLC-030's two traffic
     # repeaters. Both stand on the deck facing the glazing.
     for i in range(prog.get("consoles", 0)):
         a = ea + math.pi + (0.0 if prog["consoles"] == 1
                             else (-0.42 + 0.84 * i))
-        cx, cz = (r * 0.52) * math.cos(a), (r * 0.52) * math.sin(a)
-        _box(v, t, g, "prop_console", (cx - 0.70, 0.0, cz - 0.33),
-             (cx + 0.70, 0.82, cz + 0.33))
-        _box(v, t, g, "prop_console", (cx - 0.70, 0.82, cz - 0.33),
-             (cx + 0.70, 1.02, cz + 0.05))
-        _box(v, t, g, "light_bar_backlight", (cx - 0.64, 0.83, cz - 0.28),
-             (cx + 0.64, 0.845, cz + 0.02))
+        _console(v, t, g, (r * 0.52) * math.cos(a), (r * 0.52) * math.sin(a),
+                 a)
 
     # THE BENCHES PLC-030 lists, on a ring facing out at the windows.
     for i in range(prog.get("benches", 0)):
         a = ea + math.tau * (i + 0.5) / prog["benches"]
-        _prism(v, t, g, "prop_bench",
-               _ring_quad(r - 1.35, r - 0.90, a - 0.12, a + 0.12), 0.40, 0.46)
+        _seg(v, t, g, "prop_bench", r - 1.35, r - 0.90, a - 0.12, a + 0.12,
+             0.40, 0.46)
         for rr in (r - 1.31, r - 0.94):
-            _prism(v, t, g, "prop_bench",
-                   _ring_quad(rr - 0.04, rr + 0.04, a - 0.11, a + 0.11),
-                   0.0, 0.40)
+            _seg(v, t, g, "prop_bench", rr - 0.04, rr + 0.04, a - 0.11,
+                 a + 0.11, 0.0, 0.40)
 
     # THE INSPECTION TERMINAL, and A PLAQUE AT EVERY WINDOW, not at four of
     # them. PLC-002 and PLC-030 both make the same demand of this room -- *"the
@@ -1439,16 +1571,17 @@ def _dome_fittings(v, t, g, prog, r, n, ea):
     # is the viewport count by definition, and building four of them would be
     # a room that fails its own acceptance check by construction.
     a = ea + math.pi * 0.72
-    _prism(v, t, g, "prop_babcom_terminal",
-           _ring_quad(r - 0.10, r - 0.02, a - 0.10, a + 0.10), 1.05, 1.55)
+    _seg(v, t, g, M_RECESS, r - 0.13, r - 0.095, a - 0.13, a + 0.13, 1.00,
+         1.60)
+    _seg(v, t, g, "prop_babcom_terminal", r - 0.10, r - 0.02, a - 0.10,
+         a + 0.10, 1.05, 1.55)
+    _seg(v, t, g, D_TRIM, r - 0.135, r - 0.025, a - 0.14, a + 0.14, 1.58, 1.63)
     for i in range(n):
         a2 = ea + math.tau * (i + 0.5) / n
-        _prism(v, t, g, "prop_info_board",
-               _ring_quad(r - 0.07, r - 0.02, a2 - 0.055, a2 + 0.055),
-               0.52, 0.86)
-        _prism(v, t, g, "sign_frame",
-               _ring_quad(r - 0.08, r - 0.065, a2 - 0.062, a2 + 0.062),
-               0.50, 0.88)
+        _seg(v, t, g, "prop_info_board", r - 0.07, r - 0.02, a2 - 0.055,
+             a2 + 0.055, 0.52, 0.86)
+        _seg(v, t, g, "sign_frame", r - 0.085, r - 0.062, a2 - 0.066,
+             a2 + 0.066, 0.49, 0.89)
 
     # THE LEANING RAIL at the window ring. Nobody stands at a viewport with
     # their nose against the glass; every observation gallery ever built has a
@@ -1465,29 +1598,31 @@ def _dome_fittings(v, t, g, prog, r, n, ea):
              [(r - 0.645, 0.58), (r - 0.595, 0.58), (r - 0.595, 0.53),
               (r - 0.645, 0.53)], max(48, n * 4))
 
-    # THE COVE at the springing, and a ring of deck pools under it. A room
-    # whose whole point is looking OUT is lit from behind the eye, not from
-    # overhead: the fittings wash the wall and the deck, and the glazing stays
-    # the brightest thing in the frame.
+    # THE COVE at the springing. A room whose whole point is looking OUT is lit
+    # from behind the eye, not from overhead: the fittings wash the wall and
+    # the glazing stays the brightest thing in the frame.
+    #
+    # AND THE RING OF EMISSIVE DECK POOLS IS GONE. `light_deck_channel_pool` is
+    # emission energy 3.5 over a 0.42 m disc, twelve of them lying face-up on
+    # the floor, and `docs/engine-4k-dome*.png` shows what that is: white
+    # ellipses on the deck with a planter standing in the middle of each. A
+    # floor does not emit. The light those pools were standing in for now comes
+    # from the cove and the blue wall course, both of which are in
+    # `export_scene.FIXTURE_LIGHTING` and therefore actually cast; what is left
+    # on the deck is a bearing rose, which is what the deck is for.
     _revolve(v, t, g, "light_house_cove",
              [(r - 0.34, DOME_WALL_M - 0.14), (r - 0.28, DOME_WALL_M - 0.14),
               (r - 0.28, DOME_WALL_M - 0.24), (r - 0.34, DOME_WALL_M - 0.24)],
              max(48, n * 4))
-    for i in range(n):
-        a2 = ea + math.tau * i / n
-        pv, pt = kit.downlight_pool(radius=0.42, segments=14)
-        _merge(v, t, g, "light_deck_channel_pool",
-               [(x, y, z) for x, y, z in pv], pt,
-               dx=(r * 0.62) * math.cos(a2), dz=(r * 0.62) * math.sin(a2))
 
     # THE BEARING ROSE inlaid in the deck. The room's content is which way it
     # faces, so the floor says so: a radial wedge per window bay about a hub.
-    _pad(v, t, g, "transit_deck_joint",
+    _pad(v, t, g, D_DECK,
          [(0.62 * math.cos(math.tau * k / 24), 0.62 * math.sin(math.tau * k / 24))
           for k in range(24)], 0.0, 0.012)
     for i in range(n):
         a2 = ea + math.tau * i / n
-        _pad(v, t, g, "transit_deck_joint",
+        _pad(v, t, g, D_DECK,
              [(0.70 * math.cos(a2), 0.70 * math.sin(a2)),
               ((r * 0.44) * math.cos(a2 - 0.045),
                (r * 0.44) * math.sin(a2 - 0.045)),
@@ -1502,27 +1637,39 @@ def _dome_fittings(v, t, g, prog, r, n, ea):
     for i in range(n):
         a2 = ea + math.tau * (i + 0.5) / n
         half = VIEWPORT_W_M / 2.4 / r
-        _prism(v, t, g, "prop_counter",
-               _ring_quad(r - 0.30, r - 0.01, a2 - half, a2 + half),
-               0.86, 0.95)
-        _prism(v, t, g, "prop_counter",
-               _ring_quad(r - 0.26, r - 0.20, a2 - half * 0.85,
-                          a2 - half * 0.70), 0.0, 0.86)
-        _prism(v, t, g, "prop_counter",
-               _ring_quad(r - 0.26, r - 0.20, a2 + half * 0.70,
-                          a2 + half * 0.85), 0.0, 0.86)
+        _seg(v, t, g, "prop_counter", r - 0.30, r - 0.01, a2 - half, a2 + half,
+             0.86, 0.95)
+        _seg(v, t, g, D_TRIM, r - 0.31, r - 0.26, a2 - half - 0.004,
+             a2 + half + 0.004, 0.905, 0.945)
+        _seg(v, t, g, "prop_counter", r - 0.26, r - 0.20, a2 - half * 0.85,
+             a2 - half * 0.70, 0.0, 0.86)
+        _seg(v, t, g, "prop_counter", r - 0.26, r - 0.20, a2 + half * 0.70,
+             a2 + half * 0.85, 0.0, 0.86)
 
     # THE PLOT TABLE. PLC-030 makes this dome the traffic annexe -- *"the
     # repeater shows the same berth map C&C shows, delayed 0 s"* -- so the room
     # has a table to spread a berth plot on, with stools round it. PLC-002's
     # dome has a well in the middle instead and gets none of this.
+    #
+    # ITS GLOW WAS A DISC AND IS NOW A RING. `light_dais_key` is emission
+    # energy 6.0, and a 0.96 m radius disc of it lying flat in the middle of
+    # the room is the white blob in `docs/engine-4k-dome2-*.png` -- the
+    # brightest object in a frame whose subject is the window. A plot table is
+    # lit at its edge and reads its chart off the surface; the ring is 90 mm
+    # wide, which is 6% of the area it was.
     if not prog.get("well"):
         _cyl(v, t, g, "prop_table", 0.0, 0.0, 0.0, 0.10, 0.62, seg=12)
         _cyl(v, t, g, "prop_table", 0.0, 0.0, 0.10, 0.68, 0.24, seg=12)
         _cyl(v, t, g, "prop_table", 0.0, 0.0, 0.68, 0.78, 1.05, seg=20)
-        _revolve(v, t, g, "light_dais_key",
-                 [(0.0, 0.785), (0.96, 0.785), (0.96, 0.775), (0.0, 0.775)],
+        _revolve(v, t, g, D_PALE,
+                 [(0.0, 0.800), (1.02, 0.800), (1.02, 0.774), (0.0, 0.774)],
                  20)
+        _revolve(v, t, g, "prop_tactical_display",
+                 [(0.0, 0.792), (0.56, 0.792), (0.56, 0.782), (0.0, 0.782)],
+                 20)
+        _revolve(v, t, g, "light_dais_key",
+                 [(1.005, 0.796), (1.045, 0.796), (1.045, 0.762),
+                  (1.005, 0.762)], 20)
         for i in range(4):
             a2 = ea + math.tau * (i + 0.25) / 4
             _cyl(v, t, g, "prop_seat", 1.62 * math.cos(a2),
@@ -1536,12 +1683,12 @@ def _dome_fittings(v, t, g, prog, r, n, ea):
     for i in range(2):
         a2 = ea + math.pi + (-0.62 + 1.24 * i)
         for k in range(3):
-            _prism(v, t, g, "prop_locker",
-                   _ring_quad(r - 0.52, r - 0.08, a2 - 0.13 + k * 0.09,
-                              a2 - 0.05 + k * 0.09), 0.0, 1.92)
-        _prism(v, t, g, "prop_locker",
-               _ring_quad(r - 0.56, r - 0.04, a2 - 0.15, a2 + 0.24),
-               1.92, 2.02)
+            _seg(v, t, g, "prop_locker", r - 0.52, r - 0.08,
+                 a2 - 0.13 + k * 0.09, a2 - 0.05 + k * 0.09, 0.0, 1.92)
+            _seg(v, t, g, D_TRIM, r - 0.10, r - 0.06,
+                 a2 - 0.125 + k * 0.09, a2 - 0.055 + k * 0.09, 1.06, 1.10)
+        _seg(v, t, g, "prop_locker", r - 0.56, r - 0.04, a2 - 0.15, a2 + 0.24,
+             1.90, 2.02)
 
     # PLANTERS AND A WASTE BIN -- a gallery the public sits in is kept, and
     # `rooms.PROPS` already carries both.
@@ -1549,8 +1696,48 @@ def _dome_fittings(v, t, g, prog, r, n, ea):
         a2 = ea + math.tau * (i + 0.28) / max(2, n // 3)
         _cyl(v, t, g, "prop_planter", (r * 0.72) * math.cos(a2),
              (r * 0.72) * math.sin(a2), 0.0, 0.62, 0.34, seg=10)
-        _cyl(v, t, g, "transit_rib", (r * 0.72) * math.cos(a2),
-             (r * 0.72) * math.sin(a2), 0.62, 0.68, 0.36, seg=10)
+        _cyl(v, t, g, D_TRIM, (r * 0.72) * math.cos(a2),
+             (r * 0.72) * math.sin(a2), 0.60, 0.68, 0.36, seg=10)
+
+
+def _console(v, t, g, cx, cz, facing):
+    """One watch console: a dark plinth, a sloping fascia, a screen, a lit lip.
+
+    IT WAS TWO BOXES OF `prop_console`, and `prop_console` binds
+    `device_console_bed` -- albedo 0.212 with a warm emission at energy 0.5.
+    Over a 1.40 x 0.66 x 1.02 m pair of slabs that is a saturated orange block,
+    which is what round 1 called out on this program (*"the ledges read as
+    saturated orange blocks"* -- the same material, the same failure). A
+    console is a machine: the body is casework, the emission belongs to the
+    FASCIA and the screen, and the lit lip is 40 mm of it rather than a face.
+    """
+    c, s = math.cos(facing), math.sin(facing)
+
+    def at(dx, dz):
+        return (cx + dx * s + dz * c, cz - dx * c + dz * s)
+    for (x0, y0, z0, x1, y1, z1, nm) in (
+            (-0.70, 0.00, -0.33, 0.70, 0.10, 0.33, D_TRIM),
+            (-0.66, 0.10, -0.30, 0.66, 0.80, 0.30, "prop_desk_panel"),
+            (-0.70, 0.80, -0.33, 0.70, 0.86, 0.33, D_FRAME)):
+        p0 = at(x0, z0)
+        p1 = at(x1, z1)
+        _box(v, t, g, nm, (min(p0[0], p1[0]), y0, min(p0[1], p1[1])),
+             (max(p0[0], p1[0]), y1, max(p0[1], p1[1])))
+    # the sloping fascia and its screen, tipped toward the operator
+    for (x0, y0, z0, x1, y1, z1, nm) in (
+            (-0.64, 0.84, -0.30, 0.64, 1.02, 0.02, D_FRAME),
+            (-0.57, 0.885, -0.25, 0.57, 1.005, -0.03, "prop_monitor_wall"),
+            (-0.60, 0.858, -0.285, 0.60, 0.878, -0.255, "prop_console"),
+            (-0.26, 0.846, -0.312, 0.26, 0.872, -0.288, "light_wall_course")):
+        p0 = at(x0, z0)
+        p1 = at(x1, z1)
+        _box(v, t, g, nm, (min(p0[0], p1[0]), y0, min(p0[1], p1[1])),
+             (max(p0[0], p1[0]), y1, max(p0[1], p1[1])))
+    # two cable runs down the back, because a console is fed from somewhere
+    for dx in (-0.42, 0.38):
+        p0 = at(dx, 0.30)
+        _cyl(v, t, g, M_METAL, p0[0], p0[1], 0.06, 0.82, 0.035, seg=6)
+    return v, t, g
 
 
 # ---------------------------------------------------------------------------
@@ -1655,6 +1842,92 @@ def _selftest():
         lo = want_n if PROGRAMS[key]["kind"] == "dome" else ROTUNDA_BAYS - 1
         check(f"{key}: {lo} glazed bays, as the spec lists", n >= lo,
               f"{n} viewport spans against {lo}")
+
+    # ---------------------------------------------------------------------
+    # SESSION 4t's THREE GATES. Each one fails on the content this session
+    # started from, and the control that makes it fail is in this file.
+    # ---------------------------------------------------------------------
+    import materials as mats
+
+    # (1) NO COINCIDENT FACES. `boundary_edges` already returned the count and
+    # nothing had ever asserted on it: 489 on the rotunda, 360 and 209 on the
+    # domes, all of them invisible because a face used by four triangles
+    # renders perfectly. AAA-STANDARD's geometry checklist is explicit --
+    # "Non-manifold edges: zero. A face used by three triangles is a modelling
+    # error that renders perfectly."
+    for key, (v, t, _g) in built.items():
+        _op, non = kit.boundary_edges(v, t)
+        check(f"{key}: no non-manifold edge", not non, f"{len(non)} edges")
+
+    # ...AND THE CONTROL. `LAP_M` is what makes solids overlap instead of
+    # abut and `_dome_rib`'s `f_max` is what stops a rib pinching on the axis;
+    # withdraw both and the defect comes back, which is the evidence that the
+    # assertion above is measuring the fix rather than an accident.
+    _lap, _mod = LAP_M, sys.modules[__name__]
+    _rib = _dome_rib
+    try:
+        _mod.LAP_M = 0.0
+        _mod._dome_rib = lambda *a, **k: _rib(*a, **{**k, "f_max": 1.0})
+        ctl_non = {}
+        for key in sorted(PROGRAMS):
+            v2, t2, _ = room(schema, profile, dr.by_key(key))
+            ctl_non[key] = len(kit.boundary_edges(v2, t2)[1])
+    finally:
+        _mod.LAP_M = _lap
+        _mod._dome_rib = _rib
+    check("...and with the overlap rule withdrawn they come back",
+          all(c > 0 for c in ctl_non.values()), f"{ctl_non}")
+
+    # (2) EVERY GROUP CARRIES A MATERIAL SOMEBODY CHOSE. Session 4f's lesson
+    # is that a name built by interpolation is invisible to the source scan in
+    # `materials._scan_generator_groups`, so 45 groups sat on the fallback and
+    # nothing could see it. This module now composes `<bound>_<shell-suffix>`
+    # names deliberately (INV-760), which is exactly the shape that goes
+    # unnoticed, so it asserts resolution HERE, in the module that builds them.
+    for key, (_v, _t, gg) in built.items():
+        unbound = sorted({nm for nm, _a, _b in gg
+                          if mats.resolve_any(nm, "interior") is None})
+        check(f"{key}: every group resolves to a material", not unbound,
+              f"{unbound}")
+
+    # (3) THE SURFACE IS NOT ONE VALUE. Round 1 scored both programs CRAFT 2 --
+    # "each material carries one flat value", "grey-on-grey at half distance"
+    # -- and the cause was that every `worship_*` and `transit_*` group in
+    # `materials.py` resolves to one of three greys. A count of DISTINCT
+    # resolved materials is the cheap universal form of that question, in the
+    # spirit of `deck.py --degeneracy`: it asks identity, not similarity, so
+    # there is no threshold to argue with beyond the floor itself.
+    used = {}
+    for key, (_v, _t, gg) in built.items():
+        used[key] = {mats.resolve_any(nm, "interior").name
+                     for nm, _a, _b in gg
+                     if mats.resolve_any(nm, "interior")}
+        check(f"{key}: at least 14 distinct materials on the surface",
+              len(used[key]) >= 14, f"{len(used[key])}: {sorted(used[key])}")
+
+    # ...AND THE CONTROL, which is the room this session started from: put the
+    # palette back to the shell names and count again.
+    _saved = {k: getattr(_mod, k) for k in _PALETTE}
+    try:
+        for k in _PALETTE:
+            setattr(_mod, k, "worship_wall" if not k.startswith("L_")
+                    else "light_pilaster_strip")
+        ctl = {}
+        for key in sorted(PROGRAMS):
+            _v2, _t2, g2 = room(schema, profile, dr.by_key(key))
+            ctl[key] = len({mats.resolve_any(nm, "interior").name
+                            for nm, _a, _b in g2
+                            if mats.resolve_any(nm, "interior")})
+    finally:
+        for k, val in _saved.items():
+            setattr(_mod, k, val)
+    # A FIFTH, not a fixed number: the domes keep more of their materials
+    # under the control than the rotunda does, because a watch room's consoles,
+    # lockers, seats, doors and rails are already varied and it is the SHELL
+    # that was one value. Measured: 21 -> 16, 23 -> 18, 27 -> 11.
+    check("...and with the palette collapsed to the shell names it falls",
+          all(ctl[k] <= len(used[k]) * 0.8 for k in ctl),
+          f"control {ctl} against {({k: len(u) for k, u in used.items()})}")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
