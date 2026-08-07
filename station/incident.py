@@ -1444,14 +1444,69 @@ CAST_POOL = 16                # people of one species this module ever casts
 
 
 def _pool(place, hour, species):
-    key = ("pool", place, int(hour) % 24, species)
+    """The cast pool for a place-hour, and it is QUANTISED EXACTLY ONCE.
+
+    A MEMO KEY MUST COMMIT TO EVERY ARGUMENT ITS VALUE DEPENDS ON, and this
+    function was the one site in the module that broke that rule. The key said
+    `int(hour) % 24` and the value was built from `hour % 24.0`, so whichever
+    fractional minute reached a place-hour FIRST froze the pool that every
+    later incident there drew its named people from. Nothing was random and
+    nothing was wrong inside one run; what broke is that `absence()` stopped
+    being a function of its arguments -- run an unrelated `headless_day` over
+    the register first and the same seed, day and probe produce a different
+    world. Measured on the code this replaces: fingerprints
+    ('73c2b0b24230d4a9', 'd7cd07f85eeced99') clean-first against
+    ('673fa4bd36591140', 'e56cbfa7ebc93561') after a register day. A world that
+    depends on what ran earlier in the process cannot be evidence about a seed.
+
+    `_LAM` had already solved this correctly through `_bucket_h()`: it keys on
+    `int(hour) % 24` and evaluates at `int(hour) % 24 + 0.5`, a pure function of
+    the same quantisation. This now does the same -- one local `h` used by BOTH
+    the key and the value -- so the two cannot drift apart again by edit rather
+    than by decision. `_selftest` asserts the invariant directly; the absence
+    gate asserts the end-to-end consequence with an adversarial warm-up.
+    """
+    h = float(int(hour) % 24)         # the ONE quantisation. Key AND value.
+    key = ("pool", place, h, species)
     if key not in _ONCE:
         try:
-            _ONCE[key] = tuple(res.roster(place, hour % 24.0, species,
+            _ONCE[key] = tuple(res.roster(place, h, species,
                                           CAST_POOL, seed=POOL_SEED))
         except Exception:                                    # pragma: no cover
             _ONCE[key] = ()
     return _ONCE[key]
+
+
+def _pool_keys():
+    return [k for k in _ONCE if isinstance(k, tuple) and k[:1] == ("pool",)]
+
+
+def _poison_pools(places, offset=0.97):
+    """Clear every cast pool and re-warm it at an ADVERSARIAL fractional hour.
+
+    The control for the defect above, and deliberately the cheapest thing that
+    reproduces it: under the old code, warming `(place, h + 0.97)` before a run
+    froze every pool at a minute no incident in that run would ever ask for,
+    and the run's world moved. Under the fixed code it can change nothing,
+    because `h + 0.97` and any other fraction of the same hour quantise to the
+    same key AND to the same value.
+
+    Returns how many pools it re-warmed, so a control that silently warmed
+    nothing cannot be reported as a control that passed.
+    """
+    for k in _pool_keys():
+        del _ONCE[k]
+    n = 0
+    for pk in places:
+        try:
+            mix = aud.species_mix(pk)
+        except Exception:                                    # pragma: no cover
+            continue
+        for sp in sorted(mix):
+            for h in range(24):
+                _pool(pk, h + offset, sp)
+                n += 1
+    return n
 
 
 POOL_SEED = "b5"              # `resident.affiliates`' own default
@@ -3769,7 +3824,7 @@ class Observer:
 
     `at`       a register place. The probe volume is built from it, once.
     `policy`   (incident) -> stance, for incidents this observer WITNESSES.
-    `radius_m` the sight line. Defaults to `sight_m()`, never to a literal.
+    `radius_m` see below -- a PER-PLACE cut, not a sight line on incidents.
     `hours`    which station-hours the player is actually awake and out. An
                observer that is present for all 24 is a player who never
                sleeps, so the default is the waking day and it is stated.
@@ -3777,6 +3832,24 @@ class Observer:
     Nothing here is consulted by any rate function. `witnessed` and `acted` are
     counters the gate reads so the rate NEAR THE PLAYER is a measurement rather
     than an estimate.
+
+    WHAT `radius_m` ACTUALLY IS, stated because the first version of this
+    printed it as `sight = 60.5 m` in a denominator and a reviewer was right to
+    call that a term the numbers did not contain. An Incident carries a place
+    key and no position inside that place, so `distance_m(inc.place, at)` is
+    the distance between two place CENTROIDS and is the same value for every
+    incident in a place. It is therefore not a sight line: it is a **per-place
+    admission cut on the probe volume**, evaluated once per place, and
+    `view_m()` reports it as exactly that -- which place it admits, which it
+    cuts, and at what distance.
+
+    It is kept rather than dropped because it is doing visible work here (it
+    cuts `docking_bays`, 374.1 m away and 73 incidents, from a post at
+    `customs_north`) and because dropping it would silently widen "near". But
+    the RATE CLAIM no longer rests on it: `near_rate_day` reports the rate under
+    all three readings -- the player's own place alone, the radius cut, and the
+    whole probe -- and `near_gate` asserts the floor against the NARROWEST of
+    them. A term that could be tuned is no longer load-bearing for a claim.
     """
 
     def __init__(self, at, policy="citizen", radius_m=None, hours=None):
@@ -3791,16 +3864,29 @@ class Observer:
         self.witnessed = []
         self.acted = {ABSENT: 0, HELPS: 0, REPORTS: 0}
 
-    # -- the two halves of "near", kept separate so both can be reported ----
+    # -- the three terms of "near", kept separate so each can be reported ---
     def in_probe(self, inc):
         return inc.place in self.probe
 
     def present(self, inc):
         return self.hours is None or int(inc.hour) % 24 in self.hours
 
+    def in_view(self, inc):
+        """The per-place admission cut. Constant across a place, by admission."""
+        return distance_m(inc.place, self.at) <= self.radius_m
+
+    def view_m(self):
+        """(place, metres, admitted) for every place in the probe volume.
+
+        The radius printed as what it is. If `cuts` is empty the term is inert
+        for this post and the gate says so instead of quoting it.
+        """
+        return tuple((k, distance_m(k, self.at),
+                      distance_m(k, self.at) <= self.radius_m)
+                     for k in self.probe.places)
+
     def witnesses(self, inc):
-        return (self.present(inc) and self.in_probe(inc)
-                and distance_m(inc.place, self.at) <= self.radius_m)
+        return self.present(inc) and self.in_probe(inc) and self.in_view(inc)
 
     def stance(self, inc):
         if not self.witnesses(inc):
@@ -3815,8 +3901,12 @@ class Observer:
     def describe(self):
         awake = "all 24 h" if self.hours is None else \
             f"{len(self.hours)} waking h"
+        cut = [k for k, _d, ok in self.view_m() if not ok]
+        term = ("cuts " + ", ".join(cut)) if cut else \
+            "INERT here -- it admits every probe place"
         return (f"a player at {self.at} ({self.policy_name}), {awake}, "
-                f"sight {self.radius_m:.1f} m, probe {self.probe.describe()}")
+                f"probe {self.probe.describe()}, {self.radius_m:.1f} m "
+                f"per-place cut ({term})")
 
 
 # ===========================================================================
@@ -3938,6 +4028,14 @@ def absence(at="customs_north", policy="citizen", day=1, seed="b5",
         "same_stream": stream_of(fa) == stream_of(fp),
         "only_absent": sorted(wa.named() - wp.named()),
         "only_present": sorted(wp.named() - wa.named()),
+        # THE MEANINGFUL HALF, SEPARATELY. `named()` includes `news`, `rumour`,
+        # `berth` and `unsolved` -- the kinds MEANINGFUL deliberately excludes
+        # because they are the station talking about itself. The gate's own
+        # printed claim is "not in a log string", and 193 `news` rows saying
+        # somebody watched would satisfy an assertion made on `named()`. So the
+        # assertion is made on these instead.
+        "only_absent_deltas": sorted(set(wa.deltas()) - set(wp.deltas())),
+        "only_present_deltas": sorted(set(wp.deltas()) - set(wa.deltas())),
         "fingerprints": (wa.fingerprint(), wp.fingerprint()),
     }
 
@@ -3955,8 +4053,21 @@ def near_rate_day(at="customs_north", day=1, seed="b5", hours=24,
 
     This runs the day and counts what the Observer actually saw, hour by hour,
     with every term of the denominator printed: the probe's places, its metric
-    span, its floor area, the sight radius and its source. "Near" is metres and
-    places here, never a feeling.
+    span, its floor area, and the per-place cut with the distance it is applied
+    at. "Near" is metres and places here, never a feeling.
+
+    AND IT REPORTS THE RATE UNDER ALL THREE READINGS OF "NEAR", because a
+    reviewer was right that one of the terms could be tuned:
+
+      `own_per_hour`    the player's own register place ALONE. The narrowest
+                        reading that anyone could argue for -- radius 0.
+      `per_hour`        the shipped reading: the probe volume, minus the places
+                        the per-place cut excludes.
+      `probe_per_hour`  the whole probe volume, cut disabled. The widest.
+
+    `near_gate` asserts SYS-14's floor against the FIRST of these, so the claim
+    survives any argument about the other two. All three are printed so that
+    argument can be had against numbers.
     """
     obs = Observer(at, policy=policy, radius_m=radius_m)
     w, fired = headless_day(Ctx(day=day, seed=seed), scope=obs.probe.places,
@@ -3967,13 +4078,20 @@ def near_rate_day(at="customs_north", day=1, seed="b5", hours=24,
     # MEANINGFUL = SYS-14's own word, and it defines it: "the incident writes
     # >=1 world delta". Counted by resolving the witnessed classes rather than
     # assumed, so a class that writes only a log string would not be counted.
-    meaningful = {c for c in {i.cid for i in obs.witnessed}
-                  if _writes_delta(c)}
-    seen = [i for i in obs.witnessed if i.cid in meaningful]
+    def _mean(incs):
+        ok = {c for c in {i.cid for i in incs} if _writes_delta(c)}
+        return [i for i in incs if i.cid in ok]
+
+    seen = _mean(obs.witnessed)
+    own = _mean([i for i in obs.witnessed if i.place == obs.at])
+    wide = _mean([i for i in fired if obs.present(i)])
     return {
         "observer": obs, "world": w, "fired": fired,
         "witnessed": obs.witnessed, "meaningful": seen,
+        "own": own, "probe_wide": wide,
         "per_hour": len(seen) / float(hours),
+        "own_per_hour": len(own) / float(hours),
+        "probe_per_hour": len(wide) / float(hours),
         "by_hour": per_h, "acted": dict(obs.acted),
         "in_scope": len(fired),
     }
@@ -4275,17 +4393,31 @@ def absence_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
                  policy="citizen", day=1, full=False):
     """THE ABSENCE GATE, printed and asserted. Returns the number of checks.
 
-    Three assertions and they are not the same assertion three times:
+    Four assertions and they are not the same assertion four times:
 
       1. the two runs FIRE THE SAME INCIDENTS. This is the one that keeps
          SYS-14's *"none of them requires the player to exist"* true, and it is
          checked FIRST because everything below it is worthless if the player
          has become a rate.
-      2. the two WORLDS DIFFER, in named facts, listed by kind.
+      2. the two WORLDS DIFFER **IN MEANINGFUL DELTAS**, listed by kind. Made
+         on `World.deltas()` and not on `World.named()`, because `named()`
+         carries `news` and `rumour` -- the station talking about itself -- and
+         an assertion whose printed claim is *"not in a log string"* must not be
+         satisfiable by log strings. Measured: on this post 298 of the
+         only-absent facts pass `named()` and 130 pass `deltas()`.
       3. the CONTROL: the same run again under `policy=absent` -- a player who
          is standing right there and does nothing -- must be BYTE-IDENTICAL to
          the run with no player at all. That is what makes assertion 2 evidence
          about the STANCE rather than about having built a second code path.
+      4. HERMETICITY: the world is a function of the seed and of nothing else.
+         Every cast pool is dropped and re-warmed at an adversarial fractional
+         hour, and the identical call must return the identical fingerprints.
+         Without this assertion the module shipped a version of `absence()`
+         whose answer depended on what had run earlier in the same process
+         (`_pool`, and see its docstring), and a reviewer found it by running an
+         unrelated `headless_day` first. That is a defect no seed-vs-seed
+         comparison can see, because both halves of the comparison move
+         together.
     """
     out("")
     r = absence(at=at, policy=policy, day=day, seed=seed, step_min=step_min,
@@ -4305,25 +4437,36 @@ def absence_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
           "them",
           f"{len(set(stream_of(fa)) ^ set(stream_of(fp)))} stream row(s) differ")
     n += 1
-    kinds_a = {f[0] for f in r["only_absent"]}
-    kinds_p = {f[0] for f in r["only_present"]}
+    kinds_a = {f[0] for f in r["only_absent_deltas"]}
+    kinds_p = {f[0] for f in r["only_present_deltas"]}
     check(r["fingerprints"][0] != r["fingerprints"][1]
-          and (r["only_absent"] or r["only_present"]),
-          "...AND THEY CHANGE HOW THEY END: the two worlds differ in named "
-          "facts, not in a log string",
-          f"{len(r['only_absent'])} fact(s) only in the absent world "
+          and (r["only_absent_deltas"] or r["only_present_deltas"])
+          and (kinds_a | kinds_p) <= MEANINGFUL,
+          "...AND THEY CHANGE HOW THEY END: the two worlds differ in "
+          "MEANINGFUL world deltas -- custody, docket, seizure, standing, "
+          "stock, card -- and not in a log string. Asserted on World.deltas(), "
+          "which excludes news and rumour by construction, so the station "
+          "talking about itself cannot satisfy it",
+          f"{len(r['only_absent_deltas'])} delta(s) only in the absent world "
           f"({', '.join(sorted(kinds_a)) or 'none'}), "
-          f"{len(r['only_present'])} only in the present one "
-          f"({', '.join(sorted(kinds_p)) or 'none'})")
+          f"{len(r['only_present_deltas'])} only in the present one "
+          f"({', '.join(sorted(kinds_p)) or 'none'}); "
+          f"the same comparison over ALL named facts (news and rumour "
+          f"included) would have said "
+          f"{len(r['only_absent'])}/{len(r['only_present'])}")
     out(f"  witnessed {len(obs.witnessed)} of {len(fp)} in scope; acted "
         f"{obs.acted[HELPS]} helps / {obs.acted[REPORTS]} reports / "
         f"{obs.acted[ABSENT]} stood by")
     out(f"  fingerprint {r['fingerprints'][0]} absent / "
         f"{r['fingerprints'][1]} present -- "
-        f"{len(r['only_absent'])} fact(s) exist ONLY because you were not "
-        f"there ({', '.join(sorted(kinds_a)) or 'none'}), "
-        f"{len(r['only_present'])} ONLY because you were "
+        f"{len(r['only_absent_deltas'])} MEANINGFUL delta(s) exist ONLY "
+        f"because you were not there "
+        f"({', '.join(sorted(kinds_a)) or 'none'}), "
+        f"{len(r['only_present_deltas'])} ONLY because you were "
         f"({', '.join(sorted(kinds_p)) or 'none'})")
+    out(f"  the assertion is made on those, not on World.named(), which would "
+        f"have counted {len(r['only_absent'])}/{len(r['only_present'])} by "
+        f"letting news and rumour in")
     out(f"  custody absent {len(wa.custody)} -> present {len(wp.custody)}; "
         f"deltas {len(wa.deltas())} -> {len(wp.deltas())}")
     for f in r["only_present"][:3]:
@@ -4343,12 +4486,43 @@ def absence_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
           f"{c['fingerprints']}, "
           f"{len(c['only_absent']) + len(c['only_present'])} fact(s) apart, "
           f"{len(c['observer'].witnessed)} witnessed under the null policy")
+
+    # --- hermeticity: the world is a function of the seed and nothing else --
+    # The pools every incident draws its named cast from are DROPPED and rebuilt
+    # at a fractional hour no incident in the run will ask for. If the same call
+    # then returns a different world, `absence()` is a function of process
+    # history and every comparison above is a comparison of two accidents.
+    warmed = _poison_pools(r["scope"])
+    h = absence(at=at, policy=policy, day=day, seed=seed, step_min=step_min,
+                scope=r["scope"])
+    n += 1
+    check(warmed > 0 and h["fingerprints"] == r["fingerprints"],
+          "HERMETIC: the same seed, day and post produce the same world after "
+          "every cast pool has been dropped and re-warmed at an adversarial "
+          "fractional hour. A world that depends on what ran earlier in the "
+          "process is not evidence about a seed",
+          f"{warmed} pool(s) re-warmed at +0.97 h, then "
+          f"{h['fingerprints']} against {r['fingerprints']}")
+    out(f"  hermeticity: {warmed} cast pool(s) dropped and re-warmed at "
+        f"+0.97 h; fingerprints {h['fingerprints'][0]}/"
+        f"{h['fingerprints'][1]} against {r['fingerprints'][0]}/"
+        f"{r['fingerprints'][1]}")
     return n
 
 
 def near_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
               day=1):
-    """THE RATE NEAR THE PLAYER, MEASURED OVER A DAY, denominator printed."""
+    """THE RATE NEAR THE PLAYER, MEASURED OVER A DAY, denominator printed.
+
+    ASSERTED AGAINST THE NARROWEST READING OF "NEAR" THAT ANYONE COULD ARGUE
+    FOR -- the player's own register place, alone, radius nought. The shipped
+    reading (the probe volume minus the per-place cut) and the widest one (the
+    whole probe volume) are both printed beside it, so the reader can see that
+    the floor does not depend on which one is chosen. That is the answer to a
+    reviewer's finding that `sight_m()` could be set to 1.0 and this still
+    passed: it can, and the gate now says why -- the term is not load-bearing,
+    and the number that IS load-bearing is the smallest of the three.
+    """
     out("")
     r = near_rate_day(at=at, day=day, seed=seed, step_min=step_min)
     obs = r["observer"]
@@ -4356,22 +4530,56 @@ def near_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
     out("THE RATE NEAR THE PLAYER, over a whole station-day rather than at the "
         "curve's busiest hour")
     out(f"  DENOMINATOR, every term of it: probe = {p.describe()}; "
-        f"sight = {obs.radius_m:.1f} m (populace.corridor_sight_m); "
         f"window = 24 station-hours at {step_min:.0f}-min steps")
+    out(f"  the {obs.radius_m:.1f} m per-place cut (populace.corridor_sight_m) "
+        f"is a cut on PLACES, not a sight line on incidents -- an Incident "
+        f"carries a place key and no position inside it:")
+    for k, d, ok in obs.view_m():
+        got = sum(1 for i in r["fired"] if i.place == k)
+        out(f"      {k:22s} {d:7.1f} m  {'admitted' if ok else 'CUT'}  "
+            f"({got} incident(s) fired there)")
     out(f"  {len(r['witnessed'])} witnessed, {len(r['meaningful'])} of them "
         f"MEANINGFUL (SYS-14's word: the class writes >=1 world delta) "
         f"= {r['per_hour']:.3f}/station-hour against a floor of {RATE_FLOOR}")
+    out(f"  the same day under all three readings of NEAR: own place alone "
+        f"{r['own_per_hour']:.3f}/h ({len(r['own'])}), with the per-place cut "
+        f"{r['per_hour']:.3f}/h ({len(r['meaningful'])}), whole probe volume "
+        f"{r['probe_per_hour']:.3f}/h ({len(r['probe_wide'])}) -- the floor is "
+        f"asserted against the FIRST")
     busy = sorted(r["by_hour"].items(), key=lambda x: -x[1])[:3]
     quiet = sorted(r["by_hour"].items(), key=lambda x: x[1])[:3]
     out(f"  busiest hours {busy}; quietest {quiet}; "
         f"{len(r['fired'])} fired in the probe of which "
-        f"{len(r['witnessed'])} were inside the sight line")
-    check(r["per_hour"] >= RATE_FLOOR,
+        f"{len(r['witnessed'])} were admitted")
+    check(r["own_per_hour"] >= RATE_FLOOR,
           f"SYS-14's floor, MEASURED near the player rather than summed at "
-          f"13:00: >={RATE_FLOOR} meaningful incidents per station-hour "
-          f"witnessed from a fixed post over a whole day",
-          f"{r['per_hour']:.3f}/h")
-    return 1
+          f"13:00, and measured under the NARROWEST reading of near -- the "
+          f"player's own register place alone, radius nought: >={RATE_FLOOR} "
+          f"meaningful incidents per station-hour from a fixed post over a "
+          f"whole day",
+          f"{r['own_per_hour']:.3f}/h at {obs.at} alone; "
+          f"{r['per_hour']:.3f}/h with the cut; "
+          f"{r['probe_per_hour']:.3f}/h over the whole probe")
+    n = 1
+    # THE PRINTED DENOMINATOR IS THE APPLIED ONE. `view_m()` is what the table
+    # above prints and `witnesses()` is what the run actually applied, and they
+    # are two expressions of the same rule -- which is exactly the shape that
+    # drifts. So the difference between the widest reading and the shipped one
+    # must be ACCOUNTED FOR, incident by incident, by the places `view_m()`
+    # reports as CUT. If someone changes one and not the other this fails; it
+    # is the reason the number in the denominator can be believed.
+    cut = [k for k, _d, ok in obs.view_m() if not ok]
+    owed = [i for i in r["probe_wide"] if i.place in cut]
+    n += 1
+    check(len(r["probe_wide"]) - len(r["meaningful"]) == len(owed),
+          "the denominator this gate PRINTS is the one the run APPLIED: every "
+          "meaningful incident the shipped reading drops is accounted for by a "
+          "place view_m() names as CUT, one for one. view_m() and witnesses() "
+          "are two expressions of one rule and this is what stops them drifting",
+          f"{len(r['probe_wide'])} probe-wide - {len(r['meaningful'])} "
+          f"admitted = {len(r['probe_wide']) - len(r['meaningful'])} dropped, "
+          f"against {len(owed)} fired in the cut place(s) {cut or 'none'}")
+    return n
 
 
 def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
@@ -4979,6 +5187,44 @@ def _selftest(out=print):                                       # noqa: C901
     n += 1
     check(abs(distance_m("zocalo", "zocalo")) < 1e-9,
           "a place is zero metres from itself, so the geometry is a metric")
+
+    # --- A MEMO KEY MUST COMMIT TO EVERY ARGUMENT ITS VALUE DEPENDS ON -----
+    # The cheap, direct form of the defect `absence_gate`'s hermeticity check
+    # asserts end-to-end. `_pool` keyed on `int(hour) % 24` and built its value
+    # from `hour % 24.0`, so the FIRST fractional minute to reach a place-hour
+    # froze the cast for every later incident there, and the module's answer
+    # became a function of process history. This asserts the invariant itself:
+    # the pool for a place-hour is the same tuple whichever minute of that hour
+    # asks for it, IN EITHER WARMING ORDER. It fails on the code it was written
+    # against -- clean-warm at 13.9 then read 13.0 returned a different roster.
+    sp = max(aud.species_mix("zocalo").items(), key=lambda x: x[1])[0]
+    for k in _pool_keys():
+        del _ONCE[k]
+    _pool("zocalo", 13.90, sp)
+    warm_late = _pool("zocalo", 13.00, sp)
+    for k in _pool_keys():
+        del _ONCE[k]
+    _pool("zocalo", 13.00, sp)
+    warm_early = _pool("zocalo", 13.90, sp)
+    n += 1
+    check(len(warm_late) > 0 and warm_late == warm_early,
+          "the cast pool for a place-hour is the same roster whichever minute "
+          "of that hour reaches it first -- so `absence()` is a function of "
+          "its arguments and not of what ran earlier in the process. `_LAM` "
+          "already got this right through `_bucket_h`; `_pool` was the one "
+          "site that quantised its KEY and not its VALUE",
+          f"{len(warm_late)} people, of whom "
+          f"{sum(1 for a, b in zip(warm_late, warm_early) if a is not b)} sit "
+          f"in a different seat depending on which minute warmed the pool "
+          f"first (13.9-then-13.0 against 13.0-then-13.9)")
+    n += 1
+    check(all(isinstance(k[2], float) and k[2] == float(int(k[2])) % 24.0
+              and 0.0 <= k[2] < 24.0 for k in _pool_keys()),
+          "...and every cast-pool key in the memo carries the QUANTISED hour, "
+          "which is the form the value is built from -- checked over the keys "
+          "rather than over the one call site, so a second call site cannot "
+          "reintroduce it",
+          str(sorted({k[2] for k in _pool_keys()})[:8]))
     n += 1
     share = maint_load_share()
     check(0.001 < share < 1.0 and MACHINE_MTBF_DAYS > implied_mtbf_days(),
