@@ -1,0 +1,2358 @@
+{
+ "calls": [
+  {
+   "hour": 0.0,
+   "kind": "watch",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "npc/schedule.role_on_duty + LAW-CRIME-DOWNBELOW 2.2's three-shift table",
+   "text": "A WATCH. All personnel report to duty stations. 167 security on watch. Downbelow boundary patrols to be walked hourly until oh-eight-hundred."
+  },
+  {
+   "hour": 0.078973,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[39] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 0.151451,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[7] + stay_h",
+   "text": "FUEL TANKER DEPARTING. Transfer lines purged and stowed."
+  },
+  {
+   "hour": 0.154622,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[25] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 0.177622,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[52] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 0.206299,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[42] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 0.391667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[0] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 0.404622,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[25] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 0.427622,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[52] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 0.612073,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[41] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 0.638464,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[24] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 0.862073,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[41] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 0.888464,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[24] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 1.325,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[1] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 2.174571,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[34] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 2.228264,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[37] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 2.258333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[2] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 2.398848,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[11] + stay_h - 0.25 h",
+   "text": "The diplomatic party will embark from the transfer lock. The concourse route is closed for the next quarter-hour."
+  },
+  {
+   "hour": 2.424571,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[34] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 2.478264,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[37] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 2.648848,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[11] + stay_h",
+   "text": "DIPLOMATIC VESSEL DEPARTING. The wing is closed to visitors until she is clear."
+  },
+  {
+   "hour": 3.000153,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[1] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 3.191667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[3] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 3.250153,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[1] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 3.400926,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[36] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 3.650926,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[36] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 4.133333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[4] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 4.485608,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[33] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 4.735608,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[33] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 4.881479,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[47] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 4.933333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[5] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 5.131479,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[47] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 5.458333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[6] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 5.588054,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[50] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 5.690159,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[3] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 5.748851,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[44] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 5.838054,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[50] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 5.891667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[7] -> SHIP_CALLS['tanker'] arrival",
+   "text": "FUEL TANKER ARRIVED AND STANDING OFF. No transfer until the guard boat reports on station."
+  },
+  {
+   "hour": 5.940159,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[3] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 5.998851,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[44] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 6.0,
+   "kind": "civic",
+   "places": [
+    "customs_north",
+    "customs_south",
+    "zocalo",
+    "arrival_concourse"
+   ],
+   "source": "reference/01-station-exterior/welcome to babylon 5.webp, authority 1",
+   "text": "FOLLOW ALL CUSTOMS PROCEDURES"
+  },
+  {
+   "hour": 6.008073,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[51] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 6.258073,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[51] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 6.316667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[8] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 6.401909,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[40] + stay_h - 0.25 h",
+   "text": "Lighter crews for the standoff freighter, muster at transfer systems. Suits and tethers checked at the lock."
+  },
+  {
+   "hour": 6.636922,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[6] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 6.651909,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[40] + stay_h",
+   "text": "STANDOFF-CLASS FREIGHTER DEPARTING. All lighters to be recovered before she breaks moorage."
+  },
+  {
+   "hour": 6.659106,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[48] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 6.741667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[9] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 6.886922,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[6] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 6.909106,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[48] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 7.175,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[10] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 7.591667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[11] -> SHIP_CALLS['diplomatic'] arrival",
+   "text": "DIPLOMATIC VESSEL ARRIVED AND STANDING OFF. Reception party to the diplomatic wing."
+  },
+  {
+   "hour": 7.675172,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[46] + stay_h - 0.25 h",
+   "text": "The diplomatic party will embark from the transfer lock. The concourse route is closed for the next quarter-hour."
+  },
+  {
+   "hour": 7.925172,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[46] + stay_h",
+   "text": "DIPLOMATIC VESSEL DEPARTING. The wing is closed to visitors until she is clear."
+  },
+  {
+   "hour": 7.975,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[12] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 8.0,
+   "kind": "watch",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "npc/schedule.role_on_duty + LAW-CRIME-DOWNBELOW 2.2's three-shift table",
+   "text": "B WATCH. All personnel report to duty stations. 156 security on watch. Customs positions to be manned for the day's arrivals."
+  },
+  {
+   "hour": 8.308333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[13] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 8.616667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[14] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 8.833423,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[55] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 8.916667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[15] -> SHIP_CALLS['diplomatic'] arrival",
+   "text": "DIPLOMATIC VESSEL ARRIVED AND STANDING OFF. Reception party to the diplomatic wing."
+  },
+  {
+   "hour": 9.083423,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[55] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 9.216667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[16] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 9.516667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[17] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 9.54363,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[0] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 9.685688,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[54] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 9.79363,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[0] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 9.816667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[18] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 9.935688,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[54] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 10.063643,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[14] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 10.116667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[19] -> SHIP_CALLS['ef_transport'] arrival",
+   "text": "EARTHFORCE PERSONNEL TRANSPORT NOW ARRIVING, docking bays. Station personnel to receive."
+  },
+  {
+   "hour": 10.313643,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[14] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 10.416667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[20] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 10.420512,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[38] + stay_h - 0.25 h",
+   "text": "Lighter crews for the standoff freighter, muster at transfer systems. Suits and tethers checked at the lock."
+  },
+  {
+   "hour": 10.551094,
+   "kind": "port",
+   "places": [
+    "customs_north",
+    "customs_south",
+    "arrival_concourse"
+   ],
+   "source": "traffic.arrivals + TRAFFIC-AND-CUSTOMS 5.2",
+   "text": "CUSTOMS ADVISORY. Asimov-class liner arriving in fifteen minutes with 689 passengers. All processing positions to be manned."
+  },
+  {
+   "hour": 10.670512,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[38] + stay_h",
+   "text": "STANDOFF-CLASS FREIGHTER DEPARTING. All lighters to be recovered before she breaks moorage."
+  },
+  {
+   "hour": 10.716667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[21] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 10.801094,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[22] -> SHIP_CALLS['liner'] arrival",
+   "text": "ASIMOV-CLASS LINER NOW ARRIVING, docking bays. Arriving passengers to customs."
+  },
+  {
+   "hour": 10.890259,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[10] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 10.983511,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[17] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 11.016667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[23] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 11.140259,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[10] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 11.233511,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[17] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 11.316667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[24] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 11.497581,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[53] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 11.625,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[25] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 11.747581,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[53] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 11.85231,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[4] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 11.95,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[26] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 12.10231,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[4] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 12.316667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[27] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 12.716667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[28] -> SHIP_CALLS['ef_transport'] arrival",
+   "text": "EARTHFORCE PERSONNEL TRANSPORT NOW ARRIVING, docking bays. Station personnel to receive."
+  },
+  {
+   "hour": 12.742971,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[9] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 12.992971,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[9] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 13.133333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[29] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 13.229261,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[5] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 13.479261,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[5] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 13.55,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[30] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 13.864363,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[45] + stay_h - 0.25 h",
+   "text": "Lighter crews for the standoff freighter, muster at transfer systems. Suits and tethers checked at the lock."
+  },
+  {
+   "hour": 13.958543,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[21] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 13.966667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[31] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 14.0,
+   "kind": "civic",
+   "places": [
+    "customs_north",
+    "customs_south",
+    "zocalo",
+    "arrival_concourse"
+   ],
+   "source": "reference/01-station-exterior/welcome to babylon 5.webp, authority 1",
+   "text": "TIME ON B-5 IS EARTH MEAN TIME (EMT)"
+  },
+  {
+   "hour": 14.114363,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[45] + stay_h",
+   "text": "STANDOFF-CLASS FREIGHTER DEPARTING. All lighters to be recovered before she breaks moorage."
+  },
+  {
+   "hour": 14.208543,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[21] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 14.377753,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[12] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 14.383333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[32] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 14.627753,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[12] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 14.750719,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[2] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 14.762768,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[29] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 14.8,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[33] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 15.000719,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[2] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 15.012768,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[29] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 15.216667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[34] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 15.633333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[35] -> SHIP_CALLS['freighter_standoff'] arrival",
+   "text": "STANDOFF-CLASS FREIGHTER ARRIVED AND STANDING OFF. Lighterage to be arranged through the cargo desk."
+  },
+  {
+   "hour": 15.85552,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[8] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 16.0,
+   "kind": "watch",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "npc/schedule.role_on_duty + LAW-CRIME-DOWNBELOW 2.2's three-shift table",
+   "text": "C WATCH. All personnel report to duty stations. 177 security on watch. Zocalo and licensed premises to be cleared at closing."
+  },
+  {
+   "hour": 16.05,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[36] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 16.10552,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[8] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 16.220474,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[18] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 16.466667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[37] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 16.470474,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[18] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 16.858333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[38] -> SHIP_CALLS['freighter_standoff'] arrival",
+   "text": "STANDOFF-CLASS FREIGHTER ARRIVED AND STANDING OFF. Lighterage to be arranged through the cargo desk."
+  },
+  {
+   "hour": 16.997202,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[32] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 17.032466,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[15] + stay_h - 0.25 h",
+   "text": "The diplomatic party will embark from the transfer lock. The concourse route is closed for the next quarter-hour."
+  },
+  {
+   "hour": 17.216667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[39] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 17.247202,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[32] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 17.282466,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[15] + stay_h",
+   "text": "DIPLOMATIC VESSEL DEPARTING. The wing is closed to visitors until she is clear."
+  },
+  {
+   "hour": 17.299581,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[22] + stay_h - 0.25 h",
+   "text": "Final call, Asimov-class liner. Passengers with cleared papers to the bay elevators. Uncleared passengers remain in the hall."
+  },
+  {
+   "hour": 17.310633,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[16] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 17.541667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[40] -> SHIP_CALLS['freighter_standoff'] arrival",
+   "text": "STANDOFF-CLASS FREIGHTER ARRIVED AND STANDING OFF. Lighterage to be arranged through the cargo desk."
+  },
+  {
+   "hour": 17.549581,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[22] + stay_h",
+   "text": "ASIMOV-CLASS LINER DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 17.560633,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[16] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 17.858333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[41] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 18.175,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[42] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 18.176209,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[13] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 18.178829,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[19] + stay_h - 0.25 h",
+   "text": "Drafted personnel for the EarthForce transport, muster at the bay gallery with orders and kit."
+  },
+  {
+   "hour": 18.426209,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[13] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 18.428829,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[19] + stay_h",
+   "text": "EARTHFORCE PERSONNEL TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 18.491667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[43] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 18.808333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[44] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 19.125,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[45] -> SHIP_CALLS['freighter_standoff'] arrival",
+   "text": "STANDOFF-CLASS FREIGHTER ARRIVED AND STANDING OFF. Lighterage to be arranged through the cargo desk."
+  },
+  {
+   "hour": 19.441667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[46] -> SHIP_CALLS['diplomatic'] arrival",
+   "text": "DIPLOMATIC VESSEL ARRIVED AND STANDING OFF. Reception party to the diplomatic wing."
+  },
+  {
+   "hour": 19.502744,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[35] + stay_h - 0.25 h",
+   "text": "Lighter crews for the standoff freighter, muster at transfer systems. Suits and tethers checked at the lock."
+  },
+  {
+   "hour": 19.75,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[47] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 19.752744,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[35] + stay_h",
+   "text": "STANDOFF-CLASS FREIGHTER DEPARTING. All lighters to be recovered before she breaks moorage."
+  },
+  {
+   "hour": 19.838356,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[28] + stay_h - 0.25 h",
+   "text": "Drafted personnel for the EarthForce transport, muster at the bay gallery with orders and kit."
+  },
+  {
+   "hour": 19.990641,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[31] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 20.066667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[48] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 20.088356,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[28] + stay_h",
+   "text": "EARTHFORCE PERSONNEL TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 20.240641,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[31] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 20.282916,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[20] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 20.383333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[49] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 20.532916,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[20] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 20.577242,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[43] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 20.716667,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[50] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 20.827242,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[43] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 21.108333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[51] -> SHIP_CALLS['transport'] arrival",
+   "text": "UNITED SPACEWAYS TRANSPORT NOW ARRIVING, docking bays. Passengers to customs on disembarkation."
+  },
+  {
+   "hour": 21.633333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[52] -> SHIP_CALLS['shuttle'] arrival",
+   "text": "IN-SYSTEM SHUTTLE NOW ARRIVING, docking bays."
+  },
+  {
+   "hour": 21.766863,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[30] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 22.016863,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[30] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 22.233333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[53] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 22.444078,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[27] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 22.514361,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[23] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 22.694078,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[27] + stay_h",
+   "text": "UNITED SPACEWAYS TRANSPORT DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 22.764361,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[23] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 22.833333,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[54] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 23.298278,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[49] + stay_h - 0.25 h",
+   "text": "Shuttle boarding at the bay elevators. Hand baggage only; no cargo will be carried."
+  },
+  {
+   "hour": 23.525,
+   "kind": "port",
+   "places": [
+    "arrival_concourse",
+    "customs_north",
+    "customs_south",
+    "docking_bays",
+    "bay_elevators",
+    "zocalo",
+    "transfer_systems",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[55] -> SHIP_CALLS['freighter_bay'] arrival",
+   "text": "ACHILLES-TYPE FREIGHTER NOW ARRIVING, docking bays. Bay crews to grapple stations."
+  },
+  {
+   "hour": 23.548278,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[49] + stay_h",
+   "text": "IN-SYSTEM SHUTTLE DEPARTING. Bay doors closing."
+  },
+  {
+   "hour": 23.581,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[26] + stay_h - 0.25 h",
+   "text": "Cargo detail for the Achilles-type freighter, report to the bay gallery. Manifests to the quartermaster before you go up."
+  },
+  {
+   "hour": 23.828973,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[39] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  },
+  {
+   "hour": 23.831,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays"
+   ],
+   "source": "traffic.arrivals(0)[26] + stay_h",
+   "text": "ACHILLES-TYPE FREIGHTER DEPARTING. Grapples clear, bay doors closing."
+  },
+  {
+   "hour": 23.901451,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[7] + stay_h - 0.25 h",
+   "text": "Transfer party for the fuel tanker, report to transfer systems. No open work in the transfer corridor while she is connected."
+  },
+  {
+   "hour": 23.956299,
+   "kind": "port",
+   "places": [
+    "docking_bays",
+    "bay_elevators",
+    "cargo_bays",
+    "transfer_systems"
+   ],
+   "source": "traffic.arrivals(0)[42] + stay_h - 0.25 h",
+   "text": "Final call, United Spaceways transport. Ticketed passengers to the bay elevators with identicards in hand."
+  }
+ ],
+ "hash_vector": [
+  {
+   "h": "cbf29ce484222325",
+   "s": ""
+  },
+  {
+   "h": "af63dc4c8601ec8c",
+   "s": "a"
+  },
+  {
+   "h": "ea64ca057c353892",
+   "s": "name_given|res:0|dialogue|res:0"
+  },
+  {
+   "h": "20d010db6c62517b",
+   "s": "G'Kar"
+  },
+  {
+   "h": "8eff86cd7ceee077",
+   "s": "Na'Toth \u2014 Narn"
+  }
+ ],
+ "kinds": [
+  "name_given",
+  "tell_learned",
+  "route_time",
+  "job_offer",
+  "debt",
+  "appointment",
+  "rumour",
+  "incident_seen"
+ ],
+ "marks": {
+  "rangers_aboard": "brooch"
+ },
+ "mutable_kinds": [
+  "route_time",
+  "job_offer",
+  "appointment",
+  "rumour",
+  "debt"
+ ],
+ "route_tol_min": 1.0,
+ "routes": [
+  {
+   "a": "customs_north",
+   "b": "arrival_concourse",
+   "detail": "0 m axial + 44 m arc at 0.760 g",
+   "metres": 44.307,
+   "minutes": 0.567
+  },
+  {
+   "a": "arrival_concourse",
+   "b": "customs_south",
+   "detail": "0 m axial + 620 m arc at 0.760 g",
+   "metres": 620.297,
+   "minutes": 7.9387
+  },
+  {
+   "a": "customs_north",
+   "b": "customs_south",
+   "detail": "0 m axial + 665 m arc at 0.760 g",
+   "metres": 664.604,
+   "minutes": 8.5057
+  }
+ ],
+ "stale_after_days": 7,
+ "standing_blocks": {
+  "centauri": "the Centauri Republic's mission",
+  "criminal": "FAC-25's networks -- the ledger the official one must not see",
+  "downbelow": "standing among the underclass -- ROLE-10's informer mark",
+  "ea_lawful": "EarthForce, customs, the Ombuds -- the official ledger",
+  "league": "the League of Non-Aligned Worlds' delegations",
+  "minbari": "the Minbari delegation and the religious caste aboard",
+  "narn": "the Narn regime's mission and the refugee committee",
+  "nightwatch": "FAC-24's informer standing, distinct from both"
+ },
+ "standing_range": [
+  -100.0,
+  100.0
+ ],
+ "states": [
+  "unverified",
+  "verified",
+  "refuted",
+  "stale"
+ ]
+}
