@@ -101,10 +101,24 @@ SYS-14's CHECK: *"one seeded incident replayed three ways -- player-absent /
 player-helps / player-reports -- yields three world states that differ in NAMED
 facts (which ledger row, whose standing, which stock line, who is in custody),
 not merely in a log string"*. `three_ways()` runs it and `--gate` diffs the
-three fact sets and prints the facts unique to each. **21 of 22 classes give
-three distinct states and one gives two** -- INC-PSICOP, where helping and
-reporting a Psi Cop's arrival are the same non-act, and that is reported here
-rather than hidden.
+three fact sets and prints the facts unique to each.
+
+**AND `stance_table()` ASKS IT OF EVERY CLASS, WHICH IS NEW IN 4t AND IS THE
+POINT.** Until then `accept()` ran the diff on `cid="INC-CONTRA"`, hardcoded in
+its own signature, and passed -- while INC-PSICOP gave TWO world states at both
+of its places at every hour, because its HELPS and REPORTS branches were
+identical text. The number is now computed by the gate and printed as "N of M",
+never written into this docstring, and any class allowed fewer than three must
+appear in `STANCE_EXEMPT` with a reason. `STANCE_EXEMPT` is currently EMPTY:
+INC-PSICOP was fixed against FAC-05's own spec row rather than excused.
+
+AND A STANDING DELTA NOW LANDS SOMEWHERE THAT SURVIVES MIDNIGHT. `_standing`
+validates its counterparty against `journal.STANDING_BLOCKS` and RAISES on an
+unknown one -- a precondition that went red on eleven of the sixteen names this
+module was already using -- and moves the player's real `journal.Journal` when
+a world carries one. Before 4t this module called `journal.move_standing` zero
+times, so "three world states that differ by name" were three states of a dict
+that `World.carry()` discards. `--ledger` is the gate.
 
 WHAT IT FOUND ABOUT THE STATION
 -------------------------------
@@ -173,6 +187,7 @@ Run: python3 station/incident.py --report      the class table and its rates
      python3 station/incident.py --gate        THE GATE: rate, stances, controls
 """
 
+import json
 import math
 import os
 import sys
@@ -188,6 +203,7 @@ import consequence as cq                                       # noqa: E402
 import directory as dr                                         # noqa: E402
 import economy as ec                                           # noqa: E402
 import interior as it                                          # noqa: E402
+import journal as JN                                           # noqa: E402
 import plant_systems as plant                                  # noqa: E402
 import player as PL                                            # noqa: E402
 import populace as pop                                         # noqa: E402
@@ -2322,6 +2338,14 @@ class World:
         self.elev_down = False
         self.sickhomes = {}
         self.log = []
+        #: The player's real `journal.Journal`, or None. When it is set,
+        #: `_standing` moves it -- which is the difference between a world
+        #: delta that exists and one that reaches the save file.
+        self.ledger = None
+        #: The incident currently resolving, set by `_resolve` so that a
+        #: ledger entry can name its own source event without every resolver
+        #: growing an argument.
+        self.incident = None
 
     # -- writing ------------------------------------------------------------
     def fact(self, kind, subject, detail):
@@ -2373,6 +2397,11 @@ class World:
         # than to the instance.
         w.sickhomes = {k: v * HEAT_DECAY for k, v in self.sickhomes.items()
                        if v * HEAT_DECAY >= 1.0}
+        # THE LEDGER CROSSES THE DAY BOUNDARY AND NOTHING DECAYS IT. Standing
+        # is the one quantity here that is meant to accumulate: `THE-GAME`
+        # §5's whole argument is that failure costs "time and standing", which
+        # is only a cost if yesterday's is still on the card this morning.
+        w.ledger = self.ledger
         for who, row in sorted(self.custody.items()):
             w.fact("custody", who, f"held from day {row['day']}: {row['charge']}")
         return w
@@ -2408,8 +2437,145 @@ def _seize(w, inc, item, person):
            f"{item} taken from {_who(person)} at {inc.place}")
 
 
+#: THE PLAYER, spelled once. `_standing`'s first argument is either this or an
+#: `npc_id`, and the two mean opposite things (see `ledger_block`).
+PLAYER = "player"
+
+#: EVERY FACTION NAME THIS MODULE MAY MOVE, AND THE LEDGER ROW IT LANDS ON.
+#:
+#: Written in session 4t. Before it, `_standing` took any string and wrote it
+#: into `World.facts`, and **eleven of the sixteen names in use did not exist
+#: in `journal.STANDING_BLOCKS`** -- the ledger `player.py` carries and
+#: `journal.gd` reads. `earthforce` was a rename of `ea_lawful`, `lurkers` of
+#: `downbelow`; the rest simply had no receiver. So the module described a
+#: standing economy and moved nothing: three world states "that differ by name"
+#: were three states of a dict that is discarded when the day ends.
+#:
+#: The mapping is not a convenience. Six rows RENAME (the ledger already had
+#: the counterparty under another word) and ten are IDENTITY, and each rename
+#: is justified from `docs/spec/PEOPLE.md`'s own FAC rows rather than by
+#: resemblance. Where no honest existing row existed, the row was added to
+#: `journal.STANDING_BLOCKS` instead of folded into `ea_lawful` -- INV-1055.
+FACTION_LEDGER = {
+    # -- renames: the ledger already had this counterparty ----------------
+    "earthforce": "ea_lawful",       # FAC-02/03; the block's own gloss says
+                                     # "EarthForce, customs, the Ombuds"
+    "lurkers": "downbelow",          # FAC-24 IS titled "Downbelow / the
+                                     # lurkers"
+    "drazi": "league",               # FAC-13, a League member state
+    "pakmara": "league",             # FAC-15, likewise
+    "hospitality": "civil_admin",    # licensing sits with FAC-01
+    "housing": "civil_admin",        # the housing office, FAC-01
+    "engineers": "civil_admin",      # ROLE-07 maintenance, employed by FAC-01
+    "traffic": "civil_admin",        # traffic control, FAC-01
+    # -- identity: same word both sides -----------------------------------
+    "criminal": "criminal",          # FAC-25
+    "nightwatch": "nightwatch",      # FAC-04
+    "narn": "narn",                  # FAC-09
+    "centauri": "centauri",          # FAC-10
+    "psi_corps": "psi_corps",        # FAC-05
+    "dockers_guild": "dockers_guild",  # FAC-06
+    "medical": "medical",            # FAC-07
+    "merchants": "merchants",        # FAC-08
+}
+
+#: The one non-faction value `faction` may take. `_standing(w, npc_id,
+#: "player", +2)` is not a faction standing at all -- it is that NPC's regard
+#: FOR the player, which `journal.Journal` models as the per-person favour
+#: ledger, not as a block. It is allowed, and it is allowed only in that
+#: direction.
+REGARD = "player"
+
+
+def _is_person(key):
+    """Is this counterparty a PERSON rather than a faction?
+
+    Three cases exist in the resolvers and the precondition below found the
+    third by raising on it: `(player, faction)` is the player's standing,
+    `(npc_id, "player")` is that resident's regard for the player, and
+    `(npc_id, npc_id)` -- INC-NEIGHBOUR and INC-STOCKOUT -- is one neighbour's
+    regard for another, which is nobody's faction ledger and must not be
+    routed onto one. A resident id is `res:<seed>:<place>:<species>:<n>`; a
+    faction name never contains a colon.
+    """
+    return key == PLAYER or ":" in str(key)
+
+
+class UnknownFaction(KeyError):
+    """A standing delta aimed at a counterparty no ledger can receive.
+
+    RAISED, not logged. This is the same shape as `ragdoll.gd::promote`
+    refusing a basis whose determinant is -1: a precondition that costs
+    nothing, cannot be satisfied by a description, and goes red the instant
+    the interface it asserts stops being true. When it was first written it
+    went red on eleven of the sixteen names this module was already using.
+    """
+
+
+def ledger_block(whose, faction):
+    """Which `journal.STANDING_BLOCKS` row this delta belongs on, or None.
+
+    None means "this is regard for the player, not faction standing". Anything
+    else raises rather than being silently written into a dict nobody reads.
+    """
+    if _is_person(faction):
+        if whose == faction:
+            raise UnknownFaction(
+                f"_standing(w, {whose!r}, {faction!r}, ...) -- somebody's "
+                f"regard for themselves is not a quantity")
+        if faction != REGARD and not _is_person(whose):
+            raise UnknownFaction(
+                f"_standing(w, {whose!r}, {faction!r}, ...) -- a faction's "
+                f"regard for one named resident is not a ledger this station "
+                f"keeps; write it the other way round")
+        return None
+    block = FACTION_LEDGER.get(faction)
+    if block is None:
+        raise UnknownFaction(
+            f"{faction!r} is not a counterparty this station can credit: "
+            f"FACTION_LEDGER has {sorted(FACTION_LEDGER)}")
+    if block not in JN.STANDING_BLOCKS:
+        raise UnknownFaction(
+            f"{faction!r} routes to {block!r}, which is not one of "
+            f"journal.STANDING_BLOCKS {tuple(JN.STANDING_BLOCKS)} -- the "
+            f"ledger player.py carries cannot receive it")
+    return block
+
+
 def _standing(w, whose, faction, delta):
+    """Move standing, AND MOVE IT SOMEWHERE THAT SURVIVES THE DAY.
+
+    Two writes, deliberately. The `World` fact is what the stance diff reads
+    and what `fingerprint()` hashes -- it is the *evidence* that the three
+    stances differ. `w.ledger` is the player's real `journal.Journal`, and it
+    is what makes the difference *persist*: it round-trips through
+    `player.Player.state()`, comes back through `player.from_state()`, and is
+    the dictionary `journal.gd` mints against in the engine.
+
+    A world with no ledger attached still records the fact, because
+    `three_ways()` resolves into throwaway worlds on purpose and a stance diff
+    must not need a player to exist.
+    """
+    block = ledger_block(whose, faction)
     w.fact("standing", f"{whose}:{faction}", f"{delta:+.1f}")
+    if block is None or whose != PLAYER or w.ledger is None:
+        return
+    w.ledger.move_standing(block, float(delta), _cause(w, faction))
+
+
+def _cause(w, faction):
+    """The source event, in the words `journal.move_standing` refuses to omit.
+
+    `Journal.move_standing` raises on an empty cause -- PLY-07's rule that an
+    entry names the event it came from. So the incident currently resolving is
+    carried on the world (`World.incident`, set by `_resolve`) rather than
+    threaded through fourteen resolver signatures.
+    """
+    inc = getattr(w, "incident", None)
+    if inc is None:                                          # pragma: no cover
+        return f"standing with {faction} moved, source unrecorded"
+    return (f"{inc.cid} at {inc.place}, day {inc.day} {inc.hour:05.2f} "
+            f"({getattr(inc, 'stance', '?')})")
 
 
 def _stock(w, place, good, delta):
@@ -2452,6 +2618,23 @@ def _heat(w, place, delta):
 
 ABSENT, HELPS, REPORTS = "absent", "helps", "reports"
 STANCES = (ABSENT, HELPS, REPORTS)
+
+
+def _resolve(k, inc, w, stance):
+    """THE ONE PLACE A CLASS IS RESOLVED. Two call sites, one function.
+
+    It exists so that `World.incident` is set for the duration and cleared
+    afterwards, which is what lets a ledger entry cite the event that caused
+    it. It is also the shape this project keeps having to learn: a rule
+    applied at the table rather than at one of its entries. Before it there
+    were two `k.resolve(...)` call sites, and anything added to one of them
+    would have been absent from the other.
+    """
+    prev, w.incident = w.incident, inc
+    try:
+        k.resolve(inc, w, stance)
+    finally:
+        w.incident = prev
 
 
 def _responded(inc):
@@ -2739,16 +2922,58 @@ def _res_quar(inc, w, st):
 
 
 def _res_psicop(inc, w, st):
+    """THE CLASS THAT COLLAPSED, AND WHY IT DID.
+
+    Until session 4t this was the one class of thirty whose HELPS and REPORTS
+    branches were *character for character identical* -- both wrote a rumour
+    and `psi_corps +0.5`, so a player who helped and a player who informed
+    produced the same fingerprint (`ce0a37c60f1e5523` at both of its places, at
+    every hour). The module's own docstring reported it honestly and nothing
+    could fail on it, because `accept()` only ever ran this diff on
+    `INC-CONTRA`.
+
+    The collapse was a design gap rather than a coding slip: nobody had said
+    what there is to DO at a Psi Cop visit. `docs/spec/PEOPLE.md` FAC-05 says
+    it exactly, in two sentences that were already on the page --
+
+      *"Standing: none to earn -- the Corps tracks the player only if LICENSED
+      PSI is on their card"*, and *"Corps<->rogues: the Downbelow underground
+      railroad -- uncensused, deliberately; seen only as the free clinic's
+      quiet traffic (FAC-07)"*.
+
+    So the old `psi_corps +0.5` was wrong in BOTH branches -- the Corps does
+    not keep a score on an unlicensed civilian -- and the act that is available
+    is the railroad. HELPS walks the unregistered one out ahead of the badge;
+    REPORTS gives the badge a name. The two are opposite acts on two ledgers
+    the station already keeps, and they are the only reading of this scene the
+    spec supports. INV-1057.
+    """
+    subject = inc.cast[0]
     w.fact("rumour", inc.place, "corridors quieten; a Psi Cop pair aboard")
     _news(w, inc, "Psi Corps business call logged")
+    w.fact("rumour", f"{inc.place}:crowd", "volume down; nobody looks up")
     if st == ABSENT:
-        w.fact("rumour", f"{inc.place}:crowd", "volume down; nobody looks up")
+        # The badge works the room and the room lets it. Nothing is decided
+        # about anybody -- which is a state, and it is the one the station is
+        # in on the thousands of days the player is not standing there.
+        _unsolved(w, inc, f"business call at {inc.place}; no name given, "
+                          f"nobody walked out")
     elif st == HELPS:
-        w.fact("rumour", f"{inc.place}:crowd", "volume down; nobody looks up")
-        _standing(w, "player", "psi_corps", +0.5)
+        # FAC-05's own railroad row, and FAC-24's "buys warnings before
+        # sweeps" is the currency it pays in.
+        _card(w, subject, "left the concourse ahead of the scan -- no contact "
+                          "logged, no registration check run")
+        _standing(w, PLAYER, "lurkers", +2.0)
+        _standing(w, "player", "medical", +0.5)   # the clinic's quiet traffic
     else:
-        w.fact("rumour", f"{inc.place}:crowd", "volume down; nobody looks up")
-        _standing(w, "player", "psi_corps", +0.5)
+        # A name, given to a badge. The station's ledger for a denunciation is
+        # FAC-04's, not FAC-05's -- the Corps files it and the Nightwatch
+        # remembers who files.
+        w.fact("docket", _case_id(inc),
+               f"{_who(subject)} -- named to the Corps liaison at "
+               f"{inc.place} (informant: a bystander)")
+        _standing(w, PLAYER, "nightwatch", +1.0)
+        _standing(w, PLAYER, "lurkers", -2.0)
 
 
 def _res_nc(inc, w, st):
@@ -3709,7 +3934,7 @@ def simulate(ctx, world=None, start_h=13.0, window_min=WINDOW_MIN,
                                    k.window_s, ctx.seed)
                     inc.stance = (ABSENT if observer is None
                                   else observer.stance(inc))
-                    k.resolve(inc, w, inc.stance)
+                    _resolve(k, inc, w, inc.stance)
                     fired.append(inc)
                     w.log.append(inc)
                     _WORLD_HEAT.clear()
@@ -3983,7 +4208,7 @@ def three_ways(cid, ctx=None, place=None, hour=13.0, seed="b5"):
     out = {}
     for st in STANCES:
         w = World(day=ctx.day)
-        k.resolve(inc, w, st)
+        _resolve(k, inc, w, st)
         out[st] = w
     sets = {st: out[st].named() for st in STANCES}
     uniq = {st: sets[st] - set().union(*(sets[o] for o in STANCES if o != st))
@@ -4007,6 +4232,148 @@ def stance_report(cid, out=print, **kw):
             out(f"      only here: {f[0]}/{f[1]} = {f[2]}")
     out(f"  DISTINCT WORLD STATES: {n_distinct} of 3")
     return n_distinct
+
+
+# ---------------------------------------------------------------------------
+# 10b.  THE SAME QUESTION, ASKED OF THE WHOLE TABLE
+# ---------------------------------------------------------------------------
+#: CLASSES THAT ARE ALLOWED TO GIVE FEWER THAN THREE, WITH THE REASON.
+#:
+#: EMPTY, AND THE MACHINERY IS KEPT ANYWAY. It is empty because the one class
+#: that used to be in it -- INC-PSICOP -- was fixed rather than excused (see
+#: `_res_psicop`). The table stays because the alternative to a written
+#: exemption is a silently lowered number, and because `stance_table` asserts
+#: in BOTH directions: a class listed here that has started giving three
+#: distinct states FAILS the gate and says "delete this row". An exemption list
+#: that cannot go stale is a place to hide.
+#:
+#: A row is `cid: (n_allowed, why)`. `why` must name what the two collapsed
+#: branches ARE, not merely that they collapse.
+STANCE_EXEMPT = {}
+
+
+def stance_table(out=print, seed="b5", hour=13.0, check=None):
+    """EVERY class, three ways. The gate on the table rather than on one row.
+
+    THIS IS WHY IT EXISTS. `accept()` used to call `stance_report` with
+    `cid="INC-CONTRA"` hardcoded in its own signature, assert three distinct
+    worlds, and print a pass -- while INC-PSICOP gave two, at both of its
+    places and at every hour, for as long as the class existed. CLAUDE.md
+    records the identical defect in `bespoke.BESPOKE_GEOMETRY`, where the same
+    bug was found and fixed on two entries of a table and left in the other
+    seven: *"a fix applied to an instance and not to the rule is a fix that
+    will be needed again"*.
+
+    Returns `(n_ok, n_total, failures)`. Prints one line a class, and the full
+    stance diff for anything that does not give three.
+    """
+    rows, failures, stale = [], [], []
+    for k in CLASSES:
+        try:
+            inc, worlds, _sets, uniq = three_ways(k.cid, hour=hour, seed=seed)
+        except Exception as exc:                              # noqa: BLE001
+            failures.append((k.cid, f"{type(exc).__name__}: {exc}"))
+            rows.append((k.cid, 0, "", exc))
+            continue
+        n = len({worlds[s].fingerprint() for s in STANCES})
+        rows.append((k.cid, n, inc.place, None))
+        allowed = STANCE_EXEMPT.get(k.cid)
+        if n == 3 and allowed is not None:
+            stale.append(k.cid)
+        elif n < 3 and (allowed is None or n < allowed[0]):
+            failures.append((k.cid, f"{n} of 3 at {inc.place}"))
+    n_ok = sum(1 for _c, n, _p, _e in rows if n == 3)
+    out(f"EVERY CLASS, THREE WAYS -- {n_ok} of {len(rows)} resolve into three "
+        f"distinct world states")
+    for cid, n, place, exc in rows:
+        mark = "ok  " if n == 3 else ("EXEMPT" if cid in STANCE_EXEMPT
+                                      else "FAIL")
+        note = f"{exc}" if exc is not None else f"at {place}"
+        out(f"  {mark:6s} {cid:14s} {n} of 3   {note}")
+    for cid, _why in failures:
+        if cid in BY_ID:
+            out("")
+            try:
+                stance_report(cid, out=out, hour=hour, seed=seed)
+            except Exception as exc:                          # noqa: BLE001
+                out(f"{cid} -- {BY_ID[cid].title}")
+                out(f"  RAISED: {type(exc).__name__}: {exc}")
+    for cid, (n_allowed, why) in sorted(STANCE_EXEMPT.items()):
+        out(f"  exemption {cid}: {n_allowed} of 3 allowed -- {why}")
+    if check is not None:
+        check(not failures,
+              f"all {len(rows)} incident classes resolve into three distinct "
+              f"world states (or carry a written exemption)",
+              "; ".join(f"{c} {w}" for c, w in failures) or "none")
+        check(not stale,
+              "no class carries a STALE exemption -- an exempted class that "
+              "has started giving three must have its row deleted",
+              ", ".join(stale) or "none")
+    return n_ok, len(rows), failures
+
+
+#: The hours `stance_sweep` replays every class at. Three, chosen for what the
+#: station is doing rather than for spacing: 03:00 is the quiet watch, 13:00 is
+#: the datum every other gate here uses, 22:00 is the evening peak.
+SWEEP_HOURS = (3.0, 13.0, 22.0)
+
+
+def stance_sweep(out=print, seed="b5", hours=SWEEP_HOURS, check=None,
+                 limit=None):
+    """THE WHOLE PRODUCT: every class, at EVERY PLACE IT CAN HAPPEN, at three
+    hours.
+
+    `stance_table` asks the question once a class, at the class's first place,
+    at the datum -- which is thirty of the combinations that exist. A reviewer
+    swept 1,557 of them and found six failures, all one class; that is the
+    number this reproduces, and the reason it exists as its own flag rather
+    than as part of `--accept` is honesty about cost, not about doubt: it is a
+    couple of minutes, and `--accept` is already 70 s.
+
+    It is also the only form of this gate that can tell a CLASS defect from a
+    PLACE one. Six failures spread over six classes would be six jobs; six
+    failures at one class and every one of its places is a structural fact --
+    CLAUDE.md's *"a number that fails 100% on one side of a line and 1% on the
+    other"*.
+    """
+    n = bad = 0
+    by_class = {}
+    for k in CLASSES:
+        places = k.places()
+        if limit:
+            places = places[:limit]
+        for place in places:
+            for h in hours:
+                n += 1
+                try:
+                    _inc, worlds, _s, _u = three_ways(k.cid, place=place,
+                                                      hour=h, seed=seed)
+                    d = len({worlds[s].fingerprint() for s in STANCES})
+                except Exception as exc:                      # noqa: BLE001
+                    d, exc_s = 0, f"{type(exc).__name__}: {exc}"
+                    by_class.setdefault(k.cid, []).append(
+                        (place, h, 0, exc_s))
+                    bad += 1
+                    continue
+                allowed = STANCE_EXEMPT.get(k.cid)
+                if d < 3 and (allowed is None or d < allowed[0]):
+                    by_class.setdefault(k.cid, []).append((place, h, d, ""))
+                    bad += 1
+    out("")
+    out(f"EVERY CLASS AT EVERY PLACE IT CAN HAPPEN, AT {len(hours)} HOURS "
+        f"{tuple(hours)}")
+    out(f"  {n - bad} of {n} class x place x hour combinations resolve into "
+        f"three distinct world states")
+    for cid, rows in sorted(by_class.items()):
+        out(f"  FAIL {cid}: {len(rows)} of "
+            f"{len(BY_ID[cid].places()) * len(hours)} combinations -- "
+            f"{'; '.join(f'{p} {h:05.2f} -> {d} of 3 {e}' for p, h, d, e in rows[:6])}")
+    if check is not None:
+        check(bad == 0,
+              f"every one of {n} class x place x hour combinations gives three "
+              f"distinct world states",
+              f"{bad} failure(s) over {sorted(by_class)}")
+    return n - bad, n, by_class
 
 
 # ===========================================================================
@@ -4636,6 +5003,145 @@ def near_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
     return n
 
 
+def ledger_day(at="customs_north", policy="citizen", day=1, seed="b5",
+               hours=24, step_min=STEP_MIN, ledger=None):
+    """One seeded station-day with the player present AND A REAL LEDGER UNDER
+    THEM. Returns `(world, fired, journal)`.
+
+    The `journal.Journal` handed in here is the same class `player.Player`
+    carries, and the standing this run moves is on THAT object -- not on a copy
+    and not on a summary. That is the whole point of the function: before it,
+    `incident.py` called `journal.move_standing` exactly zero times and the
+    module's standing economy existed only in a dict that `World.carry()`
+    throws away at midnight.
+    """
+    j = JN.Journal() if ledger is None else ledger
+    obs = Observer(at, policy=policy)
+    w = World(day=day)
+    w.ledger = j
+    w, fired = headless_day(Ctx(day=day, seed=seed), world=w,
+                            step_min=step_min, scope=obs.probe.places,
+                            hours=hours, observer=obs)
+    return w, fired, j
+
+
+def ledger_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
+                day=1):
+    """DOES A STANDING DELTA REACH THE LEDGER THE PLAYER ACTUALLY CARRIES.
+
+    THE ROUND-2 FAILURE THIS IS THE ANSWER TO. That round claimed "three world
+    states that differ by name" and it was true -- of `World.facts`, a list
+    that is created when the day starts, is not carried across `World.carry()`,
+    is read by nothing outside this module, and is discarded. Meanwhile
+    `_standing` was writing sixteen faction names of which **eleven did not
+    exist in `journal.STANDING_BLOCKS`**, and `incident.py` called
+    `journal.move_standing` **zero times**. A delta that only exists inside the
+    generator's own dict is weather.
+
+    So this asserts the join at both ends and by the route `player.py` uses:
+
+      1. a seeded day with the player present moves REAL standing;
+      2. the amount on the ledger equals the amount the day's own world facts
+         say was moved -- so the ledger is not a second, differently-derived
+         number that happens to be non-zero;
+      3. it survives `player.Player.state()` -> JSON -> `player.from_state()`,
+         which is the path `player.py`'s own selftest walks and the path a save
+         file takes;
+      4. and the NEGATIVE CONTROL: the identical day with no ledger attached
+         leaves the ledger at zero, so what is being read back is this day's
+         work and not a default.
+    """
+    out("")
+    out("A STANDING DELTA REACHES THE LEDGER THE PLAYER CARRIES")
+    n = 0
+    w, fired, j = ledger_day(at=at, seed=seed, step_min=step_min, day=day)
+
+    # What the world FACTS say was moved -- parsed back out of the same rows
+    # the stance diff reads, so the two halves cannot drift.
+    want = {}
+    for kind, subj, detail in w.facts:
+        if kind != "standing":
+            continue
+        whose, _, faction = subj.partition(":")
+        if whose != PLAYER:
+            continue
+        block = ledger_block(whose, faction)
+        if block is None:                                    # pragma: no cover
+            continue
+        want[block] = round(want.get(block, 0.0) + float(detail), 4)
+    got = {k: v for k, v in j.standing.items() if v}
+    clamped = {k: v for k, v in want.items()
+               if not (JN.STANDING_MIN <= v <= JN.STANDING_MAX)}
+    out(f"  {len(fired)} incident(s) fired at {at} on day {day}; the day wrote "
+        f"{sum(1 for f in w.facts if f[0] == 'standing')} standing fact(s), "
+        f"{len(want)} of them on the player's own ledger")
+    for k in sorted(set(want) | set(got)):
+        out(f"      {k:16s} world facts {want.get(k, 0.0):+9.2f}   "
+            f"ledger {got.get(k, 0.0):+9.2f}"
+            + ("   (clamped at the ledger's own bounds)"
+               if k in clamped else ""))
+    n += 1
+    check(bool(got),
+          "a seeded day with the player present moves REAL standing on a "
+          "journal.Journal -- incident.py called move_standing 0 times before "
+          "this session", f"{len(got)} ledger row(s) moved: {sorted(got)}")
+    n += 1
+    agree = all(abs(got.get(k, 0.0) - v) < 1e-6
+                for k, v in want.items() if k not in clamped)
+    check(agree,
+          "...and the ledger holds exactly what the day's own world facts say "
+          "was moved -- not a second number that merely happens to be non-zero",
+          f"world {want} against ledger {got}")
+
+    # 3. THE PATH player.py USES. Its own selftest does
+    #    move_standing -> q.state() -> json round trip -> from_state() ->
+    #    r.journal.standing[...], so this walks the same one on a real player.
+    p = PL.random_player(f"incident-ledger-{seed}")
+    p.journal = j
+    blob = json.dumps(p.state())
+    back = PL.from_state(json.loads(blob))
+    n += 1
+    check(back.journal is not None
+          and all(abs(back.journal.standing[k] - v) < 1e-6
+                  for k, v in got.items()),
+          "...and it survives player.state() -> JSON -> player.from_state(), "
+          "which is the route a save file takes",
+          f"{len(blob)} B of purse; back.journal={back.journal!r}")
+    # `if back.journal` WOULD BE FALSE HERE AND IT COST TEN MINUTES.
+    # `Journal.__len__` is the FACT count, and a journal that carries only
+    # standing has no facts -- so a truthiness test on it reads "no journal"
+    # on exactly the object this gate exists to inspect. `is not None`.
+    rb = {k: v for k, v in (back.journal.standing if back.journal is not None
+                            else {}).items() if v}
+    out(f"  READ BACK through player.state() -> {len(blob)} B of JSON -> "
+        f"player.from_state(): {rb}")
+    for k in sorted(rb):
+        why = (back.journal.standing_causes.get(k) or ["(none recorded)"])[-1]
+        out(f"      {k:16s} most recently, {why}")
+
+    # 4. NEGATIVE CONTROL. The identical day, no ledger attached.
+    ctrl = JN.Journal()
+    obs = Observer(at, policy="citizen")
+    w2 = World(day=day)                       # w2.ledger stays None
+    w2, fired2 = headless_day(Ctx(day=day, seed=seed), world=w2,
+                              step_min=step_min, scope=obs.probe.places,
+                              hours=24, observer=obs)
+    if not fired or not fired2:                              # pragma: no cover
+        raise RuntimeError(f"a run produced nothing: with={len(fired)} "
+                           f"without={len(fired2)} -- an empty A/B is not "
+                           f"an A/B")
+    n += 1
+    check(not any(ctrl.standing.values())
+          and w2.fingerprint() == w.fingerprint(),
+          "CONTROL: the same day with no ledger attached leaves the ledger at "
+          "zero and the WORLD byte-identical -- the ledger is a consumer, not "
+          "a second source of facts",
+          f"control standing {sorted(k for k, v in ctrl.standing.items() if v)}"
+          f" (expect none); world {w.fingerprint()} against "
+          f"{w2.fingerprint()}")
+    return n
+
+
 def collapse_gate(out=print, at="customs_north", seed="b5", max_days=10):
     """CAN A BODY EVER FALL OVER WHERE THE PLAYER STANDS, AND IN HOW LONG.
 
@@ -4754,7 +5260,12 @@ def accept(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
 
       1. --selftest      everything answerable without simulating (29 checks)
       2. THREE OUTCOMES  one seeded incident, absent / helps / reports, three
-                         distinct world states with the diffs named
+                         distinct world states with the diffs named -- FOR
+                         EVERY CLASS IN THE TABLE, not for the one this
+                         signature used to name
+      2b. THE LEDGER     and at least one of those deltas lands on the
+                         `journal.Journal` a player carries, survives the save
+                         round trip, and equals what the world facts claim
       3. THE RATE        >=2 meaningful incidents a station-hour near the
                          player, denominator printed, asserted against the
                          NARROWEST reading of "near"
@@ -4763,6 +5274,14 @@ def accept(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
                          is a function of the seed and nothing else
       5. COLLAPSES       and a body can actually fall over where the player
                          stands, within a stated horizon
+
+    STEP 2 USED TO BE ONE ROW OF THE TABLE, AND THE SIGNATURE SAID SO:
+    `cid="INC-CONTRA", place="cargo_bays"`. It passed for as long as it
+    existed while INC-PSICOP resolved into TWO world states at both of its
+    places and at all three hours -- 6 failures in a 1,557-combination sweep,
+    every one of them that class. One row of a table is not the table.
+    `cid`/`place` are kept so the old exemplar is still printed in full, and
+    the assertion is now `stance_table`'s.
     """
     del _FAILED[:]
     n = 0
@@ -4780,10 +5299,19 @@ def accept(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
           f"{cid} at {place} resolves into THREE distinct world states -- not "
           f"two, and not a log line that differs",
           f"{nd} of 3")
+    out("")
+    n_ok, n_tot, _fails = stance_table(out=out, seed=seed, check=check)
+    n += 2
+    n += ledger_gate(out=out, at=at, seed=seed, step_min=step_min)
     n += near_gate(out=out, at=at, seed=seed, step_min=step_min)
     n += absence_gate(out=out, at=at, seed=seed, step_min=step_min)
     n += collapse_gate(out=out, at=at, seed=seed)
     out("")
+    out(f"THE TABLE, NOT ONE ROW OF IT: {n_ok} of {n_tot} incident classes "
+        f"resolve into three distinct world states"
+        + (f"; {len(STANCE_EXEMPT)} written exemption(s): "
+           f"{', '.join(sorted(STANCE_EXEMPT))}" if STANCE_EXEMPT
+           else "; no exemptions"))
     for f in _FAILED:
         out(f"  FAIL {f}")
     out(f"{n - len(_FAILED)}/{n} P1/G3 acceptance checks passed")
@@ -5641,6 +6169,15 @@ def main(argv=None):                                         # pragma: no cover
                          "three worlds are not three")
     ap.add_argument("--absence", action="store_true",
                     help="the same seeded day with and without a player")
+    ap.add_argument("--stance-table", action="store_true",
+                    help="EVERY class, three ways -- the gate on the table "
+                         "rather than on the one row accept() used to name")
+    ap.add_argument("--stance-sweep", action="store_true",
+                    help="every class at EVERY place it can happen, at three "
+                         "hours -- the 1,557-combination form")
+    ap.add_argument("--ledger", action="store_true",
+                    help="does a standing delta reach the journal.Journal a "
+                         "player carries, and survive the save round trip")
     ap.add_argument("--accept", action="store_true",
                     help="P1/G3's whole acceptance in one process, one exit "
                          "code")
@@ -5708,6 +6245,24 @@ def main(argv=None):                                         # pragma: no cover
         del _FAILED[:]
         absence_gate(at=a.at, seed=a.seed, step_min=a.step, policy=a.policy,
                      full=a.full)
+        for f in _FAILED:
+            print(f"  FAIL {f}")
+        return 0 if not _FAILED else 1
+    if a.stance_table:
+        del _FAILED[:]
+        stance_table(seed=a.seed, hour=a.hour, check=check)
+        for f in _FAILED:
+            print(f"  FAIL {f}")
+        return 0 if not _FAILED else 1
+    if a.stance_sweep:
+        del _FAILED[:]
+        stance_sweep(seed=a.seed, check=check)
+        for f in _FAILED:
+            print(f"  FAIL {f}")
+        return 0 if not _FAILED else 1
+    if a.ledger:
+        del _FAILED[:]
+        ledger_gate(at=a.at, seed=a.seed, step_min=a.step)
         for f in _FAILED:
             print(f"  FAIL {f}")
         return 0 if not _FAILED else 1

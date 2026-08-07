@@ -12745,3 +12745,84 @@ them would be a second place to change when INV-345 is overturned.
 and make the rung wholly derived; a design in which a conviction really does edit the card rather
 than open a record; or evidence that a revocation can be lifted, which would break the one-way
 resolution above.
+
+## INV-1055 — the incident generator's sixteen counterparties, and the five ledger blocks that had to exist to receive them
+
+**Authority 5, session 4t.** `station/incident.py::_standing` writes a faction standing delta into
+the world; `station/journal.py::STANDING_BLOCKS` is the ledger `player.py` carries and `journal.gd`
+reads. Until this session the two had never been introduced. `_standing` took any string and the
+resolvers used **sixteen** of them; **eleven were not blocks**, and one of the eleven (`earthforce`)
+was simply `ea_lawful` under another name. `incident.py` called `journal.move_standing` **zero
+times**. So the module's three-stances claim — "three world states that differ in named facts" —
+was true of a dict created at the start of a day, not carried by `World.carry()`, read by nothing
+outside the module, and discarded at midnight.
+
+**What constrained it.** `docs/spec/PEOPLE.md`'s own FAC rows, one per counterparty, rather than
+resemblance. Eight of the sixteen ROUTE onto blocks that already existed: `earthforce -> ea_lawful`
+(the block's own gloss is "EarthForce, customs, the Ombuds"), `lurkers -> downbelow` (FAC-24 is
+titled "Downbelow / the lurkers"), `drazi -> league` and `pakmara -> league` (FAC-13 and FAC-15 are
+League member states), and `engineers`/`housing`/`traffic`/`hospitality -> civil_admin` (all four
+are FAC-01 EarthGov civil departments; a maintenance tech is ROLE-07 and EarthGov employs them).
+Eight are identity. The **five new blocks** — `psi_corps` (FAC-05), `dockers_guild` (FAC-06),
+`medical` (FAC-07), `merchants` (FAC-08) and `civil_admin` (FAC-01) — exist because folding any of
+them into `ea_lawful` would commit the exact error `STANDING_BLOCKS`'s own comment forbids: it
+would make helping the Dockers' Guild and helping the Ombuds the same act, on a station whose
+second season is about those two coming apart.
+
+**`civil_admin` is ONE block for FOUR counterparties and that is a judgement.** Housing,
+maintenance, traffic control and hospitality licensing are one employer and no content yet lets a
+player play them off against each other. Split it the day one does.
+
+**What would overturn it.** A canon reading in which Psi Corps genuinely keeps no ledger on an
+unlicensed civilian at all (FAC-05 says *"none to earn — the Corps tracks the player only if
+LICENSED PSI is on their card"*, which is why `_res_psicop` no longer moves it; three other
+resolvers still do and would have to be re-examined). Or a scene that makes one of `civil_admin`'s
+four departments act against another.
+
+**The precondition is the point.** `ledger_block()` now RAISES `UnknownFaction` on a counterparty
+no ledger can receive — the same shape as `ragdoll.gd::promote` refusing a basis of determinant −1.
+It went red immediately on eleven of the sixteen names in use, and while being written it found a
+third direction nobody had declared: `_standing(w, npc_id_a, npc_id_b, …)` in INC-NEIGHBOUR and
+INC-STOCKOUT, one resident's regard for another, which is nobody's faction ledger.
+
+## INV-1056 — a standing block remembers its last 8 causes
+
+**Authority 5, session 4t.** `Journal.move_standing` has always **refused** a delta with no cause —
+PLY-07's rule that an entry names the event it came from — and then thrown the cause away, which
+made the refusal a formality. The per-NPC `favour` slot in the same class has carried its causes
+since it was written; standing had not. `STANDING_CAUSES = 8` per block, newest last, serialised
+with the ledger.
+
+**What constrained it.** The upper bound is `incident.py`'s measured rate: one seeded station-day
+at `customs_north` writes **405 standing facts**, of which the player's own ledger receives 4
+blocks' worth of dozens of moves. An unbounded list would be the day's whole log carried in every
+save. The lower bound is legibility: a player asking "why does Downbelow dislike me" wants the
+recent, specific answer, and a single most-recent entry cannot show a pattern. 8 shows a pattern
+and costs about 600 bytes a purse.
+
+**What would overturn it.** A journal UI that wants a full standing history, or a save budget that
+cannot afford it. Both are cheap to change: it is one constant and the serialisation is tolerant of
+a longer list on read.
+
+## INV-1057 — what there is to DO at a Psi Cop visit
+
+**Authority 5, session 4t.** INC-PSICOP was the one class of thirty whose HELPS and REPORTS
+branches were character-for-character identical — both wrote a rumour and `psi_corps +0.5`, so
+helping and informing produced the same fingerprint (`ce0a37c60f1e5523`) at both of its places and
+at every hour swept. It was a design gap rather than a coding slip: nobody had said what a
+bystander can do while a badge works a room.
+
+**What constrained it.** Two sentences already on the page in `docs/spec/PEOPLE.md` FAC-05:
+*"Standing: none to earn — the Corps tracks the player only if LICENSED PSI is on their card"*, and
+*"Corps↔rogues: the Downbelow underground railroad — uncensused, deliberately; seen only as the
+free clinic's quiet traffic (FAC-07)"*. The first says the **old** `psi_corps +0.5` was wrong in
+both branches. The second names the act that is actually available. So HELPS walks the
+unregistered one out ahead of the scan and pays in FAC-24's currency — *"being known … buys
+warnings before sweeps"* — plus a nod to the clinic that moves them on; REPORTS gives the badge a
+name, which the station files on FAC-04's ledger, because the Nightwatch is what remembers who
+informs. ABSENT is now a stated fact (`unsolved`: no name given, nobody walked out) rather than a
+mere absence of the other two.
+
+**What would overturn it.** A canon reading in which the Corps rewards civilian informants
+directly on its own books, which would move REPORTS' credit from `nightwatch` to `psi_corps`; or an
+episode establishing that the railroad is not reachable from a public concourse.

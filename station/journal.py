@@ -151,8 +151,36 @@ STANDING_BLOCKS = {
     "minbari": "the Minbari delegation and the religious caste aboard",
     "league": "the League of Non-Aligned Worlds' delegations",
     "downbelow": "standing among the underclass -- ROLE-10's informer mark",
+    # -------------------------------------------------------------------
+    # THE FIVE BELOW WERE ADDED IN SESSION 4t BECAUSE `incident.py` WAS
+    # ALREADY MOVING THEM AND NOBODY WAS RECEIVING IT. INV-1055.
+    #
+    # `incident.py::_standing` wrote sixteen faction names into its own
+    # throwaway dict; eleven of them did not exist here, so eleven of the
+    # station's sixteen counterparties could not be credited or debited on the
+    # ledger `player.py` actually carries. Six of the eleven ROUTE onto blocks
+    # that already existed and were only differently named (earthforce ->
+    # ea_lawful, lurkers -> downbelow, drazi/pak'ma'ra -> league). The five
+    # here do not: each is a FAC block of its own in `docs/spec/PEOPLE.md`,
+    # and folding any of them into `ea_lawful` would commit exactly the error
+    # the comment above this table forbids -- it would make helping the
+    # Dockers' Guild and helping the Ombuds the same act, on a station whose
+    # second season is about those two coming apart.
+    "psi_corps": "FAC-05 -- earnable only with LICENSED PSI on the card, "
+                 "which is why it is a ledger and not a reputation",
+    "dockers_guild": "FAC-06 -- the Guild's own count, the one the ballot "
+                     "in `incident.py`'s grievance board reads",
+    "medical": "FAC-07 -- medlab and the free clinic, who owe favours "
+               "separately from the service that employs them",
+    "merchants": "FAC-08 -- the Zocalo traders' association",
+    "civil_admin": "FAC-01 -- EarthGov's civil departments: housing, "
+                   "maintenance, traffic control, hospitality licensing. "
+                   "ONE block for four counterparties because they are one "
+                   "employer; split it when a place can play them off",
 }
 STANDING_MIN, STANDING_MAX = -100.0, 100.0
+#: How many CAUSES a standing block remembers. INV-1056.
+STANDING_CAUSES = 8
 
 
 class Refused(ValueError):
@@ -269,6 +297,15 @@ class Journal:
         self.facts = {}          # fid -> Fact
         self.people = {}         # npc_id -> memory slot
         self.standing = {k: 0.0 for k in STANDING_BLOCKS}
+        #: WHY each ledger stands where it does -- the last `STANDING_CAUSES`
+        #: entries per block, newest last. `move_standing` has always REFUSED
+        #: a delta with no cause and then thrown the cause away, which made
+        #: the refusal a formality: a ledger that reads `criminal -44.0` and
+        #: cannot say what did it is a number, and the per-NPC `favour` slot
+        #: in this same class has carried its causes since it was written.
+        #: Bounded because `incident.py` moves this hundreds of times a
+        #: station-day and an unbounded list would be the day's whole log.
+        self.standing_causes = {k: [] for k in STANDING_BLOCKS}
         self.refusals = []       # every mint this journal declined, with why
 
     # -- facts -----------------------------------------------------------
@@ -368,6 +405,9 @@ class Journal:
         v = self.standing[block] + float(delta)
         self.standing[block] = round(
             max(STANDING_MIN, min(STANDING_MAX, v)), 4)
+        why = self.standing_causes.setdefault(block, [])
+        why.append("%+.2f %s" % (float(delta), cause))
+        del why[:-STANDING_CAUSES]
         return self.standing[block]
 
     # -- serialisation ----------------------------------------------------
@@ -376,7 +416,8 @@ class Journal:
                 "facts": [f.state_dict() for f in
                           sorted(self.facts.values(), key=lambda x: x.fid)],
                 "people": self.people,
-                "standing": self.standing}
+                "standing": self.standing,
+                "standing_causes": self.standing_causes}
 
     @staticmethod
     def from_state(d: dict) -> "Journal":
@@ -388,6 +429,9 @@ class Journal:
         for k, v in (d.get("standing") or {}).items():
             if k in j.standing:
                 j.standing[k] = float(v)
+        for k, v in (d.get("standing_causes") or {}).items():
+            if k in j.standing:
+                j.standing_causes[k] = [str(x) for x in v][-STANDING_CAUSES:]
         return j
 
     def __len__(self):
