@@ -760,6 +760,13 @@ def build(stem=None, hour=None, deck_dir=None):
         "rooms": rooms,
         "hour": DEFAULT_HOUR if hour is None else float(hour),
         "spawn_derivation": detail,
+        # WHICH OF THE TWO BUILDS THIS MANIFEST DESCRIBES, written down rather
+        # than inferred from the other paths. The packager stages a directory
+        # and `check` looks for the arrival sidecar in one; both used to assume
+        # `DECK_DIR`, which is how a manifest naming the streamed build could
+        # still be cross-checked against the walk-test deck's arrival file --
+        # two different stations, silently compared.
+        "deck_dir": dd,
         "note": "Written by station/boot.py. The spawn is measured off the "
                 "collision shell's own floor, never copied -- see that file.",
     }
@@ -773,7 +780,8 @@ def check(man):
     `arrival.py` out of the deck build -- so agreement is evidence and
     disagreement is a question, but neither file is reading the other.
     """
-    p = os.path.join(DECK_DIR, man["deck"] + "_arrival.json")
+    p = os.path.join(man.get("deck_dir") or DECK_DIR,
+                     man["deck"] + "_arrival.json")
     if not os.path.exists(p):
         print("  no arrival sidecar to cross-check against")
         return True
