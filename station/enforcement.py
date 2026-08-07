@@ -1530,7 +1530,8 @@ def godot_binary():
     return None
 
 
-def _run(extra, timeout=240, verbose=False, ledger_src=None, ledger_at=None):
+def _run(extra, timeout=240, verbose=False, ledger_src=None, ledger_at=None,
+         gate_arg="--arrest-gate", tag=None):
     """One launch of the shipped scene, and THREE things about it are deliberate.
 
     A TIMEOUT IS A RESULT. `--no-enforcement` stops `interact.gd` building the
@@ -1559,6 +1560,14 @@ def _run(extra, timeout=240, verbose=False, ledger_src=None, ledger_at=None):
     shipped Godot path derived nothing; a gate that recomputes the answer cannot
     notice that the shipped path never computes it. See `_prog_gate`.
 
+    AND `gate_arg`/`tag` EXIST FOR ONE REASON: THE SAVEGAME. `--arrest-gate` is
+    one of several gates the shipped scene answers, and round 4's defect was in
+    a different one -- `main.gd::_save_gate`, where `player.gd::load_state` put
+    a STORED rung back over the derived one. Asking that question needs the same
+    launcher with `--save-gate` and a `SAVE gate=` line to parse, and a second
+    copy of this function would be a second set of assumptions about how the
+    engine is started.
+
     Returns `(verdict, output, ledger_path)`.
     """
     g = godot_binary()
@@ -1580,7 +1589,7 @@ def _run(extra, timeout=240, verbose=False, ledger_src=None, ledger_at=None):
         base = ledger_src or LEDGER
         shutil.copyfile(base, led)
     cmd = [g, "--headless", "--path", GODOT_DIR, "--", "--no-coldstart",
-           "--arrest-gate", "--ledger=" + led] + list(extra)
+           gate_arg, "--ledger=" + led] + list(extra)
     try:
         res = subprocess.run(cmd, capture_output=True, text=True,
                              timeout=timeout)
@@ -1590,7 +1599,7 @@ def _run(extra, timeout=240, verbose=False, ledger_src=None, ledger_at=None):
     out = res.stdout + res.stderr + "\n" + _ledger_delta(base, led)
     if verbose:
         print(out)
-    m = re.search(r"^%s gate=(\S+)(.*)$" % GATE_TAG, out, re.M)
+    m = re.search(r"^%s gate=(\S+)(.*)$" % (tag or GATE_TAG), out, re.M)
     if not m:
         return None, out, led
     d = {"gate": m.group(1)}
@@ -1938,6 +1947,283 @@ def _prog_reload(led: str, pl, mr, verbose=False) -> bool:
     return ok
 
 
+_RESTORED_RE = re.compile(
+    r"^player: rung (-?\d+) (\S+) RE-DERIVED after load(.*?) -- (.*)$", re.M)
+_SAVED_RE = re.compile(
+    r"^player: rung (-?\d+) (\S+) RESTORED FROM THE SAVE FILE", re.M)
+
+
+def hold_ledger(day: int = 3, seed: str = "b5") -> tuple:
+    """A card that has been CONVICTED AND MUST KEEP ITS RUNG.
+
+    THE GATE WAS ONE-SIDED AND A HOSTILE VERIFIER BROKE IT IN ONE CLAUSE. Every
+    check in `_prog_reload` asks *did the rung fall?* and nothing asked *did it
+    stay up when it should have?* -- so an over-punishing `rung_of` (the
+    verifier armed it to strip status on ANY conviction) came back
+    ARREST-PROG PASS with all six second-launch rows green. The engine even
+    printed the contradiction it was ignoring, `THE LADDER SAYS IT IS DUE
+    (0 ordinary / 0 serious, under the ladder's 2 / 1)`, and no assertion read
+    it. All three `PROG_CONTROLS` perturb launch 1, the arrest; none perturbs
+    launch 2, the derivation, which is the half these rounds exist for.
+
+    `id_check_fail` is the right offence and it is not chosen for convenience:
+    `consequence.OFFENCES` grades it **1**, `Record.ordinary()` counts only
+    grade 2 and `serious()` only grade 3+, so one of them is a real conviction
+    on the record that the ladder's 2-ordinary / 1-serious thresholds do not
+    reach. `visa_revoked` is false because nothing revoked anything. A card in
+    that state reads `transit` at rung 2 and must keep it.
+
+    The document is written by `economy.Ledger.save`, like every other ledger
+    here, so the engine loads it by the ordinary path.
+    """
+    import tempfile                                             # noqa: PLC0415
+    pl = _mint()
+    led = _ledger_for(pl, day=day, seed=seed)
+    st = led.purses[pl.npc_id]
+    rec = dict(st.get("record") or {})
+    rec["convictions"] = [HOLD_OFFENCE]
+    rec["visa_revoked"] = False
+    rec["revoked_from"] = ""
+    rec["notes"] = list(rec.get("notes") or ()) + [
+        "day %d: fined for %s; no permission withdrawn" % (day, HOLD_OFFENCE)]
+    st["record"] = rec
+    path = os.path.join(tempfile.mkdtemp(prefix="hold-purse-"), "economy.json")
+    _write_ledger(led, path)
+    return pl, path
+
+
+# The one grade-1 offence in `consequence.OFFENCES`. Named here rather than
+# spelled into `hold_ledger` so the assertion below can state its grade from
+# the table instead of from a comment.
+HOLD_OFFENCE = "id_check_fail"
+
+
+def _prog_hold(verbose=False) -> bool:
+    """THE OTHER SIDE OF THE SENTENCE: a conviction that must NOT demote.
+
+    Launch the engine on `hold_ledger`'s document with the same `RELOAD_FLAGS`
+    the acceptance uses, and require the opposite of the acceptance:
+
+      1. the purse line names the rung the card was ISSUED at;
+      2. the derivation line agrees with the document rather than differing
+         from it, and its reason names the ladder declining;
+      3. NOTHING on this deck refuses the card. With the bag empty
+         `enforcement.gd::_pick`'s only trigger is `tier < need`, so a stop
+         opening at all would be a rung that fell.
+    """
+    ok = True
+
+    def ck(name, okv, detail=""):
+        nonlocal ok
+        ok = ok and bool(okv)
+        print("    %s %-46s %s" % ("ok  " if okv else "FAIL", name, detail))
+
+    grade = cq.OFFENCE[HOLD_OFFENCE][1]
+    pl, src = hold_ledger()
+    print("  THE NEGATIVE RELOAD -- a card convicted of `%s` (grade %d, which "
+          % (HOLD_OFFENCE, grade)
+          + "`Record.ordinary()` does not count) MUST KEEP rung %d %s"
+          % (pl.tier, pl.tier_name))
+    d, out, _l = _run(RELOAD_FLAGS, verbose=verbose, ledger_at=src)
+    if d is None:
+        for line in (out or "").splitlines()[-20:]:
+            print("      | " + line)
+        ck("the negative launch reached a verdict", False, "no ARREST line")
+        return False
+    p = _PURSE_RE.search(out)
+    dv = _DERIVED_RE.search(out)
+    cg = _CARDGATE_RE.search(out)
+    nr = _NOREFUSE_RE.search(out)
+    for m in (p, dv, cg, nr):
+        if m:
+            print("      | " + m.group(0))
+    ck("the grade is the table's, not this gate's", grade == 1,
+       "`consequence.OFFENCES[%s]` grades it %d -- if that ever becomes 2 or 3 "
+       "this row is testing the wrong offence" % (HOLD_OFFENCE, grade))
+    ck("launch opened the purse", p is not None,
+       "" if p else "no `interact: purse` line")
+    if p is None:
+        return False
+    ck("...and it STILL reads the rung it was issued at",
+       p.group(3) == pl.tier_name,
+       "purse reads `%s`, the card was issued at `%s`"
+       % (p.group(3), pl.tier_name))
+    ck("...the derivation AGREES with the document",
+       dv is not None and int(dv.group(1)) == int(dv.group(3))
+       and int(dv.group(1)) == int(pl.tier),
+       ("engine %s %s, document %s %s -- %s"
+        % (dv.group(1), dv.group(2), dv.group(3), dv.group(4), dv.group(5)))
+       if dv else "no `interact: rung ... DERIVED` line")
+    ck("NOTHING on this deck refuses the card",
+       cg is None and nr is not None,
+       ("nothing refuses a tier%s card" % nr.group(1)) if nr and cg is None
+       else ("%s REFUSED it at rung %s(%s) against need %s -- the rung fell "
+             "on a conviction the ladder does not price"
+             % (cg.group(1), cg.group(2), cg.group(3), cg.group(4)))
+       if cg else "no verdict line either way")
+    ck("...and no stop opened", int(d.get("refused", 0) or 0) == 0,
+       "refused=%s detained=%s" % (d.get("refused"), d.get("detained")))
+    return ok
+
+
+def _savegame(after_ts: float) -> tuple:
+    """The slot `main.gd::save_to("gate")` just wrote, and PROOF IT IS FRESH.
+
+    `user://` is `~/.local/share/godot/app_userdata/<project>/`, so this is a
+    glob rather than a constant -- the project name lives in `project.godot`
+    and a second copy of it here would be a second copy of a computed fact.
+
+    THE MTIME CHECK IS NOT DEFENSIVE PROGRAMMING. This repository has twice
+    scored a gate against a committed artefact the run had not rebuilt (the
+    stale lighting frames, `budget.py`'s cached collision total), and reading a
+    savegame left behind by an earlier launch would be the same defect in a
+    third place. `after_ts` is the wall clock from just before the launch.
+    """
+    import glob as _g                                             # noqa: PLC0415
+    home = os.path.expanduser("~")
+    hits = _g.glob(os.path.join(
+        home, ".local/share/godot/app_userdata/*/saves/gate.json"))
+    if not hits:
+        return None, "no savegame under %s/.local/share/godot/app_userdata" % home
+    path = max(hits, key=os.path.getmtime)
+    age = os.path.getmtime(path) - after_ts
+    if age < 0.0:
+        return None, ("%s is %.1f s OLDER than this launch -- it was not "
+                      "written by it" % (path, -age))
+    try:
+        with open(path) as f:
+            return json.load(f), path
+    except Exception as e:                                        # noqa: BLE001
+        return None, "%s unreadable -- %s" % (path, e)
+
+
+def _prog_save(led: str, pl, verbose=False) -> bool:
+    """QUIT AND RELOAD **THROUGH THE SAVEGAME**, which is the second loader.
+
+    THE DEFECT, and it is this project's "fix the entry, not the table" defect
+    committed inside the commit that quotes it. Round 3 taught
+    `player.gd::set_purse` to DERIVE the rung and the acceptance went green --
+    and forty lines below its own docstring saying *"the minimal fix is the
+    wrong fix ... it stores the rung as a fact. Do not add it."*, the same file
+    still had `save_state` writing `"tier": tier` and `load_state` reading it
+    back with `tier = int(d.get("tier", tier))`. TWO PURSE LOADERS, ONE FIXED.
+
+    And the ordering made the stale one win: `save.gd::audit` sorts the subject
+    names, so `interact` restores before `player` -- the derivation was computed
+    and then overwritten by the stored copy, with `SAVE gate=PASS` printed
+    beside it.
+
+    So this launches `--save-gate` on the ledger the ARREST launch wrote and
+    asserts on `player.gd`'s OWN printed line after the restore. The control is
+    `--player-saved-rung`, which puts the two deleted lines back: that run must
+    come back holding the rung the card was issued at, and this row must go RED.
+    """
+    ok = True
+
+    def ck(name, okv, detail=""):
+        nonlocal ok
+        ok = ok and bool(okv)
+        print("    %s %-46s %s" % ("ok  " if okv else "FAIL", name, detail))
+
+    import shutil                                                 # noqa: PLC0415
+    import time as _t                                             # noqa: PLC0415
+
+    def launch(flags, path):
+        t0 = _t.time() - 1.0
+        vd, vout, _x = _run(("--no-hud",) + tuple(flags), verbose=verbose,
+                            ledger_at=path, gate_arg="--save-gate", tag="SAVE")
+        snap, why = _savegame(t0)
+        return vd, vout or "", snap, why
+
+    def rung_in(snap) -> tuple:
+        """What the SAVE FILE says about the rung. `(has_it, tier, name)`."""
+        if not isinstance(snap, dict):
+            return None, -99, "?"
+        pd = ((snap.get("_state") or {}).get("player") or {})
+        return ("tier" in pd), int(pd.get("tier", -99)), \
+            str(pd.get("tier_name", "-"))
+
+    print("  THE SAVEGAME -- `--save-gate --ledger=<the file launch 1 wrote>`: "
+          "capture, perturb, restore, and read the rung back")
+    d, out, snap, why = launch((), led)
+    p = _PURSE_RE.search(out)
+    rs = _RESTORED_RE.search(out)
+    sv = _SAVED_RE.search(out)
+    for m in (p, rs, sv):
+        if m:
+            print("      | " + m.group(0))
+    if d is None:
+        for line in out.splitlines()[-20:]:
+            print("      | " + line)
+        ck("the save gate reached a verdict", False, "no SAVE gate= line")
+        return False
+    ck("the save/restore round-trip itself passes", d.get("gate") == "PASS",
+       " ".join("%s=%s" % (k, v) for k, v in d.items() if k != "gate"))
+    ck("`player.gd::load_state` RE-DERIVED the rung",
+       rs is not None and sv is None,
+       ("-- %s" % rs.group(4)) if rs else
+       ("it RESTORED rung %s %s from the save file instead"
+        % (sv.group(1), sv.group(2))) if sv
+       else "no `player: rung ... after load` line at all")
+    ck("...and what came back is the DEMOTED rung",
+       rs is not None and rs.group(2) != pl.tier_name and int(rs.group(1)) == 0,
+       ("restored as rung %s %s; the card was issued at `%s`"
+        % (rs.group(1), rs.group(2), pl.tier_name)) if rs else "no line")
+    # AND THE ARTEFACT, WHICH IS WHERE THE EVIDENCE ACTUALLY IS. Inside one
+    # `--save-gate` run the capture and the restore see the same ledger, so the
+    # stored rung and the derived rung COINCIDE and the pre-fix build behaves
+    # identically -- which is precisely why the defect survived round 3 with a
+    # green gate. The distinguishable thing is the FILE: a build that keeps the
+    # rung out of the snapshot cannot restore a stale one, whatever happens to
+    # the ledger afterwards.
+    has, sv_t, sv_n = rung_in(snap)
+    ck("the SAVE FILE carries no rung at all", has is False,
+       ("%s -- the player section holds no `tier`, so there is nothing for a "
+        "later load to restore over the derivation" % os.path.basename(str(why)))
+       if has is False else
+       ("the player section still carries tier=%d %s" % (sv_t, sv_n))
+       if has else ("no savegame to read -- %s" % why))
+    # CONTROL 1: THE PRE-ROUND-4 CODE VERBATIM, on a copy so the subject's file
+    # is untouched. Two lines back in `save_state`, two in `load_state`, nothing
+    # else changed. If the row above can pass under this flag it is decoration.
+    ctl = led + ".saved"
+    shutil.copyfile(led, ctl)
+    cd, cout, csnap, cwhy = launch(("--player-saved-rung",), ctl)
+    chas, ct, cn = rung_in(csnap)
+    csv_ = _SAVED_RE.search(cout)
+    print("      | CONTROL --player-saved-rung: %s"
+          % (csv_.group(0) if csv_ else "no RESTORED line"))
+    ck("CONTROL --player-saved-rung puts it back in the file",
+       cd is not None and chas is True and csv_ is not None,
+       ("the pre-fix build writes tier=%d %s into the snapshot and restores it "
+        "verbatim" % (ct, cn)) if chas else
+       ("verdict %s, savegame %s" % (cd["gate"] if cd else "NONE", cwhy)))
+    # CONTROL 2: THE HARM ITSELF. `--player-stale-save` writes the DOCUMENT's
+    # frozen report instead of the derived rung -- a save taken before the
+    # conviction landed, which is one of the three cases `player.py`'s comment
+    # names. Under the pre-fix loader that puts `transit` back on a revoked
+    # card, with `SAVE gate=PASS` printed beside it. This row asserts the
+    # DEFECT reproduces, because a control that cannot show the harm is not
+    # evidence that the subject prevents it.
+    ctl2 = led + ".stale"
+    shutil.copyfile(led, ctl2)
+    sd, sout, ssnap, _sw = launch(("--player-stale-save",), ctl2)
+    shas, st_, sn = rung_in(ssnap)
+    ssv = _SAVED_RE.search(sout)
+    print("      | CONTROL --player-stale-save: %s"
+          % (ssv.group(0) if ssv else "no RESTORED line"))
+    ck("CONTROL --player-stale-save reproduces the HARM",
+       sd is not None and ssv is not None and ssv.group(2) == pl.tier_name
+       and shas is True and sn == pl.tier_name,
+       ("a stale save puts rung %s `%s` back on a revoked card and the gate "
+        "still says %s -- the card was issued at `%s` and the ledger says "
+        "revoked" % (ssv.group(1), ssv.group(2),
+                     (sd.get("gate") if sd else "?"), pl.tier_name))
+       if ssv else ("verdict %s, save file tier=%s %s"
+                    % (sd["gate"] if sd else "NONE", st_, sn)))
+    return ok
+
+
 def _prog_gate(verbose=False) -> dict:
     """THE ACCEPTANCE, IN THE SHIPPED SCENE: arrested, held, fined, DEMOTED.
 
@@ -2053,6 +2339,16 @@ def _prog_gate(verbose=False) -> dict:
                       "is asserted; standing on it is not")))
     ok = ok and held_ok
     ok = _prog_reload(led1, pl, mr, verbose=verbose) and ok
+    # AND THE TWO HALVES THE ACCEPTANCE DOES NOT COVER, both added in round 4
+    # because a hostile verifier broke the gate at each of them:
+    #   * the SAVEGAME is a second purse loader and the round-3 fix reached only
+    #     the first one, so a save file put a `transit` rung back on a revoked
+    #     card with `SAVE gate=PASS` printed beside it;
+    #   * every row above asks "did the rung FALL?" and nothing asked "did it
+    #     STAY UP when it should have?" -- so a `rung_of` armed to strip status
+    #     on any conviction at all passed this gate with six green rows.
+    ok = _prog_save(led1, pl, verbose=verbose) and ok
+    ok = _prog_hold(verbose=verbose) and ok
     print("  PROGRESSION CONTROLS -- each removes one input; the demotion must "
           "stop happening")
     for flags, why in PROG_CONTROLS:

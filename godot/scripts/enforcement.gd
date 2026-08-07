@@ -380,12 +380,26 @@ func _load() -> void:
 			int(_brig.get("ring", -1)), int(_brig.get("deck", -1)),
 			int(_brig.get("cells", 0)), _restricted.size()]
 		+ "good(s); a search finds `%s`" % _demoting)
-	print("enforcement: %d place(s) carry a consequence, for %s (rung %d %s), "
-		% [_places.size(), String((d.get("player", {}) as Dictionary).get(
-			"name", "?")), int((d.get("player", {}) as Dictionary).get(
-			"tier", -99)), String((d.get("player", {}) as Dictionary).get(
-			"tier_name", "?"))]
-		+ "response %s" % _spread())
+	# THE BAKE'S SUBJECT IS NAMED AS THE BAKE'S SUBJECT, and it took a hostile
+	# verifier to notice that this line did not say so. It printed
+	# `3 place(s) carry a consequence, for ALLAN, ANNA (rung 0 no_status)` two
+	# lines under `interact: purse player:g2c (IVANOVA, AMIS, ...)` -- a stranger
+	# standing beside the loaded player with nothing marking which was which.
+	# That is the same shape as the round-1 defect where the FINE was baked for
+	# whoever `--bake` happened to read; the fine and the cell are now drawn
+	# per-person here (`_fine_of`, `_cell_of`) and this is all that was left of
+	# it, in a diagnostic. Nothing reads these fields, so the cure is to label
+	# them rather than to remove them: the bake's own subject is real evidence
+	# about what the bake did, and it becomes misleading only when it is
+	# unlabelled.
+	var bs: Dictionary = d.get("player", {}) as Dictionary
+	print("enforcement: %d place(s) carry a consequence, response %s"
+		% [_places.size(), _spread()]
+		+ " -- the table was BAKED against %s (rung %d %s), who is NOT "
+		% [String(bs.get("name", "?")), int(bs.get("tier", -99)),
+			String(bs.get("tier_name", "?"))]
+		+ "necessarily the person this session loaded; the fine and the cell "
+		+ "are drawn for whoever `interact.gd` opened, see `draw check` below")
 	var src: Array = d.get("restricted_from", [])
 	var here := 0
 	for r in src:

@@ -115,6 +115,11 @@ var rung_why := ""
 ## the record moved and the report did not, which is exactly the case a reload
 ## has to get right.
 var tier_stored := -99
+## The last purse document `set_purse` was handed, kept whole so `load_state`
+## can put the rung back through `rung_of` instead of restoring it as a number.
+## It is NOT saved -- `interact.gd`'s ledger snapshot already carries it, and a
+## second copy in the same file is the defect this whole section is about.
+var _purse_doc: Dictionary = {}
 ## Standing hip height and a fitted seat height, metres, for THIS person.
 var hip_m := 0.0
 var seat_m := 0.0
@@ -141,6 +146,10 @@ func set_purse(st: Dictionary) -> void:
 		carrying.append(String(x))
 	carry_cap = int(st.get("carry_cap", 0))
 	tier_stored = int(st.get("tier", -99))
+	# THE DOCUMENT IS KEPT, and it is kept for exactly one reason: `load_state`
+	# has to be able to run this derivation again without a ledger reader. See
+	# the block above `save_state`.
+	_purse_doc = st.duplicate(true)
 	# THE RUNG IS THE ONE FIELD HERE THAT IS **NOT** TAKEN AS HANDED IN, and the
 	# comment above this block used to say all four were. See `rung_of`.
 	var r: Array = rung_of(st)
@@ -345,6 +354,45 @@ func rung_of(st: Dictionary) -> Array:
 func _stored_rung_forced() -> bool:
 	for a in OS.get_cmdline_user_args():
 		if String(a) == "--player-stored-rung":
+			return true
+	return false
+
+
+## THE CONTROL FOR THE **SAVEGAME** HALF, and it is a different defect from
+## `--player-stored-rung`. That one puts the pre-round-3 line back into
+## `rung_of` -- the rung read off the LEDGER document. This one puts the
+## pre-round-4 line back into `save_state`/`load_state` -- the rung read off the
+## SAVE FILE, which survived round 3 untouched because the fix was applied to
+## one of this file's two purse loaders. With it set, `save_state` writes
+## `tier`/`tier_name` and `load_state` restores them verbatim over whatever
+## `interact.gd` derived, exactly as the shipped code did until this round. The
+## save row of `enforcement.py --progression` must go RED under it, or that row
+## is decoration.
+##
+## AND A SECOND FLAG, BECAUSE THE FIRST ONE ALONE CANNOT SHOW THE HARM. Inside
+## one `--save-gate` run the capture and the restore see the same ledger, so the
+## stored rung and the derived rung COINCIDE and the pre-fix build behaves
+## identically to the fixed one. That is not an argument that the defect is
+## harmless -- it is the reason it survived round 3 and a verifier had to force
+## it. The values stop coinciding for exactly the cases `player.py`'s own
+## comment anticipates: a save written by the pre-fix build, a save loaded after
+## the ledger moved on, a hand-edited save. `--player-stale-save` is that case
+## and it invents nothing: it writes `tier_stored`, which IS the frozen report
+## the document still carries, so the save file describes the card as it read
+## BEFORE the conviction landed. Under the pre-fix loader that restores
+## `transit` onto a revoked card. Under this file as it now stands it cannot,
+## because nothing reads it.
+func _saved_rung_forced() -> bool:
+	for a in OS.get_cmdline_user_args():
+		var s := String(a)
+		if s == "--player-saved-rung" or s == "--player-stale-save":
+			return true
+	return false
+
+
+func _stale_save_forced() -> bool:
+	for a in OS.get_cmdline_user_args():
+		if String(a) == "--player-stale-save":
 			return true
 	return false
 
@@ -770,10 +818,34 @@ func _physics_process(delta: float) -> void:
 # nothing set `gravity_m_s2` and a 9.81 export default stood on a 7.454 m/s^2
 # deck; the cure there was to derive it at the point of use, and a save file is
 # not a point of use.
+#
+# AND NOT SAVED, AS OF ROUND 4: `tier` AND `tier_name`. THE FIX ABOVE WAS
+# APPLIED TO ONE OF THIS FILE'S TWO PURSE LOADERS AND NOT TO THE OTHER, which is
+# this project's "fix the entry, not the table" defect committed inside the very
+# commit that quotes it. Round 3 taught `set_purse` to derive the rung -- and
+# forty lines below its own docstring saying *"the minimal fix is the wrong fix
+# ... it stores the rung as a fact. Do not add it."*, `save_state` wrote
+# `"tier": tier` into the savegame and `load_state` read it back verbatim with
+# `tier = int(d.get("tier", tier))`. Two loaders, one fixed.
+#
+# AND THE ORDER MADE IT WIN. `save.gd::audit` SORTS the subject names, `capture`
+# inserts in that order and `restore` walks `state.keys()` -- so "interact"
+# restores before "player". `interact.gd::load_state` calls `set_purse` and
+# derives the rung correctly; `player.gd::load_state` then overwrote it from the
+# stored copy, forty lines later, and the derivation was computed and thrown
+# away. A hostile verifier reproduced it with prints and forced a `transit` rung
+# back onto a revoked card with `SAVE gate=PASS` beside it.
+#
+# THE CURE IS NOT "SAVE IT LAST" AND IT IS NOT "DO NOT OVERWRITE". Both are
+# statements about ordering, and ordering is what made the defect invisible. The
+# cure is that there is exactly ONE writer of `tier` in this file --
+# `set_purse`, via `rung_of` -- and `load_state` reaches the rung by calling it,
+# never by assigning. The rung is then order-independent: whichever of the two
+# loaders runs last, the last thing that touched the rung derived it.
 # ===========================================================================
 
 func save_state() -> Dictionary:
-	return {
+	var d := {
 		"pos": [global_position.x, global_position.y, global_position.z],
 		"yaw": _yaw,
 		"pitch": _pitch,
@@ -782,8 +854,6 @@ func save_state() -> Dictionary:
 		"credits": credits,
 		"carrying": carrying.duplicate(),
 		"carry_cap": carry_cap,
-		"tier": tier,
-		"tier_name": tier_name,
 		"hip_m": hip_m,
 		"seat_m": seat_m,
 		"recline_m": recline_m,
@@ -791,6 +861,15 @@ func save_state() -> Dictionary:
 		"seated": seated,
 		"seat_used_m": seat_used_m,
 	}
+	if _saved_rung_forced():
+		# CONTROL --player-saved-rung: the pre-round-4 pair of lines, restored.
+		# With --player-stale-save the number written is the DOCUMENT's frozen
+		# report instead of the derived rung -- a save file written before the
+		# conviction landed, which is the case that does the damage.
+		d["tier"] = (tier_stored if _stale_save_forced() else tier)
+		d["tier_name"] = ((_tier_label(tier_stored, "?")
+			if _stale_save_forced() else tier_name))
+	return d
 
 
 func load_state(d: Dictionary) -> void:
@@ -819,12 +898,51 @@ func load_state(d: Dictionary) -> void:
 		for x in bag:
 			carrying.append(String(x))
 	carry_cap = int(d.get("carry_cap", carry_cap))
-	tier = int(d.get("tier", tier))
-	tier_name = String(d.get("tier_name", tier_name))
 	hip_m = float(d.get("hip_m", hip_m))
 	seat_m = float(d.get("seat_m", seat_m))
 	recline_m = float(d.get("recline_m", recline_m))
 	wake_h = float(d.get("wake_h", wake_h))
 	seated = String(d.get("seated", seated))
 	seat_used_m = float(d.get("seat_used_m", seat_used_m))
+
+	# THE RUNG IS RE-DERIVED HERE, NOT RESTORED -- and it is re-derived rather
+	# than merely left alone, because "left alone" is a claim about which loader
+	# ran first and that claim is what was wrong. `_purse_doc` is the last purse
+	# `set_purse` was handed, and `interact.gd::load_state` has by now pushed the
+	# RESTORED ledger's purse through `set_purse`, so this is the restored record
+	# going through `rung_of` a second time with the same answer. If some future
+	# ordering runs this file first instead, `interact.gd` derives it afterwards
+	# and the answer is the same. There is no ordering in which a stored number
+	# is the last word.
+	var had_stored := d.has("tier")
+	if _saved_rung_forced():
+		# CONTROL --player-saved-rung: the pre-round-4 lines, verbatim. The rung
+		# is whatever the SAVE FILE said, over the top of the derivation
+		# `interact.gd::load_state` made three calls ago.
+		tier = int(d.get("tier", tier))
+		tier_name = String(d.get("tier_name", tier_name))
+		rung_why = ("CONTROL %s: restored from the save file, "
+			% ("--player-stale-save" if _stale_save_forced()
+				else "--player-saved-rung")
+			+ "which is the defect round 4 exists for")
+		print("player: rung %d %s RESTORED FROM THE SAVE FILE -- %s"
+			% [tier, tier_name, rung_why])
+		return
+	var note := ""
+	if had_stored:
+		note = (" (the save file carried tier=%s %s, which is a REPORT and was "
+			% [d.get("tier"), d.get("tier_name", "-")] + "discarded)")
+	if not _purse_doc.is_empty():
+		set_purse(_purse_doc)
+		print("player: rung %d %s RE-DERIVED after load%s -- %s"
+			% [tier, tier_name, note, rung_why])
+	elif had_stored:
+		# A SAVE FROM A BUILD THAT STORED THE RUNG, LOADED WITH NO LEDGER BEHIND
+		# IT. The honest answer is that this body has no card reading, not the
+		# number the old file happens to carry -- restoring it is the defect.
+		print("player: the save file reports tier=%s %s and there is no purse "
+			% [d.get("tier"), d.get("tier_name", "-")]
+			+ "to derive from -- the rung stays UNREAD (%d %s). The ledger this "
+			% [tier, tier_name]
+			+ "save belongs to is missing.")
 	_eye_now = seated_eye(seat_used_m) if seated != "" else eye_height_m

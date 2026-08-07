@@ -1618,9 +1618,21 @@ func load_state(d: Dictionary) -> void:
 		# holds its own copy and `set_purse` is the only writer. Without this
 		# the ledger says one thing and the HUD says another, which is the
 		# disagreement `hud.gd` and `ambience.gd` already had over room extents.
-		# `player.gd::load_state` runs first in `save.gd`'s ordering, so the
-		# body has its saved credits by now and this only re-asserts them from
-		# the authority.
+		#
+		# AND THIS COMMENT USED TO STATE THE LOAD ORDER AND STATE IT BACKWARDS.
+		# It said *"`player.gd::load_state` runs first in `save.gd`'s ordering,
+		# so ... this only re-asserts them from the authority"*. `save.gd::audit`
+		# SORTS the subject names and `restore` walks the snapshot in that order,
+		# so "interact" runs BEFORE "player" -- this file is first and
+		# `player.gd` is last. A hostile verifier proved it with prints, and the
+		# consequence was not cosmetic: `player.gd::load_state` overwrote the
+		# rung this call had just derived with the number in the save file.
+		#
+		# THE FIX IS NOT AN ORDERING. `player.gd::load_state` now re-derives
+		# through `set_purse` and stores no rung at all, so neither file depends
+		# on going first. This call is still made, and still for the reason
+		# above: the ledger is the authority on the MONEY, and a restored body
+		# whose credits came from its own snapshot is a second copy of it.
 		if _player != null and String(_player.npc_id) != "":
 			var purse := _my_purse()
 			if not purse.is_empty():
