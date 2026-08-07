@@ -433,6 +433,40 @@ def _dlg03(text):
     if vague:
         bad.append("%d counters trade in unnamed goods: %s"
                    % (len(vague), vague[:3]))
+    # AND THE SAME MASK DLG-01 USES, APPLIED TO THE RULE RATHER THAN TO THE ONE
+    # ROW THAT WAS CAUGHT. `CLAUDE.md` records the cost of fixing an instance
+    # and not the table it belongs to: the bespoke-geometry defect was found
+    # and fixed TWICE on individual entries and the other seven kept it.
+    # DLG-03's construction is DLG-01's exactly -- `counter_trade` renders six
+    # shared `_TRADE_SHAPE` templates against each counter's own wares -- so it
+    # is measured the same way, with the counter's own ware, shortage, refusal
+    # and source strings masked out. It is a HARD check because a soft one is
+    # a preference.
+    wsh, wseen = [], {}
+    for k, v in tl.items():
+        w = dlg.counter_wares(*k) or {}
+        toks = set()
+        for val in list(w.get("sells", ())) + [w.get("short", ""),
+                                               w.get("never", ""),
+                                               w.get("source", "")]:
+            val = str(val or "").strip()
+            if len(val) > 2:
+                toks.add(val)
+            toks.update(t for t in val.split() if len(t) > 2)
+        for line in v:
+            m = line
+            for t in sorted(toks, key=lambda s: (-len(s), s)):
+                m = m.replace(t, "@")
+            m = re.sub(r"(?:@[\s,.'-]*)+", "@", m)
+            wseen.setdefault(m, set()).add(k)
+    wsh = [m for m, ks in wseen.items() if len(ks) > 1]
+    if wsh:
+        bad.append("%d of %d trade SHAPES are shared by more than one counter "
+                   "once each counter's own wares are masked out (%d distinct "
+                   "shapes behind %d rendered lines) -- the same "
+                   "proper-noun-substitution construction DLG-01 carries"
+                   % (len(wsh), len(wseen), len(wseen),
+                      sum(len(v) for v in tl.values())))
     if bad:
         return False, "DLG-03: " + "; ".join(bad)
     return True, ("DLG-03: %d counters across %d places, %d distinct "

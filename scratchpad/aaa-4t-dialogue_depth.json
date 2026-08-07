@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "bar": { "min_score": 4, "clean_rounds_required": 2, "max_rounds": 4 },
+  "subsystems": {
+    "dialogue_depth": {
+      "status": "active",
+      "_merge_note": "Written to scratchpad, not docs/aaa-scorecard.json, per the 4t agent brief -- several agents are live and that file is shared.",
+      "rounds": [
+        {
+          "round": 2,
+          "reviewer": "build-4t-dialogue_depth",
+          "scores": { "craft": 3, "fidelity": 3, "performance": 4, "robustness": 4 },
+          "evidence": {
+            "performance": "no geometry; the whole subsystem is 4,108 tier-2 strings + 3,750 Tier-1 renderings baked into <deck>_dialogue.json, 514,583 bytes for a 83-actor deck at four hours, read once at load (engine reports '83 people, 332 rows')",
+            "robustness": "62/62 dialogue selftests, 34/34 broadcast; five negative controls in scratchpad/dlg_controls.py each remove one mechanism and change exactly the row that names it; the mask is byte-stable across PYTHONHASHSEED 0/1/2 after a tie-break fix"
+          },
+          "broke_assertions": true,
+          "what_is_good": [
+            "DLG-02 now passes a STRICTLY HARDER gate than the one it passed in round 1: 30 distinct utterances per cell measured with the species register frame stripped off, where the old count reached 30 by doubling 19 utterances with an affix",
+            "209 newly authored role clauses, one per (role, topic), in the show's register",
+            "the Tier-1 fifty have an address and a caller: behind_counter() casts 33 of the 50, and the baked sidecar the engine loads went 0 -> 20 Tier-1 rows on the same actor list",
+            "DLG-01 is honestly RED and says by how much: 293 sentence frames against 3,750"
+          ],
+          "findings": [
+            { "severity": "major", "dimension": "craft", "descriptor": "C3",
+              "where": "station/dialogue.py::_CAST_TOPIC and the five other _CAST_* tables",
+              "text": "Tier-1 is 293 authored sentence frames rendered 3,750 times by proper-noun substitution. The floor is 3,750 frames. At the normal distance -- one conversation -- it reads as the intended object; two cast members in one session say the same sentence with different names in it, which is the half-distance failure C3 names." },
+            { "severity": "major", "dimension": "fidelity", "descriptor": "F3",
+              "where": "docs/spec/PEOPLE.md DLG-03 vs station/directory.py",
+              "text": "DLG-03's arithmetic is stale against the register it derives from: the spec says 29 counters across 27 places, dialogue.serve_places()/serve_tokens() read 28 and 30 from directory.PLACES, so the per-counter floor is 180 rather than 174. R1 forbids editing either side; this is a SPEC-CHANGE the owner owns." }
+          ]
+        }
+      ]
+    }
+  }
+}
