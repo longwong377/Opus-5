@@ -309,8 +309,9 @@ func _front_door(args: Dictionary) -> bool:
 	# same way an empty `station/generated/` would, so NEW GAME must refuse.
 	_menu.world_ok = (not _boot.is_empty()) and not args.has("no-world")
 	_menu.world_why = ("withheld by --no-world (control)" if args.has("no-world")
-		else "no boot manifest. Build one: `python3 station/arrival.py --build`"
-			+ " then `python3 station/boot.py`")
+		else "%s. Build one: `python3 station/arrival.py --build` then "
+			% (_boot_why if _boot_why != "" else "no boot manifest")
+			+ "`python3 station/boot.py`")
 	var snap: Dictionary = _save_lib().read(MENU_SLOT)
 	_menu.save_ok = not snap.is_empty()
 	_menu.save_why = (_save_lib().describe(snap) if _menu.save_ok
@@ -1767,6 +1768,7 @@ func _layers(said: String) -> int:
 ## The two shapes differ only in nesting -- `arrival.json` keeps its build block
 ## under `build` -- so both are read here rather than one being converted.
 func _boot_manifest(args: Dictionary) -> Dictionary:
+	_boot_why = ""
 	var path := String(args.get("boot", ""))
 	if path == "":
 		var derived := _root().path_join("station/generated/scene/boot.json")
@@ -1776,19 +1778,19 @@ func _boot_manifest(args: Dictionary) -> Dictionary:
 		var deck := _root().path_join("station/generated/scene/deck")
 		var d := DirAccess.open(deck)
 		if d == null:
-			return {}
+			return _no_world("no %s" % deck)
 		var found: Array = []
 		for f in d.get_files():
 			if f.ends_with("_arrival.json"):
 				found.append(deck.path_join(f))
 		if found.is_empty():
-			return {}
+			return _no_world("no boot.json and no *_arrival.json in %s" % deck)
 		found.sort()
 		path = found[0]
 		print("main: no boot.json -- falling back to the arrival sidecar; "
 			+ "run `python3 station/boot.py` to write one")
 	if not FileAccess.file_exists(path):
-		return {}
+		return _no_world("nothing at %s" % path)
 	var f2 := FileAccess.open(path, FileAccess.READ)
 	var doc = JSON.parse_string(f2.get_as_text())
 	if typeof(doc) != TYPE_DICTIONARY:
@@ -1817,6 +1819,25 @@ func _boot_manifest(args: Dictionary) -> Dictionary:
 		_vec3(out.get("spawn", [])).y, _vec3(out.get("spawn", [])).z,
 		String(out.get("spawn_at", "?")), (out.get("rooms", []) as Array).size()])
 	return out
+
+
+## Why there is no world, in one line, WITH THE DIRECTORY IT LOOKED IN.
+##
+## AN EXPORTED BUILD READS ITS WORLD FROM `res://..`, and where that lands is a
+## property of the SHIPPED LAYOUT rather than of the source tree. So "no boot
+## manifest" with no path beside it is a message a player cannot act on and a
+## packager cannot debug -- which is exactly what it cost when `tools/package.sh`
+## first staged a build: the artefact came up, refused, and said nothing about
+## where it had been looking. Carried into `main_menu.gd` so the sentence a
+## player reads on the title screen is this one.
+var _boot_why := ""
+
+
+func _no_world(why: String) -> Dictionary:
+	_boot_why = why
+	print("main: NO WORLD -- %s (res:// is %s, so the world is expected under %s)"
+		% [why, ProjectSettings.globalize_path("res://"), _root()])
+	return {}
 
 
 func _instance(scene: String) -> Node3D:
@@ -1869,8 +1890,45 @@ func _find(n: Node, cls: String) -> Node:
 	return null
 
 
+## WHERE THE WORLD IS. Everything under `station/generated/` -- the deck mesh,
+## the collision shell, the interactables, the arrival sequence, the cell set,
+## the audio bank -- lives OUTSIDE `res://` and is read from disk at runtime,
+## so this one function decides whether the shipped build can find any of it.
+##
+## AND IT WAS EDITOR-ONLY, WHICH NOBODY COULD HAVE SEEN UNTIL SOMETHING WAS
+## EXPORTED. It used to be exactly `globalize_path("res://").path_join("..")`,
+## which is right in a source run and **returns `".."` in an exported one**:
+## measured in session 4t, `ProjectSettings.globalize_path("res://")` is the
+## EMPTY STRING in a packed build, because `res://` is inside a .pck and has no
+## filesystem path at all. `".."` is then resolved against the process working
+## directory -- so the packaged game looked for its world one level above
+## wherever the player happened to be standing in a shell, found nothing, and
+## said "no boot manifest".
+##
+## It is the same shape as every no-caller defect in CLAUDE.md's list, one layer
+## down: the function was correct, tested, and had never been run on the path
+## that ships. Nothing could have caught it before `tools/package.sh` existed,
+## and `package.sh` caught it on its first run by LAUNCHING the artefact.
+##
+## `--data=<dir>` overrides, for a build whose world sits somewhere else.
+var _root_cache := ""
+
+
 func _root() -> String:
-	return ProjectSettings.globalize_path("res://").path_join("..").simplify_path()
+	if _root_cache != "":
+		return _root_cache
+	var args := _args()
+	if args.has("data"):
+		_root_cache = String(args["data"])
+		return _root_cache
+	var base := ProjectSettings.globalize_path("res://")
+	if base == "":
+		# EXPORTED. The pack sits beside the executable, so the executable's own
+		# directory is the anchor -- and it is an anchor that does not care what
+		# the working directory is, which `".."` did.
+		base = OS.get_executable_path().get_base_dir()
+	_root_cache = base.path_join("..").simplify_path()
+	return _root_cache
 
 
 func _headless() -> bool:

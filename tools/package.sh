@@ -117,15 +117,23 @@ fi
 # reader with no entry is a build that boots to an error, which is the failure
 # this script exists to stop happening silently.
 # ---------------------------------------------------------------------------
+# AND EACH ONE SAYS WHETHER THE BUILD IS RUNNABLE WITHOUT IT, plus what a
+# player loses when it is absent. A flat required-list would refuse to package a
+# perfectly playable build over `scene/vista`, which only three places on the
+# station consult; a flat optional-list would happily ship a build with no deck.
+# The distinction is the whole value of the table -- a precondition that cannot
+# distinguish "broken" from "diminished" gets switched off.
+#
+#   path | required | what its absence costs
 DATA=(
-  "station/generated/scene/boot.json"     # main.gd::_boot_manifest
-  "station/generated/scene/deck"          # the deck, collision, interact, arrival sidecars
-  "station/generated/scene/npc"           # ragdoll.gd's 14 species bodies
-  "station/generated/scene/vista"         # vista.gd, what is outside a window
-  "station/generated/audio"               # ambience.gd's 13 loops
-  "station/generated/navgraph.json"       # navgraph.gd
-  "station/generated/economy.json"        # player.gd::has_purse
-  "station/generated/journal.json"        # journal.gd
+  "station/generated/scene/boot.json|yes|main.gd::_boot_manifest -- without it the game cannot start at all"
+  "station/generated/scene/deck|yes|the deck mesh, collision shell, interactables and arrival sequence"
+  "station/generated/audio|no|ambience.gd's 13 loops -- the station is silent"
+  "station/generated/navgraph.json|no|navgraph.gd -- NPCs cannot route"
+  "station/generated/economy.json|no|player.gd::has_purse is false, so tier stays at its sentinel"
+  "station/generated/scene/npc|no|ragdoll.gd's 14 species bodies -- nobody falls over"
+  "station/generated/scene/vista|no|vista.gd -- the three windowed rooms show background instead of the station"
+  "station/generated/journal.json|no|journal.gd -- nothing is learned or remembered"
 )
 
 say() { printf '%s\n' "$*"; }
@@ -167,12 +175,17 @@ else
   note "            templates are SINGLE precision and would be wrong here."
 fi
 
+DIMINISHED=0
 if [ "$WITH_DATA" -eq 1 ]; then
-  for d in "${DATA[@]}"; do
+  for row in "${DATA[@]}"; do
+    d="${row%%|*}"; rest="${row#*|}"; req="${rest%%|*}"; cost="${rest#*|}"
     if [ -e "$ROOT/$d" ]; then
       note "world       $d ($(du -sh "$ROOT/$d" 2>/dev/null | cut -f1))"
+    elif [ "$req" = "yes" ]; then
+      miss "world       $d -- REQUIRED: $cost"
     else
-      miss "world       $d"
+      DIMINISHED=$((DIMINISHED + 1))
+      note "world       $d  ABSENT (optional) -- $cost"
     fi
   done
 else
@@ -182,14 +195,17 @@ else
 fi
 
 say ""
-say "package: mode=$MODE  data=$([ $WITH_DATA -eq 1 ] && echo yes || echo NO)"
+say "package: mode=$MODE  data=$([ "$WITH_DATA" -eq 1 ] && echo yes || echo NO)  diminished_by=$DIMINISHED"
 
 if [ "$CHECK" -eq 1 ]; then
   if [ "$bad" -ne 0 ]; then
     say "package: --check FAILED -- the build above would not be runnable"
     exit 1
   fi
-  say "package: --check ok -- `bash tools/package.sh` would produce a runnable build"
+  # SINGLE QUOTES, DELIBERATELY. The first draft of this line used backticks
+  # inside a double-quoted string, which is command substitution: --check ran
+  # the whole packager as a side effect of describing it.
+  say 'package: --check ok -- `bash tools/package.sh` would produce a runnable build'
   exit 0
 fi
 if [ "$bad" -ne 0 ] && [ "$WITH_DATA" -eq 1 ]; then
@@ -244,7 +260,9 @@ chmod +x "$STAGE/game/$NAME.x86_64"
 # --- the world -------------------------------------------------------------
 if [ "$WITH_DATA" -eq 1 ]; then
   say "package: staging the world ..."
-  for d in "${DATA[@]}"; do
+  for row in "${DATA[@]}"; do
+    d="${row%%|*}"
+    [ -e "$ROOT/$d" ] || continue
     mkdir -p "$STAGE/$(dirname "$d")"
     cp -r "$ROOT/$d" "$STAGE/$d"
   done
