@@ -821,7 +821,7 @@ def _lerp3(p, q, t):
 
 
 # ---------------------------------------------------------------------------
-# THE GROUND UNDER THE PLAYER'S FEET IS A 3.90 m TRIANGLE -- INV-764
+# THE GROUND UNDER THE PLAYER'S FEET IS A 3.90 m TRIANGLE -- INV-994
 # ---------------------------------------------------------------------------
 # lod0 is the finest rung this module has ever had, and lod0 is a 3.90 x 4.04 m
 # cell. `export_scene` writes the ground as an OBJ with no vertex normals, so
@@ -887,7 +887,7 @@ NEAR_GROUND_TOL_M = 0.08
 # 9 m, and two refinement levels meeting along an edge is the same T-junction
 # a refined cell meeting an unrefined one is -- see `_mid_ok`. A single level
 # turns the question into a boolean, and a boolean is a thing two neighbouring
-# cells can agree about with no negotiation. -- INV-764
+# cells can agree about with no negotiation. -- INV-994
 NEAR_GROUND_M = 28.0
 
 
@@ -2549,7 +2549,7 @@ def _selftest():
           on_angle(unclamped, seam_a) != lv,
           "the clamp is a no-op, so the crack test proves nothing")
 
-    # --- the near-field ground refinement -- INV-764 -------------------------
+    # --- the near-field ground refinement -- INV-994 -------------------------
     # `ground_patch`'s DEFAULT is what `drum_walk` builds collision from, so the
     # first thing to prove is that the refinement is invisible to it. Not "we
     # did not mean to change it": the same call, byte for byte, and the same

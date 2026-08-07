@@ -2169,7 +2169,7 @@ def reset_near_cache():
 CROP_H_M = 0.95
 CROP_ROWS = 3                # drills per lattice cell at full detail
 
-# THE DRILL PITCH IS THE CELL'S OWN, AND THE OLD ONE WAS NOT -- INV-760.
+# THE DRILL PITCH IS THE CELL'S OWN, AND THE OLD ONE WAS NOT -- INV-990.
 # `CROP_ROW_PITCH_M` was 0.92 m with `CROP_ROWS = 3`, so three drills spanned
 # 2.41 m of a 3.90 m cell and left a 1.49 m strip of bare ground BETWEEN EVERY
 # PAIR OF CELLS. That is a 3.90 m period running the whole length of every
@@ -2208,14 +2208,14 @@ def crop_pitch_m():
 # range, a cut grass ley near the bottom, a root crop on wide-spaced ridges
 # with bare soil showing between them, and a harvested stubble. Overturned by
 # any frame that establishes what is actually farmed in the drum.
-# -- INV-760, authority 5
+# -- INV-990, authority 5
 #
 # (name, height_m, base width / pitch, crown width / base width, tramlines)
 CROP_TYPES = (
-    ("cereal",  0.95, 0.86, 0.58, True),
-    ("ley",     0.30, 0.98, 0.86, False),
-    ("roots",   0.52, 0.52, 0.26, True),
-    ("stubble", 0.20, 0.90, 0.62, False),
+    ("cereal",  0.95, 0.82, 0.55, True),
+    ("ley",     0.30, 0.95, 0.88, False),
+    ("roots",   0.52, 0.46, 0.22, True),
+    ("stubble", 0.22, 0.42, 0.55, False),
 )
 
 # How broken the top of a drill is, as a fraction of its height, and how far it
@@ -2232,7 +2232,7 @@ CROP_WANDER_M = 0.07
 # places on these parcels (INV-452); one wheeling every span means the gantry
 # runs in its own tracks, which is what the pair of lines is FOR. Rounded to a
 # whole number of lattice cells so a tramline is a property of a cell index and
-# does not drift across the field. -- INV-761
+# does not drift across the field. -- INV-991
 
 
 def tramline_cells():
@@ -2246,7 +2246,7 @@ def tramline_cells():
 # a hard straight edge". One lattice cell of bare, cloddy turning ground
 # between the last drill and the hedge bank gives the boundary a width. It is
 # one cell because that is 3.90 m and a headland is one machine width; more
-# than one would eat the parcel. -- INV-762
+# than one would eat the parcel. -- INV-992
 
 # CLODS. Tilled ground at arm's length was BARE in
 # `scratchpad/drum4t/before-near.png` -- a flat wash of soil with a tiling
@@ -2268,7 +2268,7 @@ def tramline_cells():
 # inside `NEAR_FULL_M - 12`, so any item whose PRESENCE switches inside that
 # radius makes the two eyes disagree about the same cell. The full switch is
 # the one boundary that check is built to stay clear of, and a cheaper, closer
-# clod rung would have been a gate failure dressed as a saving. -- INV-763
+# clod rung would have been a gate failure dressed as a saving. -- INV-993
 CLOD_H_M = 0.14
 CLOD_PER_100M2 = 9.0
 CLOD_HEADLAND_GAIN = 3.0
@@ -2411,7 +2411,18 @@ def _near_proto(item, group, index, lod):
             if tram and rows == CROP_ROWS and r == CROP_ROWS // 2:
                 continue          # the wheeling: one drill left undrilled
             x0 = (r - (rows - 1) / 2.0) * pitch
-            hh = ch * (0.90 + 0.20 * _unit(seed, "h", r))
+            # THE ROW'S HEIGHT IS KEYED ON (crop, row) AND NOT ON THE CELL, and
+            # the first version was keyed on the cell -- which put a STEP AT
+            # EVERY 4.04 m, because consecutive cells drew different prototypes
+            # and a drill 0.19 m taller than the one it abuts leaves its end cap
+            # standing in the light. `scratchpad/drum4t/after-vista.png`'s first
+            # take shows them as dark lines running across the field at every
+            # cell boundary, and the arm's-length frame shows one of them
+            # 3 m away as a black stepped band. A per-cell perturbation on an
+            # object that TILES is a seam, however small it is; the variation
+            # has to live where the envelope takes it to zero, which is what
+            # `CROP_CROWN_BREAK` is.
+            hh = ch * (0.90 + 0.20 * _unit(SEED, "drill", ci, r))
             _drill(v, t, g, group, x0, halfw, halfw * cfrac,
                    -cz / 2.0, cz / 2.0, hh, segs, seed=f"{seed}/{r}")
     elif item == "clod":
@@ -2478,8 +2489,8 @@ def _near_proto(item, group, index, lod):
         # round. Tussocks and scrub take the same treatment for the same
         # reason, at a gentler ratio, because grass IS roughly radial.
         if item == "stone":
-            _squash(v, 0.62 + 0.85 * _unit(seed, "sx"),
-                    0.62 + 0.85 * _unit(seed, "sz"))
+            _squash(v, 0.72 + 0.58 * _unit(seed, "sx"),
+                    0.72 + 0.58 * _unit(seed, "sz"))
         else:
             _squash(v, 0.80 + 0.40 * _unit(seed, "sx"),
                     0.80 + 0.40 * _unit(seed, "sz"))
@@ -2706,7 +2717,7 @@ def _is_headland(ia, iz):
     bank, a road, a verge, the band beyond. `_ARABLE_KINDS` includes `hedge`,
     so this is deliberately NOT that set: the headland is the strip INSIDE the
     hedge, and a cell that neighbours the hedge is exactly the cell a machine
-    turns on. -- INV-762
+    turns on. -- INV-992
     """
     key = (ia % dg.CELLS_A, iz)
     got = _HEADLAND_CACHE.get(key)
@@ -2799,7 +2810,7 @@ def near_field(eye, radius=None, full_m=None, gain=None):
                             ch, cell_a * 0.72, lod, kind))
                     # CLODS, on the tilled soil the drills stand in and on the
                     # headland that has no drills at all. The whole full rung
-                    # rather than the fine one -- see INV-763 for the assertion
+                    # rather than the fine one -- see INV-993 for the assertion
                     # that decides that, and the coarse rung is excluded
                     # because at 28 m a 0.14 m lump is five pixels.
                     if not coarse:
@@ -3594,7 +3605,42 @@ def _selftest():
     # bottom and wound inside out for four sessions (CLAUDE.md, 3x) at a
     # fraction of this instance count; a near stand is the object a player's
     # eye is 3 m from.
-    # THE GROUND'S NEAR RUNG AND THIS ONE ARE THE SAME REACH -- INV-764.
+    # A DRILL TILES, SO ITS TWO ENDS ARE NOT ITS OWN BUSINESS. One prototype
+    # spans one lattice cell and is instanced down the whole parcel, so ring 0
+    # of one instance is coincident with ring n of its neighbour -- and the
+    # neighbour is a DIFFERENT prototype. Any per-cell perturbation of the
+    # nominal section is therefore a step every 4.04 m, standing in the light
+    # at every cell boundary in the drum. It shipped that way for one render.
+    def _ends(item, idx):
+        v, _t, _g = _near_proto(item, "ground_arable_0", idx, 0)
+        cz = (dg.Z1 - dg.Z0) / dg.CELLS_Z
+        out = []
+        for z0 in (-cz / 2.0, cz / 2.0):
+            out.append(sorted((round(x, 9), round(y, 9))
+                              for x, y, z in v if abs(z - z0) < 1e-9))
+        return out
+
+    for _ci in range(len(CROP_TYPES)):
+        _it = f"crop{_ci}"
+        _a, _b = _ends(_it, 0), _ends(_it, 3)
+        check(f"crop {CROP_TYPES[_ci][0]} tiles without a step at the cell seam",
+              _a == _b and _a[0] and _a[0] == _a[1],
+              f"prototype 0 ends {_a[0][:2]} vs prototype 3 ends {_b[0][:2]}")
+
+    # THE CONTROL, on the CAUSE rather than on the symptom: the formula this
+    # replaced keyed the row height on the cell's own prototype seed, so two
+    # neighbouring cells drew the same row at two different heights. Recomputed
+    # here from the old expression, and the two must DISAGREE -- if they agree,
+    # the tiling check above is asserting a tautology and proves nothing.
+    _ch = CROP_TYPES[0][1]
+    _old = [_ch * (0.90 + 0.20 * _unit(f"{SEED}/near/crop0/{_i}", "h", 0))
+            for _i in (0, 3)]
+    check("the tiling check can see a per-cell height",
+          abs(_old[0] - _old[1]) > 1e-4,
+          f"the old per-cell formula gave {_old[0]:.4f} and {_old[1]:.4f} -- "
+          f"identical, so the seam this closes could not have existed")
+
+    # THE GROUND'S NEAR RUNG AND THIS ONE ARE THE SAME REACH -- INV-994.
     # `drum_ground.NEAR_GROUND_M` cannot import this module (this one imports
     # it), so the value is written there and held in agreement here. Ground
     # that carries full-detail standing cover on top of half-metre facets is

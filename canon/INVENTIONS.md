@@ -12575,3 +12575,134 @@ IS DIMINISHED -- no light sources"*, staged build destroyed, **while the same ru
 `MENUGATE verdict=PASS`**; deleting the two symlinks → the differential reports journal's three
 lines and destroys the build; replacing the source run with `/bin/true` → *"the differential is
 VACUOUS -- source produced 0 lines"*.
+
+## INV-990 — the crop drill: the cell's own pitch, a four-point section, and four crops rather than one
+
+**What.** `drum_dressing.crop_pitch_m()` = `2 pi FLOOR_R / CELLS_A / CROP_ROWS` = 1.301 m,
+replacing the authored `CROP_ROW_PITCH_M = 0.92`. `_drill()` sweeps a four-point trapezoidal
+section (base, two crown points, base) in place of `_ridge()`'s three-point triangle, with the
+per-ring height break and lateral wander enveloped by `sin(pi f)` so both vanish at the cell ends.
+`CROP_TYPES` gives four crops — cereal 0.95 m, ley 0.30 m, roots 0.52 m, stubble 0.20 m — selected
+by the `arableN` tag `drum_ground.sample()` already assigns per parcel.
+
+**Why.** Three defects in one object, all visible in `scratchpad/drum4t/before-vista.png` and
+`before-near.png`. (1) Three drills at 0.92 m spanned 2.41 m of a 3.90 m cell, leaving a 1.49 m
+bare strip **between every pair of cells** — a 3.90 m stripe running the length of every arable
+parcel in the drum, which is `AAA-STANDARD` C5's "repeats in a way the eye can index" in its purest
+form. (2) A three-point section 0.95 m tall and 0.57 m wide, drawn in the ground's own soil
+material, reads as a concrete barrier and not as a crop; it fills the bottom third of every
+ground-level drum frame taken before this session. (3) `2-22_34b` (authority 1) says **"one large
+field carries visible parallel cultivation rows"** — one, among a patchwork — and every parcel in
+the drum carried the identical 0.95 m drill, so the per-parcel crop tag bought colour and nothing
+else.
+
+**What constrained it.** The pitch is not a choice: deriving it from `CELLS_A` is the only value at
+which the outermost drill of one cell sits exactly one pitch from the innermost drill of the next,
+which is what makes the drills continuous. Heights are bounded ABOVE by the 0.95 m of INV-492 (a
+player must see *over* the field or 34b's patchwork is not readable from the floor) and BELOW by
+0.15 m, under which a drill is thinner than `NEAR_SINK_M` and stops reading at the 8.79 m fine
+switch. The section went from three points to four while the middle rung's segment count went from
+2 to 1, because this module is inside 5,000 triangles of its own 120,000 allowance; measured, the
+whole change moved the worst standing position from 114,910 to 113,790.
+
+**What would overturn it.** Any frame establishing what is farmed in the drum, or the row spacing
+of the field in 34b at a known scale. A different lattice would move the pitch automatically, which
+is the point.
+
+## INV-991 — a tramline every 22 cells, because that is the boom's span
+
+**What.** `drum_dressing.tramline_cells()` = `round(GANTRY_SPAN_M / cell_a)` = 22. On crops flagged
+for tramlines, the centre drill of every 22nd cell is left undrilled, giving a continuous unplanted
+line 85.9 m apart running the length of the field.
+
+**Why.** A tramline is the wheeling a sprayer or irrigation boom runs in, so its spacing is the
+boom's working width and not a look. `GANTRY_SPAN_M` (INV-452) is the irrigation boom this module
+already stands on these same parcels; one wheeling per span means the gantry runs in its own
+tracks, which is what the pair of lines is for. It is also `AAA-STANDARD` craft 4's "the detail is
+functional — a fitting is where a fitting would be needed", answered with a fitting that was
+already there.
+
+**What constrained it.** Rounded to a whole number of lattice cells so a tramline is a property of
+a cell index rather than a phase that drifts across the field; the drill omitted is the centre one
+of three so the two remaining drills of that cell frame it symmetrically. It removes geometry, so
+it cannot push the module over budget.
+
+**What would overturn it.** A change to `GANTRY_SPAN_M`, which would move it automatically; or a
+frame showing the drum's fields worked by something that is not a boom.
+
+## INV-992 — the headland: one cell of bare turning ground inside every field boundary
+
+**What.** `drum_dressing._is_headland(ia, iz)` — a lattice cell any of whose four neighbours is not
+croppable ground is a headland: no drills, and three times the clod density.
+
+**Why.** A field whose crop runs into the hedge is a field nobody could work. It is also the
+near-field defect `STATE.md` §24.4b names — *"the parcel boundary underfoot is a hard straight
+edge"* — answered with width rather than with a softer line: the boundary becomes hedge bank, then
+bare turned ground, then the first drill.
+
+**What constrained it.** One cell, which is 3.90 m, because a headland is one machine width; two
+would eat a 87 m parcel's crop for a detail nobody stands in. The test deliberately does **not**
+use `_ARABLE_KINDS`, which includes `hedge`: the headland is the strip *inside* the hedge, so a
+cell that neighbours the hedge bank is exactly the cell a machine turns on.
+
+**What would overturn it.** Any frame showing the drum's field edges; a decision that the drum's
+agriculture is gantry-only and never turns, in which case the headland becomes a boom access strip
+of a different width.
+
+## INV-993 — clods at 9 per 100 m2, and the radius is an assertion rather than a preference
+
+**What.** `drum_dressing.CLOD_H_M = 0.14`, `CLOD_PER_100M2 = 9.0`, `CLOD_HEADLAND_GAIN = 3.0`. An
+eight-triangle irregular lump of turned soil, scattered over arable cells inside `NEAR_FULL_M`.
+
+**Why.** `scratchpad/drum4t/before-near.png` is the arm's-length frame the rubric asks for and it
+shows a flat wash of soil crossed by facet creases with **nothing standing on it** — C1 at the one
+distance craft is checked at after the normal one.
+
+**What constrained it.** The density is derived from what the clods are for: at 8.79 m a 0.14 m
+clod is 16 px by this module's own `_pixels`, so a spacing under about a metre would merge them
+into a texture the mesh cannot afford; 3.3 m — 9 per 100 m2 — keeps them separable and still puts
+two or three in an arm's-length frame. The headland carries three times that because on the rest of
+the parcel the crop is the cover. **The RADIUS is `NEAR_FULL_M` and not the cheaper `NEAR_FINE_M`
+because of an assertion**: `_selftest`'s "the near rung is the same field from two different eyes"
+compares two eyes 12 m apart over everything inside `NEAR_FULL_M - 12`, so any item whose *presence*
+switches inside that radius makes two eyes disagree about the same cell. A closer, cheaper clod rung
+would have been a gate failure dressed as a saving.
+
+**What would overturn it.** A material that carries tilth, which would make the geometry redundant;
+or a measurement showing the near rung's triangle budget is better spent on standing cover.
+
+## INV-994 — the ground under the player's feet is a 3.90 m triangle, and a refinement collision never sees
+
+**What.** `drum_ground.NEAR_GROUND_M = 28.0`, `NEAR_GROUND_TOL_M = 0.08`. Lattice cells within 28 m
+of the eye are drawn as a fan from their own centre through a boundary ring of four corners plus an
+edge midpoint wherever the neighbouring cell inserts one too. Centre and midpoints are sampled from
+the true field and then clamped radially to within `NEAR_GROUND_TOL_M` of the coarse cell's own
+surface. `ground_patch()`'s default — the call `drum_walk` builds collision from — is unchanged, and
+`_selftest` asserts it byte for byte.
+
+**Why.** lod0 is the finest rung this module has, and lod0 is a 3.90 x 4.04 m cell. `export_scene`
+writes the ground with no vertex normals, so each cell reaches the engine as two flat-shaded facets;
+at arm's length two facets fill the frame. `scratchpad/drum4t/before-near.png` is a wash of soil
+crossed by long polygonal creases.
+
+**What constrained it.** It had to be tessellation and not a new LOD rung: `STRIDES` subsamples the
+lattice, so a finer rung means a finer *lattice*, and 448 x 640 is what the collision shell, the
+streaming cell manifest, the parcel map and `drum_walk` are all keyed to. The reach is
+`drum_dressing.NEAR_FULL_M` (28.125 m), because ground carrying full-detail standing cover on top
+of half-metre facets is the mismatch the frame shows; it is written here and not imported, because
+`drum_dressing` imports this module, and the two are held in agreement to 5% by an assertion in
+`drum_dressing._selftest`. **One refinement level and not two**: the first version laid a regular
+2x2 and 4x4 sub-grid and `_selftest` found **261 open interior edges**, because two refinement
+levels meeting along an edge is the same T-junction a refined cell meeting an unrefined one is. A
+boolean is a thing two neighbouring cells can agree about with no negotiation. The tolerance is
+bounded BELOW by what the terrain does — the finest octave carried is 13.5 m at 0.1875 m, whose
+deviation from a 3.9 m chord is 0.019 m, so on ordinary ground the clamp never binds — and ABOVE by
+`drum_walk.STEP_M`, which is `rooms.TRIM_MAX_PROUD_M` = 0.10 m, the number that gate compares the
+collision shell and the render ground against; `_selftest` asserts the inequality against
+`drum_walk`'s own constant rather than a second copy of it. Cost: +874 triangles at the standing
+eye, counted by `near_ground_cost()` inside `visible_cost()` so the budget gate can see it, and
+asserted equal to the triangles actually built.
+
+**What would overturn it.** Vertex normals on the ground, which would remove the faceting this
+exists to break and leave only the displacement; a character controller whose step tolerance drops
+under 0.08 m; a finer lattice.
