@@ -21,6 +21,7 @@ Run: python3 station/deck.py --sector blue --ring 0 --deck 0 [--obj OUT]
 """
 import argparse
 import hashlib
+import json
 import math
 import os
 import sys
@@ -1438,8 +1439,32 @@ def build_deck_clusters(schema, profile, sector, ring, deck, n=None,
         for k in ("rooms", "corridor_tris", "room_tris"):
             stats[k] += st.get(k, 0)
         stats["skipped"] += st.get("skipped", [])
-        # Positions are already world, so concatenation is the merge.
-        stats["actors"] += st.get("actors", [])
+        # Positions are already world, so concatenation is the merge -- BUT
+        # CONCATENATION ALONE DOUBLES ANYBODY STANDING IN A PLACE THAT SPANS
+        # TWO CLUSTERS, and 637 of the station's 4,563 cast rows were exactly
+        # that: byte-identical, same resident id, same species, same
+        # coordinates. Two bodies drawn inside each other.
+        #
+        # THE SHAPE OF THE NUMBER IS THE DIAGNOSIS, and it is this file's own
+        # rule about reading a failing number's shape before its size.
+        # `red_0_0` has TWO clusters and duplicated EXACTLY 50% (592 of 1,184);
+        # `grey_0_0` has one cluster and duplicated nothing; `blue_0_0` has six
+        # and duplicated 11%, which is the fraction of its places that straddle
+        # a cluster boundary. An even smear across decks would have been a
+        # content problem; 50/0/11 keyed to cluster count is one line of code.
+        #
+        # DEDUPED ON THE WHOLE ROW rather than on the resident id, because the
+        # id is not the thing that must be unique: one resident legitimately
+        # appears twice on a deck if they are in two DIFFERENT places (a
+        # schedule can move them), and that is not what this is. Identical row
+        # means same person, same place, same point -- which can only be the
+        # same body counted twice.
+        seen = {json.dumps(r, sort_keys=True) for r in stats["actors"]}
+        for r in st.get("actors", []):
+            k = json.dumps(r, sort_keys=True)
+            if k not in seen:
+                seen.add(k)
+                stats["actors"].append(r)
         stats["crowd"] += st.get("crowd", [])
         if st.get("crowd_lods") and stats["crowd_lods"] is None:
             stats["crowd_lods"] = st["crowd_lods"]
