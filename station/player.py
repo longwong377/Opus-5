@@ -313,6 +313,26 @@ class Player:
     # therefore not annotated and the two methods that touch it import inside
     # the call -- which is the standard fix and is noted so nobody "tidies" it.
     record: object = None
+    # WHAT THE PLAYER KNOWS, as against what the station holds about them
+    # (`card`) and what the station has done about them (`record`). A
+    # `journal.Journal`: SYS-16's knowledge items, CAST-05's per-NPC memory
+    # slots, and the eight faction standing ledgers.
+    #
+    # ON THE MUTABLE HALF FOR THE REASON THE PURSE AND THE RECORD ARE. The card
+    # is frozen because an identicard is not editable by its bearer; a notebook
+    # is nothing BUT what a session wrote in it. And it lives here rather than
+    # in a parallel store because `docs/MASTER-PLAN.md` R7 gives the
+    # consequence of the alternative in one line -- *"a journal with no save is
+    # a notebook that forgets"* -- and `state()` is the only channel this
+    # simulation has to a runtime.
+    #
+    # `None` until something is learned, so every purse already in
+    # `station/generated/economy.json` stays byte-identical and `Ledger.load`
+    # needs no version bump. Unannotated and lazily imported for the same
+    # reason `record` is: `station/journal.py` pulls in `directory` and
+    # `transit`, and a module-level import here would drag the transit model
+    # into every `economy.buy`.
+    journal: object = None
 
     # -- delegation, so a player is asked the same questions an NPC is -------
     @property
@@ -471,6 +491,12 @@ class Player:
         # need a version bump.
         if self.record is not None:
             st["record"] = self.record.state()
+        # AND NEITHER DOES A THING YOU LEARNED. Same rule, same reason, same
+        # additive shape: the key appears only once there is a journal, so an
+        # older purse round-trips unchanged and a build that predates PLY-07
+        # reads a save written by one that does not.
+        if self.journal is not None:
+            st["journal"] = self.journal.state()
         return st
 
     def restore(self, st: dict) -> "Player":
@@ -487,6 +513,14 @@ class Player:
         if "record" in st and st["record"] is not None:
             from consequence import Record                    # noqa: PLC0415
             self.record = Record.from_state(st["record"])
+        if "journal" in st and st["journal"] is not None:
+            from journal import Journal                       # noqa: PLC0415
+            # `Journal.from_state` RE-DERIVES every fact id and refuses a save
+            # whose stored id disagrees with its own fields. That refusal is
+            # deliberately loud here rather than swallowed: a notebook whose
+            # entries have drifted from their names is worse than one that
+            # failed to load, because the first reads as working.
+            self.journal = Journal.from_state(st["journal"])
         return self
 
 

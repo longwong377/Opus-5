@@ -607,6 +607,45 @@ def manifest() -> dict:
     except Exception as exc:                                  # noqa: BLE001
         out["routes"] = []
         out["routes_why"] = "%s: %s" % (type(exc).__name__, exc)
+    try:
+        out["calls"] = timed_calls()
+    except Exception as exc:                                  # noqa: BLE001
+        out["calls"] = []
+        out["calls_why"] = "%s: %s" % (type(exc).__name__, exc)
+    return out
+
+
+def timed_calls(day_n: int = 0) -> list:
+    """The station-day's TIMED broadcast calls, straight off `broadcast.py`.
+
+    THIS IS WHAT MAKES A COMPRESSED NIGHT DIFFERENT FROM A SKIPPED ONE.
+    `life.gd`'s Director is deliberately pure in the hour -- *"nothing
+    integrates, so 03:00 and 13:00 are two reads of the same expression"* -- so
+    the crowd looks identical after a jump and after seven hours of running,
+    and no gate written against the crowd could tell them apart. A timed call
+    can: it happens at an hour, and either you were there or you were not.
+
+    UNTIMED SURFACES ARE DROPPED. `broadcast.audible_at` returns standing
+    screens with `hour: None` on purpose -- a notice board is part of what the
+    room says at every hour -- and a fact minted from one would be minted every
+    frame at any hour, which is the opposite of a witnessed event.
+
+    `source` travels with each row and is the derivation chain
+    (`traffic.arrivals(0)[29] -> SHIP_CALLS['shuttle'] arrival`), so a journal
+    entry made from one of these names the event that produced it all the way
+    back to the manifest that decided a ship was arriving.
+    """
+    import broadcast as BC                                    # noqa: PLC0415
+    out = []
+    for a in BC.day(day_n):
+        if a.get("hour") is None:
+            continue
+        out.append({"hour": round(float(a["hour"]), 6),
+                    "kind": a.get("kind", "pa"),
+                    "text": a.get("text", ""),
+                    "source": a.get("source", ""),
+                    "places": list(a.get("places", ()))})
+    out.sort(key=lambda r: r["hour"])
     return out
 
 

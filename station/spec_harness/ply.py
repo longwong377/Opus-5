@@ -466,9 +466,21 @@ def _ply05(text):
         else:
             out.append((True, "`%s` is one of interact.py's %d verbs"
                         % (want, len(verbs))))
-    out.append(_absent("time compression through the running simulation",
-                       "time_compression", "compress_clock", "advance_clock",
-                       "TIME_COMPRESSION"))
+    # TIME COMPRESSION IS EXERCISED, NOT SEARCHED FOR -- the same upgrade
+    # `_ply06` made when the condition model landed, and for the reason its own
+    # note gives: better needles fix a false POSITIVE and leave the deeper
+    # problem, which is that the moment a symbol with one of those names
+    # appears the search passes whatever that symbol does.
+    #
+    # PLY-05's requirement is the word THROUGH -- *"advance the station clock
+    # at compressed rate through the running simulation: events still fire,
+    # stocks still move, the world does not pause"*. So the checkable claim is
+    # not that a compression knob exists, it is that a JUMP and a RUN are
+    # DISTINGUISHABLE, which in this build they are in exactly one place:
+    # `godot/scripts/life.gd`'s Director is deliberately pure in the hour and
+    # reads identically after either, so the discrimination has to come from
+    # something that accumulates.
+    out += _compression_claims()
     # the row's own scenario numbers must be times the schedule can express.
     flat = _flat(text)
     for hh in re.findall(r"\b(\d{2}):(\d{2})\b", flat):
@@ -569,15 +581,207 @@ def _ply06(text):
     return out
 
 
-def _ply07(text):
-    """The journal: the store, and the three things it must record."""
-    out = [_absent("a journal", "journal", "JOURNAL"),
-           _absent("SYS-16 knowledge items", "knowledge_item", "KNOWLEDGE",
-                   "known_facts"),
-           _absent("CAST-05's name-given flag", "name_given", "NAME_GIVEN")]
-    # the brooch tell IS built, and saying so distinguishes "nothing exists"
-    # from "the inputs exist and the store does not".
-    out.append(_absent("FAC-28's brooch tell", "brooch"))
+def _ply07(text):                                                # noqa: C901
+    """The journal: RUN, with the row's own three entries and its own control.
+
+    THE ROW'S CHECK IS EXECUTED HERE RATHER THAN LOOKED FOR. PLY-07 says:
+    *"learn Delgado's name, the brooch tell, and one porter shortcut -- all
+    three appear as journal entries whose text names the source event; a fact
+    NOT learned is absent (the control); reload -- the journal is intact."*
+    Three of those four clauses are decidable offline against
+    `station/journal.py`, and the fourth -- the reload -- is decidable only in
+    the engine, which is what `python3 station/journal.py --gate` is for and
+    which this claim says plainly rather than pretending to cover.
+
+    The previous version was three `_absent()` searches. They were correct when
+    written and they are the wrong shape now, for the reason `_ply06` records
+    one screen up: an absence search passes the moment a symbol of that name
+    appears, whatever it does.
+    """
+    import sys                                                    # noqa: PLC0415
+    sys.path.insert(0, os.path.join(ROOT, "station"))
+    out = []
+    try:
+        import journal as J                                       # noqa: PLC0415
+    except Exception as exc:                                      # noqa: BLE001
+        return [(False, "the journal does not import: %s: %s"
+                 % (type(exc).__name__, exc))]
+
+    # -- the vocabulary is SYS-16's, and the row's three entry types are in it
+    want = {"name_given", "tell_learned", "route_time"}
+    missing = sorted(want - set(J.KINDS))
+    out.append((not missing,
+                "SYS-16's kinds are %d and the three PLY-07 names are%s there "
+                "(%s)" % (len(J.KINDS), "" if not missing else " NOT",
+                          ", ".join(sorted(want)))))
+
+    # -- the three entries, MINTED, each from its own real source ------------
+    j = J.Journal()
+    made = {}
+    try:
+        made["name_given"] = J.mint_name_given(
+            j, {"group": "customs_north__npc_standing_0",
+                "who": {"id": "res:ply07", "name": "Delgado, Ruth"}},
+            "customs_north", 0, 5.67)
+    except Exception as exc:                                      # noqa: BLE001
+        out.append((False, "a name cannot be learned: %s" % exc))
+    marks = J.faction_marks()
+    if marks:
+        k = "rangers_aboard" if "rangers_aboard" in marks else sorted(marks)[0]
+        try:
+            made["tell_learned"] = J.mint_tell_learned(j, k, marks[k],
+                                                       "zocalo", 0, 19.0)
+        except Exception as exc:                                  # noqa: BLE001
+            out.append((False, "FAC-28's tell cannot be learned: %s" % exc))
+    else:
+        out.append((False, "npc/faction.py exposed no mark table, so there is "
+                           "no brooch tell to learn"))
+    rs = []
+    try:
+        rs = J.derived_routes()
+    except Exception:                                             # noqa: BLE001
+        pass
+    if rs:
+        try:
+            made["route_time"] = J.mint_route_time(
+                j, rs[0]["a"], rs[0]["b"], 0, 9.0,
+                claimed_min=rs[0]["minutes"])
+        except Exception as exc:                                  # noqa: BLE001
+            out.append((False, "a porter shortcut cannot be learned: %s" % exc))
+    else:
+        out.append((False, "transit.py derived no route, so there is no "
+                           "shortcut to time"))
+
+    got = sorted(made)
+    out.append((len(made) == 3,
+                "all three of the row's entries are minted (%s)" % ", ".join(got)
+                if len(made) == 3 else
+                "only %d of the row's three entries mint (%s)"
+                % (len(made), ", ".join(got) or "none")))
+
+    # -- "whose text NAMES THE SOURCE EVENT" is the row's own wording --------
+    unsourced = []
+    for kind, fid in made.items():
+        f = j.get(fid)
+        if f is None or not f.source.strip() or f.source_kind == "":
+            unsourced.append(kind)
+    out.append((not unsourced,
+                "each entry names its source event -- e.g. %r"
+                % (j.get(made[got[0]]).source[:96] if got else "")
+                if not unsourced else
+                "these entries carry no source event: %s"
+                % ", ".join(unsourced)))
+
+    # -- THE ROW'S OWN CONTROL: "a fact NOT learned is absent" ---------------
+    never = J.fact_id("name_given", "res:never", "dialogue", "res:never")
+    out.append((not j.has(never),
+                "a fact that was never learned is absent (%s)" % never[:8]))
+
+    # -- and the refusals, because "minted ONLY by real events" is the rule --
+    refused = 0
+    for bad, why in (
+            (lambda: J.mint_name_given(j, {"group": "g", "who": {}}, "x"),
+             "an actor row with nobody in it"),
+            (lambda: J.mint_incident_seen(j, {"who": "x", "place": "y"}),
+             "an incident with no cid"),
+            (lambda: J.mint_route_time(j, rs[0]["a"], rs[0]["b"], 0, 9.0,
+                                       claimed_min=rs[0]["minutes"] + 10.0)
+             if rs else J.mint_rumour(j, "", "x", "k"),
+             "a route time transit.py contradicts")):
+        try:
+            bad()
+        except J.Refused:                                         # noqa: PERF203
+            refused += 1
+        except Exception:                                         # noqa: BLE001
+            pass
+        del why
+    out.append((refused == 3,
+                "%d of 3 unsourced mints are REFUSED -- SYS-16's \"facts are "
+                "minted ONLY by real events\" with teeth on it" % refused))
+
+    # -- CAST-05's two stages, and the second is GIVEN ----------------------
+    j.see("res:stranger")
+    out.append((j.name_given("res:ply07") and not j.name_given("res:stranger"),
+                "CAST-05's two stages are distinct: a face seen is not a name "
+                "given"))
+
+    # -- the reload, and this claim says what it CANNOT settle --------------
+    st = j.state()
+    back = J.Journal.from_state(st)
+    intact = all(back.has(f) for f in made.values())
+    out.append((intact and len(back) == len(j),
+                "the journal round-trips %d facts, %d people and %d ledgers "
+                "through its saved state -- the ENGINE reload is "
+                "`python3 station/journal.py --gate` and no static tier can "
+                "settle it" % (len(back), len(back.people),
+                               len(back.standing))))
+    return out
+
+
+def _compression_claims():
+    """PLY-05's compression, exercised: can a JUMP be told from a RUN?
+
+    THE MACHINERY IS IN GDSCRIPT AND THIS TIER HAS NO ENGINE, so what is
+    checked here is the pair of things a static tier CAN settle and which
+    together decide whether the runtime's answer means anything:
+
+      1. the discriminator exists in the shipped file and is reachable from the
+         shipped path -- `journal.gd` is loaded by `main.gd::_start_journal`,
+         not by a gate flag, which is this project's ninth-defect check;
+      2. the thing it discriminates ON is real -- `broadcast.py` produces timed
+         calls at hours, and the count in the slept window is what the runtime
+         floor was derived from.
+
+    What it does NOT claim is that the run passed. That is
+    `python3 station/journal.py --gate`, and it is named in the note.
+    """
+    import sys                                                    # noqa: PLC0415
+    sys.path.insert(0, os.path.join(ROOT, "station"))
+    out = []
+    gd = os.path.join(ROOT, "godot", "scripts", "journal.gd")
+    if not os.path.exists(gd):
+        return [(False, "godot/scripts/journal.gd does not exist, so nothing "
+                        "compresses time through anything")]
+    src = open(gd, encoding="utf-8").read()
+    for needle, why in (("_continuous", "the jump/run discriminator"),
+                        ("_witness_span", "what a lived hour produces"),
+                        ("SLEEP_H", "PLY-05's own 22:00 -> 05:15 window")):
+        out.append((needle in src, "%s: `%s` is in journal.gd" % (why, needle)))
+
+    # THE CALLER, AND IT MUST NOT BE A GATE. `tools/wiring.py` catches the
+    # static form of this and MASTER-PLAN R6 gives the rule it cannot reach --
+    # so the specific thing asserted is that the node is built in `_ready`'s
+    # own path and not inside a `--journal-gate` branch.
+    main = open(os.path.join(ROOT, "godot", "scripts", "main.gd"),
+                encoding="utf-8").read()
+    started = "_start_journal()" in main and "JOURNAL_SCRIPT" in main
+    in_subjects = re.search(r'out\["journal"\]\s*=', main) is not None
+    out.append((started and in_subjects,
+                "journal.gd is instantiated by main.gd::_start_journal and "
+                "offered to save.gd::_subjects -- so the compression runs on "
+                "the shipped path rather than under a gate flag"
+                if started and in_subjects else
+                "journal.gd is NOT on main.gd's shipped path (started=%s, "
+                "in _subjects=%s)" % (started, in_subjects)))
+
+    # AND THE THING IT DISCRIMINATES ON IS REAL.
+    try:
+        import journal as J                                       # noqa: PLC0415
+        calls = J.timed_calls(0)
+        m = re.search(r"const SLEEP_H := ([0-9.]+)", src)
+        window = float(m.group(1)) if m else 7.25
+        rooms = ("customs_north", "arrival_concourse", "customs_south")
+        here = [c for c in calls
+                if any(r in c["places"] for r in rooms)]
+        per_h = len(here) / 24.0
+        out.append((len(here) > 0 and per_h * window >= 4.0,
+                    "broadcast.py puts %d timed calls in the day, %d of them "
+                    "audible on the boot deck -- %.1f in PLY-05's %.2f h "
+                    "window, against journal.gd's floor of 4"
+                    % (len(calls), len(here), per_h * window, window)))
+    except Exception as exc:                                      # noqa: BLE001
+        out.append((False, "broadcast.py produced no timed calls: %s: %s"
+                    % (type(exc).__name__, exc)))
     return out
 
 

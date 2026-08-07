@@ -11609,3 +11609,128 @@ person across processes.
 production list of PLC-052's keepers; a decision to draw the 48 keepers procedurally from
 `names.py`, in which case this constant becomes seed 0 of that draw rather than an
 invention.
+
+## INV-760 — a knowledge item about mutable state goes stale after 7 station-days
+
+**What.** `station/journal.STALE_AFTER_DAYS = 7`. A SYS-16 fact of a mutable kind (`route_time`,
+`job_offer`, `appointment`, `rumour`, `debt`) that has not been re-learned or verified within seven
+station-days reads as `stale` rather than as current. The five fixed kinds (`name_given`,
+`tell_learned`, `incident_seen`) never expire.
+
+**Why.** SYS-16's own tick clause requires it — *"a fact about mutable state carries its as-of day
+and can go stale"* — and gives no number. Seven is the station's own shortest repeating cycle that
+a fact could outlive: `docs/spec/PEOPLE.md`'s wage table is quoted **per week** throughout (service
+crew 35–50 cr/wk, guild docker 60–75, the 4 cr/wk pitch fee, the 10 cr/wk Nightwatch supplement),
+and LAW-CRIME's rent ladder is weekly, so a week is the interval over which a job, a debt or a
+berth price is expected to be restated by the world itself. A fact that has survived one full
+restatement cycle without being restated is exactly the one a broker should not sell as current.
+
+**Constrained by.** It must be long enough that a player who learns a route time on day 0 can still
+use it on day 3 without the journal nagging, and short enough that ROLE-10's verify step has
+something to do. It is DERIVED at read time (`Fact.state_on(day)`) and never stored, so changing
+this constant re-ages every fact already in every save file rather than leaving stale flags behind.
+
+**What would overturn it.** A spec row naming a different horizon, or a shipped economy whose
+prices move on a cadence other than weekly — in which case the horizon should be that cadence.
+
+## INV-761 — a claimed route time more than 1.00 station-minute from `transit.py`'s is refused
+
+**What.** `station/journal.ROUTE_TOL_MIN = 1.0`. `mint_route_time(..., claimed_min=x)` writes the
+fact only when `|x − transit.py's derivation| ≤ 1.00 min`; otherwise it raises `Refused` and
+nothing is written down.
+
+**Why.** SYS-16 requires that *"a route-time references transit.py's derived numbers"*. Without a
+tolerance that clause is decorative: a minter that accepts whatever it is handed and stores the
+derivation beside it has recorded a claim, not a reference. One minute is the granularity a person
+actually reports a walk in — nobody says "eleven minutes and forty seconds" — and it is comfortably
+below the shortest real leg on the boot deck (`customs_north → arrival_concourse`, **0.57 min**) so
+a wrong answer about even the shortest walk is caught.
+
+**Constrained by.** It must exceed the arithmetic spread `transit.walk_leg` itself has between two
+readings of the same pair (zero — the function is pure) and stay under the smallest difference
+between two legs a player could confuse. It must not be so tight that a dialogue line rounding
+"about ten minutes" is refused for being round.
+
+**What would overturn it.** Dialogue that quotes route times to the minute rather than
+conversationally, which would want a tighter figure; or a transit model with genuine variance
+(queueing at a lift), which would want the tolerance derived from that variance instead.
+
+## INV-762 — the three legs the runtime may quote are the boot deck's own rooms
+
+**What.** `station/journal.DEFAULT_ROUTES` is `customs_north → arrival_concourse`,
+`arrival_concourse → customs_south`, `customs_north → customs_south`.
+
+**Why.** A `route_time` fact is *"the porter's craft"* — a shortcut the player learned by walking
+it. A manifest that offered the runtime a leg on a deck the player cannot reach would mint a fact
+about a walk nobody took, which is the same defect as an incident in an unreachable room that
+`station/boot.py::_collapses` already refuses to bake. These three are the rooms `boot.json` lists
+for the deck the shipped build spawns on, so every quotable leg is one a body can actually cover.
+
+**Constrained by.** The list is data rather than a rule: when streaming reaches more clusters the
+right set is every pair of rooms in the resident cell set, and the derivation should move to
+`boot.json`'s own `rooms` rather than to a longer literal here.
+
+**What would overturn it.** A boot deck with different rooms — at which point this constant is
+stale and should be derived from the manifest instead of edited.
+
+## INV-763 — a clock step over four frames' worth of station-time is a JUMP, not a run
+
+**What.** `godot/scripts/journal.gd::JUMP_TOL = 4.0`, floored by `STEP_FLOOR_H = 0.02` station
+hours. A frame in which `Clock.hours_abs()` advanced by more than `rate × delta × 4` is recorded as
+a jump: the interval is added to `_jumped_h` and **nothing in it is witnessed**.
+
+**Why.** PLY-05 requires the clock to advance *"through the running simulation"*, and this project
+has no other way to tell that apart from a jump — `godot/scripts/life.gd`'s Director is
+deliberately pure in the hour (*"nothing integrates, so 03:00 and 13:00 are two reads of the same
+expression"*), so the crowd, the ambience and the dialogue takes all read identically after
+`Clock.set_hour(h)` and after seven hours of ticking. A gate written against any of them cannot
+fail on a jump, which is this repository's signature defect. The journal is the only accumulating
+state in the build, so the discrimination has to live in it.
+
+**Constrained by.** One frame advances the clock by exactly `rate × delta` — `Director._process` is
+`clock.tick(delta)` and nothing else — so the bound is that quantity, and the only free parameter
+is the slack for a frame that hitched. Four is a frame taking four times its budget. The quantity
+being discriminated is a **7.25 h** jump against a **0.0667 h** frame at the gate's own ×240
+compression, which is 109×: the two are nowhere near the threshold and the gate does not depend on
+where in that gap the line is drawn. `STEP_FLOOR_H` exists so the first frames after a scene load,
+where `delta` is small and the clock has not started, cannot be read as a jump.
+
+**What would overturn it.** A build in which something other than `tick(delta)` moves the clock
+each frame, or a compression rate high enough that one frame legitimately crosses several timed
+calls — at which point the discrimination should move to comparing the integral of `rate` over the
+frame rather than to a per-frame bound.
+
+## INV-764 — the compression gate sleeps 7.25 station hours
+
+**What.** `godot/scripts/journal.gd::SLEEP_H = 7.25`.
+
+**Why.** It is PLY-05's own scenario read off the row rather than chosen: *"sleep at 22:00 with a
+05:15 intent and wake at 05:15 — in time to make the 05:40 muster"*. 22:00 → 05:15 is 7.25 hours.
+Using the row's own number means the gate measures the case the spec asks for, and a scenario that
+later changes changes the gate with it.
+
+**Constrained by.** It must cross midnight, because a wrapping clock is where this project's last
+compression bug lived (`coldstart.py::g8`'s first draft advanced 3,600 hours, which is exactly zero
+on a 24-hour ring, and reported the clock as broken when the control was). 22:00 → 05:15 crosses it.
+
+**What would overturn it.** A change to PLY-05's stated scenario.
+
+## INV-765 — a compressed night must have been present for at least 4 timed calls
+
+**What.** `godot/scripts/journal.gd::WITNESS_FLOOR = 4`. A `--phase=compress` run passes only when
+the journal minted at least four knowledge items from broadcast calls it passed through.
+
+**Why.** The floor has to be high enough that a single call caught at the boundary cannot pass it
+and low enough that it is reachable at any plausible frame rate. `station/journal.timed_calls()`
+gives `broadcast.day(0)` **174** timed calls, of which **62** are audible in the boot deck's three
+rooms — one every 23 station-minutes — so 7.25 hours contains about **18**. Four is a quarter of
+that: a run that witnessed fewer than a quarter of the night's calls was not present for most of
+the night, whatever its clock says.
+
+**Constrained by.** It must be > 1, or a single call arriving in the same frame as a jump would
+pass; and it must be well under 18, or a slow container that spends fewer frames on the interval
+fails for a reason that has nothing to do with the thing being tested.
+
+**What would overturn it.** A different boot deck with a different call density — the honest form
+is a fraction of `calls.size()` scaled by the slept interval, and this constant should become that
+expression when more than one deck is streamed.

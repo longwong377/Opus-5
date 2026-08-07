@@ -56,6 +56,7 @@ const LIFE_SCRIPT := "res://scripts/life.gd"
 const AMBIENCE_SCRIPT := "res://scripts/ambience.gd"
 const NAVGRAPH_SCRIPT := "res://scripts/navgraph.gd"
 const RAGDOLL_SCRIPT := "res://scripts/ragdoll.gd"
+const JOURNAL_SCRIPT := "res://scripts/journal.gd"
 
 ## Station hours per real second, handed to `life.gd`'s Clock. 1/60 is a station
 ## minute a second: `life.gd`'s own default, and the rate at which a player
@@ -84,6 +85,7 @@ var _life: Node3D            # life.gd's Director
 var _clock                   # life.gd's Clock
 var _audio: Node3D           # ambience.gd
 var _ragdoll: Node3D         # ragdoll.gd -- the bodies that stop standing up
+var _journal: Node3D         # journal.gd -- SYS-16 knowledge items, CAST-05
 var _mode := "station"
 var _boot := {}
 var _present_0300 := -1
@@ -193,6 +195,16 @@ func _ready() -> void:
 		# the control would have failed on its own absence rather than on the
 		# thing it removes, which is a control that proves nothing.
 		_start_ragdolls()
+		# THE FIFTH THING WITH NO INSTANTIATOR, and it is the one that makes
+		# passing time cost something. `station/journal.py` owns what a SYS-16
+		# knowledge item is; `scripts/journal.gd` is where a conversation, a PA
+		# call and a collapse become things the player HAS. It is created here
+		# for the reason the four above are: this node owns the whole world and
+		# the clock, and the journal needs both. `--no-journal` is the control
+		# and `journal.gd` answers it by REFUSING to mint, so the flag removes
+		# the learning rather than the node -- the distinction `_start_ragdolls`
+		# already had to make.
+		_start_journal()
 
 	# NOT `_headless()`-ONLY. `--check-shot` needs a real viewport to read a
 	# frame out of, and a headless run has none -- so the gate runs in both and
@@ -205,7 +217,13 @@ func _ready() -> void:
 		_vista_gate()
 		return
 
-	if _headless() and _args().has("save-gate"):
+	if _headless() and _args().has("journal-gate"):
+		if _journal == null:
+			print("JOURNAL gate=FAIL no journal in this build")
+			get_tree().quit(2)
+			return
+		_journal.run_gate(self)
+	elif _headless() and _args().has("save-gate"):
 		_save_gate()
 	elif _headless() and _args().has("ragdoll-gate"):
 		_ragdoll_gate()
@@ -873,6 +891,14 @@ func _collapse(row: Dictionary) -> void:
 			fell, (" and does not get up" if spec["dead"] else ""),
 			String(row.get("who", "?")), String(row.get("species", "?"))]
 		+ "%s)" % String(crowd.get("promote_why")))
+	# AND THE PLAYER REMEMBERS IT. PLY-07 lists "incident-log entries the
+	# player witnessed" among the things the journal auto-records, and this is
+	# the only place in the build where the two conditions are both known: the
+	# ledger row that says what happened, and the sight test three screens up
+	# that says the player was near enough to see it.
+	if _journal != null:
+		_journal.call("witness_collapse", row, fell,
+			(_clock.day() if _clock != null else 0))
 
 
 ## THE STATION KNOCKS SOMEBODY DOWN AND A PLAYER SEES IT -- the gate, in the
@@ -1022,6 +1048,11 @@ func _subjects() -> Dictionary:
 		out["ambience"] = _audio
 	if _ragdoll != null:
 		out["ragdoll"] = _ragdoll
+	# WHAT THE PLAYER KNOWS. R7's own sentence for why this had to be a save
+	# subject rather than a runtime nicety: *"a journal with no save is a
+	# notebook that forgets"*. It carries both halves of `save.gd`'s contract.
+	if _journal != null:
+		out["journal"] = _journal
 	return out
 
 
@@ -1227,6 +1258,29 @@ func _rebind_on_stream() -> void:
 # ---------------------------------------------------------------------------
 # Bodies that stop standing up
 # ---------------------------------------------------------------------------
+## The player's notebook. PLY-07, SYS-16, CAST-05, and PLY-05's compression.
+##
+## THE NODE IS ADDED HERE AND THE RULES ARE NOT DECIDED HERE. Everything the
+## journal knows about what a fact IS comes from `station/generated/journal.json`
+## -- `python3 station/journal.py --emit` -- for the reason `interact.gd` reads
+## `interact.py`'s sidecar and `dialogue.gd` reads `dialogue.py`'s: a second
+## copy of a decision is the defect this repository has paid for three times.
+##
+## A MISSING MANIFEST IS SOFT. `install` warns and the journal simply cannot
+## mint, exactly as a missing navgraph leaves `Director.nav` null. The station
+## still boots.
+func _start_journal() -> void:
+	var s := load(JOURNAL_SCRIPT)
+	if s == null:
+		push_error("main: could not load %s" % JOURNAL_SCRIPT)
+		return
+	_journal = Node3D.new()
+	_journal.name = "Journal"
+	_journal.set_script(s)
+	add_child(_journal)
+	_journal.call("install", self)
+
+
 func _start_ragdolls() -> void:
 	_ragdoll = Node3D.new()
 	_ragdoll.name = "Ragdolls"
