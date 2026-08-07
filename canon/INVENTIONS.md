@@ -12133,3 +12133,31 @@ anchor precisely because it does not depend on the working directory, which is w
 **What would overturn it.** An embedded-pck build, where the executable and the pack are one file
 (the base directory is still right); a platform where `get_executable_path()` is not the install
 location — macOS `.app` bundles put the binary two levels down and will need their own case.
+
+## INV-853 — manifest paths are rebased onto the install, not trusted as written
+
+**What.** `main.gd::_rebase` and `_rebased_sidecar`. Any path in `boot.json` or in a
+`*_arrival.json` build block that contains `station/generated/` is re-anchored on `_root()`
+when the rebased file exists; the arrival sidecar is rewritten to `user://arrival_rebased.json`
+because `arrival.gd::_adopt_build` reads it directly. Both are **inert** when nothing changes.
+
+**Why.** `station/boot.py` and `station/arrival.py` write ABSOLUTE paths — correct and
+unambiguous on the machine that generates the world, and four files that do not exist anywhere
+else. The first packaged build launched, reached customs and issued a card **on the build box,
+where the generator's own directory still existed**: the evidence was real and true for the
+wrong reason. Untarred into a fresh directory with `scene/deck` hidden, the same build came up,
+read all nine identicard fields and had **no player body at all** — the sequence loaded, because
+its own path is derived from the already-rebased glb, and the deck under it did not.
+
+**What constrained it.** It cannot be done at package time: the install directory is not known
+when the tarball is made. It cannot be done by editing the generators, because an absolute path
+is the right answer for every in-tree consumer (`walkable.py`, the render path, the gates). So it
+is done at load, on the one fragment every generated artefact shares, with a fallback to the
+original when the rebased file is absent — which makes a source-tree run rebase nothing, write
+nothing and behave exactly as before. `tools/package.sh` launches the staged tree **from a moved
+directory** and fails if the run did not print a rebase, so a build that only works where it was
+made cannot pass.
+
+**What would overturn it.** Generators that emit paths relative to the repository root, which
+would make the whole function a no-op and is the better long-term answer; a `res://`-mounted or
+packed world, which would remove the external tree entirely.
