@@ -21,6 +21,31 @@ jobs:
       - name: Install dependencies
         run: pip install --quiet pyyaml numpy pillow
 
+      # THE ENGINE HALF OF EVERY GATE HAS BEEN SKIPPING IN CI, AND IT DID NOT
+      # HAVE TO BE. Several steps below carry a comment of the form "needs a
+      # built deck and a Godot binary, neither of which CI has". The second half
+      # of that sentence stopped being true in session 4d: the double-precision
+      # binary is VENDORED IN THIS REPOSITORY at vendor/godot/*.tar.xz, and
+      # tools/build_godot.sh unpacks it in seconds -- it only builds from source
+      # when there is no vendored copy and no URL. The comment aged and nobody
+      # re-read it, so the engine gates went on announcing themselves as
+      # impossible.
+      #
+      # Found by two independent hostile verifiers in session 4t, each looking
+      # at a different item (P1-G2's arrest chain and P1-G3's incident ledger),
+      # each reaching the same sentence: "none of it runs in CI ... every row
+      # added this round is enforced only by an agent choosing to type the
+      # command." That is `a gate that does not run is not a gate` at CI scale,
+      # and it is the same defect session 4e found when one failing step blinded
+      # the 34 behind it.
+      #
+      # `continue-on-error` so an unpack problem cannot blind the steps after
+      # it -- 4e's rule -- and the roll-up below reports it.
+      - name: The engine, so the gates that need it can actually run
+        id: sgodot
+        continue-on-error: true
+        run: bash tools/build_godot.sh
+
       - name: Regenerate geometry from the schema
         run: |
           cd station
@@ -981,8 +1006,18 @@ jobs:
         id: svistamount
         continue-on-error: true
         run: |
+          # THIS USED TO `exit 0` WHEN THE BINARY WAS ABSENT, which is the
+          # "tool that silently degrades and exits 0" defect CLAUDE.md records
+          # from 4e -- a step that reports success for work it did not do is
+          # worse than one that fails, because it manufactures evidence. The
+          # binary is now unpacked by the `sgodot` step above from the copy
+          # vendored in this repository, so absence is a real fault and is
+          # reported as one.
           G=$(ls -1 /home/user/godot-build/*/bin/godot.linuxbsd.*.double.* 2>/dev/null | head -1)
-          if [ -z "$G" ]; then echo "no Godot build here -- skipped"; exit 0; fi
+          if [ -z "$G" ]; then
+            echo "FAILED: no Godot binary -- vendor/godot/ should have supplied one via tools/build_godot.sh" >&2
+            exit 1
+          fi
           "$G" --headless --path godot -- --vista-gate 2>&1 | grep -E "^VISTA"
 
       # P1-G2. The tier ladder, and arrest -> brig -> fine -> release closing
@@ -1153,6 +1188,8 @@ jobs:
         if: always()
         run: |
           fail=0
+          if [ "${{ steps.sgodot.outcome }}" != "success" ]; then
+            echo "FAILED: sgodot -- no engine, so every gate below that needs one was measuring nothing"; fail=1; fi
           if [ "${{ steps.sexport_gltf_and_verify_it_is_well_formed.outcome }}" != "success" ]; then
             echo "FAILED: sexport_gltf_and_verify_it_is_well_formed"; fail=1; fi
           if [ "${{ steps.sreachable.outcome }}" != "success" ]; then
