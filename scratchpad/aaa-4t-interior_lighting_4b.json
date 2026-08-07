@@ -8,7 +8,7 @@
   "subsystems": {
     "interior_lighting_4b": {
       "status": "active",
-      "_merge_note": "Written by the build agent for item interior_lighting_4b, session 4t. Round zero is the build and is NOT a review round (docs/AAA-STANDARD.md). Merge into docs/aaa-scorecard.json at integration.",
+      "_merge_note": "Written by the build agent for item interior_lighting_4b, session 4t. Round zero is the build and is NOT a review round (docs/AAA-STANDARD.md). Round 1 below is the builder's self-assessment of the round-zero build; round 2 is the builder's self-assessment of the rework done in answer to the external critic's round-1 verdict. Neither is a review. Merge into docs/aaa-scorecard.json at integration.",
       "rounds": [
         {
           "round": 1,
@@ -67,6 +67,81 @@
               "descriptor": "R4",
               "where": "tools/export_scene.py, the render pipeline generally",
               "text": "Two sweeps this session were discarded: five --fixture-energy cells came back with two frames sharing an md5 with a third run's output, because station/generated/scene/<shot>/ is rewritten by every render. Re-run strictly sequentially all cells differed. Nothing in the pipeline asserts that a PNG was rendered from the scene.json the same invocation wrote; the tell is an md5 collision between runs that differ in a flag, and it is found by looking rather than by a gate."
+            }
+          ]
+        },
+        {
+          "round": 2,
+          "reviewer": "build-4t-interior_lighting_4b (self, rework of the external critic's round-1 verdict)",
+          "scores": {
+            "craft": 3,
+            "fidelity": 4,
+            "performance": 2,
+            "robustness": 4
+          },
+          "evidence": {
+            "fidelity": "Every value in FIXTURE_LIGHTING['zoc_downlight'] is transcribed from docs/layer4-lighting/public_social.json's fixture record `zoc_downlight_overhead`, measured off reference/04-sector-red/more zocalo.png (authority 1): spot, (0.694, 0.982, 1.000), 7740 K, energy_rel 1.00, range 12 m, cone half-angle >= 50 deg, shadow true, mounted 7.2 m above the deck. INV-1220. THE CROSS-CHECK THAT COULD NOT HAVE COPIED THE SOURCE: the emitted light positions come out at x = +/-4.700 m and z = 1.35 / 4.05 / 6.75 / 9.45 m per bay, derived only from the centroids of station/zocalo.py's pool discs -- which is the JSON's placement string to the centimetre, arrived at from geometry rather than from the record. AMBIENT_SOLVED['mod:zocalo'] = 0.094 is the same JSON's measured zocalo_concourse fill ratio and its own instruction ('SET AMBIENT/GI AT ROUGHLY 0.08 OF THE KEY IN A SOCIAL SPACE').",
+            "robustness": "tools/export_scene.py::_selftest 284/286 (the two failures are pre-existing and environmental -- exterior LOD meshes are not built in a fresh worktree). Seven new checks. Broken and observed: the mount offset check fires as 'FAIL: every light sits ON the fitting it stands for ([zocalo/zoc_downlight 7.19 m of 12.0 m])' before it was taught about mount_m -- that is the assertion catching the change that was supposed to be safe. The map-face ration carries its own identity control (the corridor anchor is all-omni and still takes exactly 2 casters at shadow_n=2) and its own positive one (the Zocalo spends the same 12 faces on more than 2 casters). The mount direction is asserted both ways -- +Y with no `down`, and -down with one, with nothing moving in Y.",
+            "_gate": "`python3 tools/export_scene.py --gate-emissive zocalo`, the control the round-1 critic asked for, with both negative controls RUN rather than described. Shipped pair: emissive p99 0.7051 -> 0.3198 (x2.20), lit median 0.0293 -> 0.0273, separation x2.06, exit 0. `--control none`: nothing moves at all, x1.00/x1.00, separation x1.00, exit 1. `--control uncompensated`: the lit population moves x3.52 and the emissive population does NOT MOVE AT ALL, pinned at 0.9449 both cells -- separation x0.28, inverted, exit 1. That last row is CLAUDE.md's recorded 'the top of the ladder is pinned' defect reproduced on demand.",
+            "_frames": "scratchpad/blind/interior_lighting_4b/r2/, 1280x720, three cameras derived from the hall's own bounds and identical on both sides: NORMAL 14.60 m is where its 22.04 m width fills the frame at hfov 74.08 (fov 46 vertical, 16:9); HALF 7.30 m; the one-pixel-of-silhouette distance is 7.34 / (2 tan(46/720/2 deg)) = 6,583 m, which is 98x the longest sightline the hall has, so the third camera is that sightline, 65.20 m. Every render's stdout grepped: all six report 'Vulkan 1.4.318 - Forward+'; none fell back to OpenGL 3. All six md5s distinct.",
+            "_measured": "tools/measure_frame.py against reference/04-sector-red/more zocalo.png. LEVEL, which is the headline: x0.77 / x0.65 / x0.77 (far / normal / half), ALL THREE OUT OF THE x1.05-1.75 WINDOW, becomes x1.40 / x1.10 / x1.05, ALL THREE IN IT. No Zocalo frame in this project has been in that window before. Distribution bands 5/7 -> 5/7 (far), 4/7 -> 5/7 (normal), 4/7 -> 3/7 (half). Clipped 0.00% on all six frames. Deck edge hardness, |dI/dx| p99.9 over the lower half of the frame: 95 -> 73, 102 -> 78, 67 -> 50 -- the pool boundaries are 23-25% softer on every camera."
+          },
+          "broke_assertions": true,
+          "what_is_good": [
+            "The room has a KEY. The concourse's principal fitting was measured in layer 4, quoted in materials.py, and cast no light in any frame this project has ever taken; it now casts, from the position its own record specifies, and the position is derived from the geometry rather than tabulated.",
+            "The room has two registers. Every photon it cast before was orange (rib lamp 1.000/0.398/0.233 at energy_rel 0.30 and stall festoon 1.000/0.492/0.420 at 0.19) over a grey ambient. The deck is now lit at 7740 K against a warm vault, which is the warm/cool split the reference has and this file's own doctrine calls 'most of what a Babylon 5 corridor looks like'.",
+            "The chair and stool legs cast into the deck. The critic's finding was that they stood in a pool and cast nothing; the layer-4 record says the same thing from the other side, as a measurement -- 'Chair legs cast two to three distinct shadows each, so the deck's brightness is from OVERHEAD sources and not from an emissive floor plate.'",
+            "The ambient is the reference's own measured 0.094 instead of the residential corridor's 0.300, closing the defect AMBIENT_SOLVED's header describes and eleven other bespoke places still have.",
+            "The units trap that cost this round a set of frames is written above the entry that caused it, not in a commit message: --fixture-energy defaults to 3.0 and the table entry is half of a product."
+          ],
+          "findings": [
+            {
+              "severity": "major",
+              "dimension": "craft",
+              "descriptor": "C3",
+              "where": "tools/export_scene.py FIXTURE_LIGHTING, the Zocalo rig as a whole",
+              "text": "The room is now too UNIFORMLY lit, which is the opposite of round 1's defect and still C3. Whole-frame p99/median is 3.98 on the far camera against the reference's 10.87; p5 is x1.94 against a x1.29 band and crushed is 1.86% against the reference's 48.51%. The show's Zocalo is a dark room with bright pools and ours is an evenly lit hall -- 48 keys at a 50 deg cone from 7.2 m plus 96 stall lamps and 60 rib lamps leave nowhere dark. Part of the gap is framing rather than light (the reference is a close shot with dark figures filling the foreground and ours is an empty hall), and that part is not recoverable by any knob in this file; the rest is real. Falls apart at half distance on the far bulkhead, which is one flat value with drawn-on seams carrying two soft key spills and nothing else.",
+              "outcome": null
+            },
+            {
+              "severity": "major",
+              "dimension": "craft",
+              "descriptor": "C3",
+              "where": "station/zocalo.py zoc_deck_strip, and materials.zoc_deck_light",
+              "text": "The centreline strip is still the brightest object in every frame and still reads as a painted ribbon: 149,157,169 sRGB against a deck at 117-138, uniform along its whole 64.8 m with no falloff, no interruption and no fitting. K took it from 247 to 149 and cannot take it further without costing the level. Its layer-4 record classes it `emissive_only` at energy_rel 0.25, so a light is not the answer -- what it needs is either a lower emission_energy in materials.py (it shares zoc_deck_light with the pools at 3.5, and the record separates them at 1.00 and 0.25) or interruption in the geometry. Neither file is this item's.",
+              "outcome": null
+            },
+            {
+              "severity": "major",
+              "dimension": "performance",
+              "descriptor": "P2",
+              "where": "tools/export_scene.py fixture_lights, the shadow ration",
+              "text": "The map-face budget is a geometric count, not a timing. An omni is charged 6 and a spot 1 because a cube map has six faces, which is right if spot and cube-face maps are allocated at the same resolution and wrong if they are not, and nothing in this container can measure a shadow map's cost -- docs/AAA-STANDARD.md says so under 'Shader cost'. What IS measured: the Zocalo's caster count goes 2 -> 12 at an unchanged face budget, and the far camera's render reports 7 casters against 12 on the two near ones, so the ration is spending what it is given. The light count itself is unchanged at 240 and no geometry was added.",
+              "outcome": null
+            },
+            {
+              "severity": "minor",
+              "dimension": "robustness",
+              "descriptor": "R4",
+              "where": "tools/export_scene.py, station/materials.py",
+              "text": "Nothing asserts that materials.light_market_pool and FIXTURE_LIGHTING['zoc_downlight'] cannot both cast. They are the same fitting described in two files; today only one of them can reach a frame because station/zocalo.py emits no `light_market_pool` group, and the moment it does the room gets its key twice. That is the failure mode ROBUSTNESS 5 names -- 'nothing the module emits can be emitted twice into one scene without an assertion catching it'.",
+              "outcome": null
+            },
+            {
+              "severity": "resolved",
+              "dimension": "craft",
+              "descriptor": "C3",
+              "where": "the round-1 critic's worst defect",
+              "text": "'The floor light pools are clipped pure-white ellipses with a hard edge, no penumbra, no bounce tint, and -- the giveaway -- no occlusion.' Measured rather than argued: the pools were never at 255 (0.000% of either frame is >= 235 in all channels; they peak at 201 sRGB before and 169 after), so the pure-white reading was wrong about the pixels and right about the look. What has changed is the three things behind it. OCCLUSION: 12 casters where there were 2, and the stool legs darken the deck under every near table -- crop out/after/far.png at (820,400)-(1280,660) against the same box in out/before/far.png. EDGE: |dI/dx| p99.9 across the deck falls 95 -> 73, 102 -> 78, 67 -> 50. SOURCE: the pools now have one, 7.2 m overhead at the soffit, at the position their own layer-4 record specifies.",
+              "outcome": null
+            },
+            {
+              "severity": "resolved",
+              "dimension": "craft",
+              "descriptor": "C3",
+              "where": "the round-1 critic's separate note on colour",
+              "text": "'Nothing in these frames is a saturated accent ... Until the rig emits coloured practicals, this room will keep scoring 3 no matter what the global exposure is.' Half answered. The rig now emits a second register -- a 7740 K cool key over the deck against the 2990 K vault -- which is what the reference's own measurement says the room is. It does NOT emit the reference's saturated practicals, and the reason is recorded rather than deferred: layer 4 classes zoc_neon_face, zoc_screen and zoc_deck_strip `emissive_only`, i.e. it measured them and found they light nothing, and their halo in the reference dies within 0.4 of the sign's own height. Making them cast would be inventing throw against a measurement. The saturation has to come from materials.py's emission and from geometry that is missing -- the reference's green-ringed table lamps have no group in station/zocalo.py at all.",
+              "outcome": null
             }
           ]
         }
