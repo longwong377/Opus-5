@@ -2578,6 +2578,22 @@ def _cause(w, faction):
             f"({getattr(inc, 'stance', '?')})")
 
 
+def _regard(w, a, b, delta):
+    """One named resident's regard for another. Skipped when they are the same.
+
+    `_cast2` now guarantees two people wherever a pool holds two, so this fires
+    only on a place-hour that genuinely holds ONE person of the species -- and
+    there is no dispute between one person and themselves to record. Written as
+    a named function rather than an `if` inside three resolvers so the rule has
+    one home; the three call sites had been writing the delta unconditionally
+    and nothing could tell.
+    """
+    if a == b:
+        return False
+    _standing(w, a, b, delta)
+    return True
+
+
 def _stock(w, place, good, delta):
     w.fact("stock", f"{place}:{good}", f"{delta:+d} units")
 
@@ -3157,8 +3173,8 @@ def _res_neighbour(inc, w, st):
            f"{_who(a)} and {_who(b)} through the bulkhead at {inc.place}; "
            f"{_who(b)} keeps a {b.species} clock")
     if st == ABSENT:
-        _standing(w, a.npc_id, b.npc_id, -1.0)
-        _standing(w, b.npc_id, a.npc_id, -1.0)
+        _regard(w, a.npc_id, b.npc_id, -1.0)
+        _regard(w, b.npc_id, a.npc_id, -1.0)
         w.fact("standing", f"{inc.place}:corridor", "two doors that do not "
                                                    "greet each other")
     elif st == HELPS:
@@ -3376,7 +3392,7 @@ def _res_stockout(inc, w, st):
     if st == ABSENT:
         w.fact("stock", f"{inc.place}:substitute",
                "the next line up carries the trade")
-        _standing(w, customer.npc_id, keeper.npc_id, -1.0)
+        _regard(w, customer.npc_id, keeper.npc_id, -1.0)
     elif st == HELPS:
         alt = _other_counter(inc)
         _stock(w, alt, line, -2)
@@ -3414,9 +3430,32 @@ def _cast1(place, hour, seed, hint):
 
 
 def _cast2(place, hour, seed, hint, sp_a=None, sp_b=None):
+    """TWO PEOPLE, AND THEY HAVE TO BE TWO.
+
+    THIS DREW ONE PERSON TWICE AND NOBODY HAD NOTICED. The two halves are
+    independent draws from the same place-hour pool on two seeds, so a
+    collision is not merely possible, it is a birthday problem on a pool of at
+    most `CAST_POOL` = 16 -- and it produced a Drazi brawling with himself and
+    a neighbour dispute filed by one resident against that same resident.
+    Found by `ledger_block`'s "somebody's regard for themselves is not a
+    quantity" precondition on a whole-station `--gate` run, which is the second
+    live defect that precondition turned up in the session it was written.
+
+    The retry is bounded and then falls back to `_cast_at`'s own n=2 draw,
+    which cannot collide because it tracks the indices it has used. Only a
+    place-hour whose pool holds ONE person of the species can still return a
+    pair, and `_regard` is the guard for that case.
+    """
     a = _cast_at(place, hour, seed, 1, species=sp_a, role_hint=hint + "a")
-    b = _cast_at(place, hour, seed + "b", 1, species=sp_b, role_hint=hint + "b")
-    return [a[0], b[0]]
+    for i in range(6):
+        b = _cast_at(place, hour, seed + "b" * (i + 1), 1, species=sp_b,
+                     role_hint=hint + "b")
+        if b[0].npc_id != a[0].npc_id:
+            return [a[0], b[0]]
+    pair = _cast_at(place, hour, seed, 2, species=sp_a, role_hint=hint)
+    if len(pair) > 1 and pair[0].npc_id != pair[1].npc_id:
+        return [pair[0], pair[1]]
+    return [a[0], b[0]]                                      # pragma: no cover
 
 
 CLASSES = (
@@ -5527,10 +5566,21 @@ def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
     out(f"  3 distinct: {len(three)}   2 distinct: {len(two)} {two}   "
         f"1: {len(one)} {one}")
     n += 1
-    check(len(three) >= 20,
-          "SYS-14's CHECK: each class replayed absent/helps/reports yields "
-          "three world states differing in NAMED FACTS -- not in a log string",
-          f"{len(three)} of {len(CLASSES)} give three")
+    # THE THRESHOLD WAS `>= 20` AND IT WAS THE SOFT HALF OF THE SAME DEFECT
+    # `accept()` had in its hard form. `accept()` asked this question of ONE
+    # hardcoded class; `gate()` asked it of all thirty and then accepted TEN
+    # collapsed ones. Both passed for as long as they existed while INC-PSICOP
+    # gave two. A gate whose pass band is wider than the content it guards
+    # cannot fail on that content, which is `docs/MASTER-PLAN.md`'s rule for a
+    # layer exit criterion applied to an assertion.
+    want = len(CLASSES) - len(STANCE_EXEMPT)
+    check(len(three) == want,
+          "SYS-14's CHECK: EVERY class replayed absent/helps/reports yields "
+          "three world states differing in NAMED FACTS -- not in a log string, "
+          "and not 20 of them",
+          f"{len(three)} of {len(CLASSES)} give three, {len(STANCE_EXEMPT)} "
+          f"written exemption(s) {sorted(STANCE_EXEMPT)}; short: "
+          f"{sorted(set(two) | set(one))}")
     n += 1
     check(not one,
           "and no class collapses all three stances into one world -- a class "

@@ -12785,6 +12785,20 @@ It went red immediately on eleven of the sixteen names in use, and while being w
 third direction nobody had declared: `_standing(w, npc_id_a, npc_id_b, …)` in INC-NEIGHBOUR and
 INC-STOCKOUT, one resident's regard for another, which is nobody's faction ledger.
 
+**And then it found a live content defect that had nothing to do with ledgers.** On a whole-station
+`--gate` run it raised *"somebody's regard for themselves is not a quantity"* at
+`res:b5:fresh_air:centauri:351`. `_cast2` drew its two people as two independent draws from the
+same place-hour pool on two seeds — a birthday problem on a pool of at most `CAST_POOL` = 16 — so
+the station had been running Drazi brawling with themselves and neighbour disputes filed by one
+resident against that same resident, in every session since the class table was written. Neither a
+rate gate, a stance gate nor a render could express it. `_cast2` now retries **six** times on
+successive seed suffixes and then falls back to `_cast_at`'s own n=2 draw, which cannot collide
+because it tracks the indices it has used; six is chosen so that a pool of two collides with
+probability 2⁻⁶ before the fallback is reached, and the fallback is exact. Only a place-hour whose
+pool holds ONE person of the species can still return a pair, and `_regard()` is the one guard for
+that case — written as a named function, not as an `if` in each of the three call sites, because
+this file's own history is full of fixes applied to an instance instead of to the rule.
+
 ## INV-1056 — a standing block remembers its last 8 causes
 
 **Authority 5, session 4t.** `Journal.move_standing` has always **refused** a delta with no cause —
