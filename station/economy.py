@@ -2788,6 +2788,51 @@ def trade_gate(out=print, break_margin=False, break_crossplace=False):
               f"them {LURKER_PREFIX}, "
               f"{sum(1 for k in w.purses if k.startswith('player:'))} player; "
               f"e.g. {sorted(w.purses)[0]}")
+
+        # -- AND NOW LAUNCH THE WRITER, BECAUSE A STATIC CALL IS NOT A RUN ----
+        # This project's ninth no-caller defect got past a static scan that
+        # could see the reference and not the branch. `background_sales` being
+        # called from `dockwork.report_loop` is a fact about the source; that
+        # `station/generated/economy.json` -- the file `till.py` and
+        # `godot/scripts/interact.gd` read -- comes out of it with sell rows
+        # in it is a fact about a run. So the run happens here, in a child
+        # process, out of a temp directory (the shared artefact is not this
+        # gate's to stomp), and the line the writer PRINTS is grepped for.
+        out("")
+        out("...AND THE WRITER IS LAUNCHED, NOT MERELY REFERENCED")
+        shipped = os.path.join(tempfile.mkdtemp(prefix="shipped-"),
+                               "economy.json")
+        cmd = [sys.executable, os.path.join(HERE, "dockwork.py"), "--loop",
+               "--days", "14", "--role", "lurker", "--seed", "downbelow",
+               "--save", shipped]
+        rr = subprocess.run(cmd, capture_output=True, text=True)
+        wrote = [ln for ln in rr.stdout.splitlines()
+                 if ln.startswith("ledger written to")]
+        out(f"  $ python3 station/dockwork.py --loop --days 14 --role lurker "
+            f"--seed downbelow --save <tmp>")
+        out(f"  it printed: {(wrote[0] if wrote else '(nothing)')!r}")
+        check("the SHIPPED writer runs and says so -- dockwork.report_loop "
+              "-> background_sales -> background_fencing -> sell()",
+              rr.returncode == 0 and bool(wrote)
+              and os.path.exists(shipped),
+              f"rc={rr.returncode}, {os.path.getsize(shipped) if os.path.exists(shipped) else 0} bytes")
+        with open(shipped) as fh:
+            doc = json.load(fh)
+        sells = [r for r in doc.get("sales", []) if r["n"] < 0]
+        pk = [k for k in doc.get("purses", {}) if k.startswith("player:")]
+        lk = [k for k in doc.get("purses", {})
+              if k.startswith(LURKER_PREFIX)]
+        check("...and the artefact it wrote carries the SELL side",
+              len(sells) > 0,
+              f"{len(sells)} row(s) with n<0 in {len(doc.get('sales', []))}; "
+              f"e.g. {sells[0]['n']} x {sells[0]['good']} at "
+              f"{sells[0]['at']} for {-sells[0]['cr']:.2f} cr by "
+              f"{sells[0]['who']}" if sells else "none")
+        check("...and EXACTLY ONE player is in it, with the sellers under "
+              f"`{LURKER_PREFIX}`",
+              len(pk) == 1 and len(lk) > 0,
+              f"{len(doc.get('purses', {}))} purse(s): {len(pk)} player "
+              f"({', '.join(pk)}), {len(lk)} {LURKER_PREFIX}")
     finally:
         BUY_BACK, CROSS_CLAMP = saved, saved_clamp
 
