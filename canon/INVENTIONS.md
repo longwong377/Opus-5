@@ -12840,3 +12840,107 @@ mere absence of the other two.
 **What would overturn it.** A canon reading in which the Corps rewards civilian informants
 directly on its own books, which would move REPORTS' credit from `nightwatch` to `psi_corps`; or an
 episode establishing that the railroad is not reachable from a public concourse.
+
+## INV-1020 — the tier-2 matrix's "2 variants" is a second CLAUSE, not a second affix
+
+**What.** `dialogue.ROLE_CLAUSE_B`: 19 role registers x 11 topics = **209 newly written
+clauses**, one per (role, topic), each a different thought from its `ROLE_CLAUSE` partner
+rather than a rephrasing of it. `cell_line(species, role, topic, variant)` now walks the
+cross product of clause and frame CLAUSE-MAJOR, so variant 0 and variant 1 are two
+sentences. Authority 5; the register is the customs-board voice this module already uses.
+
+**Why.** `docs/spec/PEOPLE.md` DLG-02 reads *"11 topics x 2 variants + 8 greet/farewell =
+30"*. The first build spent the "x 2" on `SPECIES_FRAME`, whose two entries per species are
+the same two affixes on all eleven topics — so a Narn dockworker's two "port" lines were
+one sentence with `"No more than that."` after it and `"It is simple enough."` in front of
+it. Nineteen real utterances were reported as thirty, and the harness could not see it
+because it counted rendered strings.
+
+**What constrained it.** The annex asks for the species frame under its own heading
+(*"species register constraints carried"* — Brakiri night clock, pak'ma'ra translator, Gaim
+interpreter, Minbari caste address), so the frame is REGISTER MODULATION and cannot also be
+the variant count; a modulation applied to one sentence is not two sentences. Each clause may
+name only the brace keys its own topic's fact supplies, and `_selftest` renders all 418
+against facts collected from the topic functions themselves — a mistyped `{bay}` fails at
+import rather than in a player's face.
+
+**What would overturn it.** A ruling that the annex's "variants" always meant the species
+affix. That would restore the 19, and it would have to say what the row's own ACCEPT-shape
+(*"ten minutes at one counter never hears the same line twice"*) is then measuring.
+
+## INV-1021 — the Tier-1 fifty are addressed by the office column, and cast by it
+
+**What.** `dialogue.cast_at(place_key)` maps `directory.PLACES` keys to CAST-02 rows by
+lifting register-key tokens out of each row's **office** cell; `cast_here` picks which of a
+place's cast is on at this hour; `cast_resident` returns them as a real
+`resident.roster` body with the annex's name substituted. `behind_counter()` and
+`sidecar()` prefer them. 46 of the 50 resolve to 32 places.
+
+**Why.** `phrase()` reaches a Tier-1 row through `cast_by_name(sp.name)`, and every name on
+the shipped path is minted by `resident.resident()` from the per-species grammar. Over a
+213-name sample exactly ONE collided with a CAST-02 row, and that by coincidence (the Narn
+grammar can produce "G'Dral"). Fifty people had 3,750 lines and no body: finished content
+with no caller, which is the defect `CLAUDE.md` records nine instances of, arriving as
+content instead of as code.
+
+**What constrained it.** The office cell only — never `home`. Reading `home` as well
+addresses 47 rather than 30, and every extra resolves to `qtr_civilian` or `qtr_personnel`,
+which would put the Zocalo jeweller behind a counter in a residential block. The hour split
+is the annex's own words ("owner-operator **evenings**" vs "**day** barman" at the same
+bar), and ties break on annex row order so two bakes of one deck agree.
+
+**What would overturn it.** A CAST-02 row gaining an explicit place column; this would then
+read that instead of parsing prose. A register rename breaks an address LOUDLY — the token
+stops matching and the harness's reach number falls — which is the intended failure.
+
+## INV-1022 — CAST_OFFICE_PLACE, and the four rows deliberately left unaddressed
+
+**What.** A 24-entry phrase → `directory.PLACES` key table in `dialogue.py`. Left side is a
+phrase appearing verbatim in a CAST-02 office cell; right side is the register key whose own
+name says the same thing: `"customs supervisor, north hall"` → `customs_north`,
+`"post-office counter clerk"` → `post_office`, `"n'grath model"` → `ngrath` (invisible to a
+bare-token scan because the apostrophe is not in a key). Every right-hand side is asserted
+against the live key set at build time.
+
+**Why.** The bare-token scan addresses 23 of the 50 because most offices are written as
+English rather than as keys. With the table it is 46.
+
+**What constrained it.** Four rows stay unaddressed on purpose — Deryn Vale ("Ranger contact
+— the brooch worn open"), Carys Voss ("resident ISN stringer"), the Collector ("debt
+enforcement (office, not name)") and the Vree charter broker ("standoff lighterage broker").
+None of those offices is a place in the annex or in the register, and inventing one would
+put a named character somewhere the show never puts them.
+
+**What would overturn it.** A PLACES row for a Ranger contact point, an ISN bureau, or a
+lighterage broker's post. Each would take one line here and would raise the reach number.
+
+## INV-1023 — DLG-01's floor is counted on MASKED frames, and the row is honestly RED
+
+**What.** `spec_harness/dlg.py::_mask` removes from a Tier-1 line every string the roster row
+carries and every value `_cast_facts` derives from it — whole values and whitespace tokens of
+three characters or more, longest first, ties broken on the token itself for determinism —
+and collapses runs of the sentinel. The row's floor and its no-two-identical rule are applied
+to what remains: the SENTENCE FRAME. Rendered-string checks are kept as well; nothing was
+removed.
+
+**Why.** The old count hashed rendered lines, in which each person's own name is already
+substituted. Two people therefore compared unequal whenever their names differed — always —
+so fifty renderings of one sentence counted as fifty distinct lines and the row's own rule
+could not fail by construction. A reviewer passed it with `"<name> says thing number 0."`
+
+**What constrained it.** Tokens under three characters are left alone, because masking "a"
+or "of" would erase the sentence rather than the person and this must stay a measurement of
+writing. The mask is deliberately STRICTER than the minimum (it also removes the shortened
+`office` head and the grievance clause, which the six roster fields alone would leave in),
+because the safe direction for a floor is to under-count.
+
+**What this makes true, and it is a finding for the owner rather than a defect to fix
+quietly.** DLG-01 measures **293 distinct sentence frames against a floor of 3,750**. The
+floor asks for 3,750 individually authored sentences — 75 for each of fifty named people,
+none shared — which is a scriptwriting job of roughly 90,000 words, not a generator. R1
+forbids editing either side to make the other pass, so the number is reported and the row
+stays RED.
+
+**What would overturn it.** Either the writing, or an owner's ruling that Tier-1 distinctness
+means distinct *facts* in a shared frame rather than distinct frames. The second is a
+legitimate reading and it is much cheaper; it is not a call a build agent may make.

@@ -100,7 +100,13 @@ def _mask(dlg, row, line):
         if len(v) > 2:
             toks.add(v)
         toks.update(t for t in v.split() if len(t) > 2)
-    for t in sorted(toks, key=len, reverse=True):
+    # LONGEST FIRST, AND TIES BROKEN ON THE TOKEN ITSELF. The tie-break is not
+    # cosmetic: `toks` is a set, set iteration order for strings is salted per
+    # process, and two equal-length tokens applied in either order can mask a
+    # line two different ways. Without it this count moved between 293 and 294
+    # on identical content -- a measurement that disagrees with itself, which
+    # is the `str.__hash__` failure CLAUDE.md's ROBUSTNESS 0 descriptor names.
+    for t in sorted(toks, key=lambda s: (-len(s), s)):
         line = line.replace(t, "@")
     return re.sub(r"(?:@[\s,.'-]*)+", "@", line)
 
@@ -235,35 +241,53 @@ def _dlg01(text):
     # the ninth instance of this project's standing defect, at content scale.
     # `phrase()` reaches Tier-1 through `cast_by_name(sp.name)`, so the test is
     # that names the population actually mints resolve there.
+    # THE TWO HALVES OF REACHABILITY, AND THEY ARE DIFFERENT QUESTIONS.
+    #
+    # (a) Nothing in the NAME GRAMMAR reaches these people. `resident.resident`
+    #     mints from the per-species grammar and over a 213-name sample exactly
+    #     ONE collided with a CAST-02 row, by coincidence -- the Narn grammar
+    #     can produce "G'Dral". So a Tier-1 pool that waits to be addressed by
+    #     a minted name is unreachable, and this number is reported rather than
+    #     gated because a NAME COLLISION IS NOT A DESIGN.
+    #
+    # (b) Something has to CAST them, and that is the gate. `behind_counter`
+    #     is the function `serve_response` uses to decide who is at a counter,
+    #     and `sidecar` is what bakes `<deck>_dialogue.json` for `dialogue.gd`;
+    #     if neither ever produces a CAST-02 name then the 3,750 lines have no
+    #     caller, which is the defect CLAUDE.md records nine instances of.
+    #     Walked over the places `dialogue.cast_at()` claims, at four hours, so
+    #     a day/night roster (Milo evenings, Vresh days) is exercised.
     minted = _minted_names()
-    hit = sum(1 for nm in minted if dlg.cast_by_name(nm) is not None)
-    reached = len({r["who"] for r in roster if r["who"] in set(minted)})
-    if not minted:
-        bad.append("could not mint a single resident name to test Tier-1 "
-                   "reachability against")
-    elif not hit:
-        bad.append("none of the %d names populace/names.py actually mints "
-                   "resolves through dialogue.cast_by_name(), so no Tier-1 "
-                   "line is reachable by any resident the station casts"
-                   % len(minted))
-    if bad and minted:
-        # NOT A GATE, A NUMBER THE OWNER NEEDS BESIDE THE OTHERS. The hard
-        # check above is the critic's ("some minted name reaches a row"); this
-        # says how much of the cast the population actually casts, and it is
-        # CAST-02's own defect rather than this row's, so it is reported here
-        # and enforced there.
-        bad.append("and %d of the %d Tier-1 cast are ever minted by "
-                   "resident.roster over the sample -- the rest have lines "
-                   "and no body (CAST-02's finding, reported here because "
-                   "this is the row that writes for them)"
-                   % (reached, len(roster)))
+    coll = sum(1 for nm in minted if dlg.cast_by_name(nm) is not None)
+    served = set()
+    for pk in dlg.cast_at():
+        for h in (3.0, 9.0, 13.0, 21.0):
+            try:
+                who = dlg.behind_counter(pk, dlg.World(hour=h))
+            except Exception:                                # pragma: no cover
+                continue
+            if who is not None and dlg.cast_by_name(who.name) is not None:
+                served.add(who.name)
+    if not served:
+        bad.append("no CAST-02 name is ever produced by "
+                   "dialogue.behind_counter() over the %d places cast_at() "
+                   "claims, so the Tier-1 pools have no caller on any path a "
+                   "player reaches" % len(dlg.cast_at()))
+    if bad:
+        bad.append("[reach: %d of %d Tier-1 cast are cast by "
+                   "behind_counter() over %d places x 4 hours; %d of %d names "
+                   "resident.roster mints collide with a CAST-02 row, which "
+                   "is coincidence rather than wiring]"
+                   % (len(served), len(roster), len(dlg.cast_at()), coll,
+                      len(minted)))
+    hit = len(served)
     if bad:
         return False, "DLG-01: " + "; ".join(bad)
     return True, ("DLG-01: %d distinct sentence frames over %d rendered "
                   "Tier-1 lines (%d each x %d cast parsed from the annex), no "
-                  "frame shared by two of the fifty, and %d of %d minted "
-                  "resident names reach a Tier-1 row"
-                  % (mgot, got, per, len(roster), hit, len(minted)))
+                  "frame shared by two of the fifty, and %d of the %d are "
+                  "cast by behind_counter() on the shipped path"
+                  % (mgot, got, per, len(roster), hit, len(roster)))
 
 
 def _dlg02(text):
