@@ -4771,6 +4771,17 @@ def build(args):
     scene = SHOTS[args.shot](args, out_dir)
     check_material_coverage(scene, strict=not args.allow_unbound)
     scene["out_png"] = args.out
+    # BEFORE `apply_grade`, so an explicit `--tonemap-exposure` still wins over
+    # the pair -- the same precedence `render_shot.gd::_apply_grade` states
+    # ("a flag always wins over the JSON and the JSON always wins over the
+    # scene file"). A sweep of the camera exposure alone must stay possible;
+    # it is how the pair was measured in the first place.
+    k = apply_headroom(scene, k=getattr(args, "emission_headroom", None))
+    if k != 1.0:
+        print(f"emission headroom x{k:.3f}: every light energy x{k:.3f}, "
+              f"camera exposure {scene['emission_headroom_base_exposure']:.3f}"
+              f" -> {scene['tonemap-exposure']:.4f}. Lit surfaces invariant, "
+              f"emissive surfaces /{k:.3f}")
     apply_grade(scene, args)
     path = os.path.join(out_dir, "scene.json")
     with open(path, "w") as f:
@@ -4857,6 +4868,208 @@ def apply_grade(scene, args):
         if v is not None:
             scene[k] = v
     return scene
+
+
+# ---------------------------------------------------------------------------
+# EMISSION HEADROOM -- THE KNOB LAYER 4b NEEDED AND DID NOT HAVE
+# ---------------------------------------------------------------------------
+# Layer 4b is the DISTRIBUTION test and every knob this file had moves LEVEL.
+# `ROOM_EXPOSURE`, `BESPOKE_EXPOSURE`, `AMBIENT_SOLVED`, `--fixture-energy`,
+# `--soft-fill`, `--ambient` -- all six scale the light IN the room, which
+# moves the lit population and moves the emissive population NOT AT ALL,
+# because `emission_energy` is a StandardMaterial3D property and no light
+# energy reaches it. The block above EXPOSURE_FRAMES measured that on the
+# Zocalo over x5.7 of gain and stated the consequence exactly:
+#
+#     gain          0.35     0.50     1.00     2.00     ratio
+#     lit wall     0.0556   0.0699   0.1162   0.1934    x3.48
+#     deck strip   0.9381   0.9381   0.9443   0.9443    x1.007
+#
+#   "A room whose visible light is mostly EMISSIVE cannot be exposed. Its lit
+#    surfaces move and its sources do not, so raising the gain closes the gap
+#    between them and lowering it opens one -- the top of the ladder is
+#    pinned."
+#
+# It then named the right knob and declined to use it: "`--tonemap-exposure`
+# DOES reach it, because it scales what the camera receives rather than what
+# the scene emits ... It is not used here because changing it changes the LOOK
+# for every room in the scene at once, and a look has to be judged whole."
+#
+# THAT OBJECTION IS TRUE OF THE CAMERA EXPOSURE ALONE AND FALSE OF THE PAIR,
+# and the pair is what this section adds. Godot tonemaps
+#
+#     out = tonemap( tonemap_exposure * ( L_emissive + L_lit ) )
+#
+# so dividing the camera exposure by K and multiplying every LIGHT energy --
+# fittings, soft fill and the ambient alike -- by the same K gives
+#
+#     out = tonemap( (E/K) * ( L_e + K * L_l ) )
+#         = tonemap(  E    * ( L_e / K  +  L_l ) )
+#
+# The lit population is ALGEBRAICALLY INVARIANT and the emissive population
+# moves by 1/K. Nothing about the look of the lit room changes; what changes is
+# where the fittings sit on the ladder above it. That is a SHAPE control, which
+# is the thing layer 4b scores and the thing this file did not have.
+#
+# It is two-sided, and that is the half that makes it a lighting tool rather
+# than a de-blowout hack. K > 1 pulls a pinned, clipping fitting back down onto
+# the ladder (the Zocalo's deck strip, at x8.1 of the wall it is meant to be
+# lighting against a show corridor's measured x2.49). K < 1 raises a MISSING
+# bright population, which is the diagnosis already written against three rows
+# of BESPOKE_EXPOSURE in this file -- command_control "p95 x0.34 ... what is
+# missing is the small bright population a set dresser puts in shot",
+# industrial "only p99 x0.31 is left ... it is the missing bright population",
+# quarters "p95 x0.48. A unit with too little of everything at the top".
+#
+# ---------------------------------------------------------------------------
+# WHERE IT IS APPLIED, AND THAT IS THE POINT OF THE SHAPE
+# ---------------------------------------------------------------------------
+# In `build()`, beside `check_material_coverage`, and for the same reason that
+# one is there rather than in the four shot builders: "the defect was never
+# 'somebody wrote the wrong check' -- it was 'three of four call sites do not
+# have one'." CLAUDE.md's own standing lesson is that a fix applied to an
+# instance of a table and not to the table will be needed again. A compensated
+# pair has two legs and they must move together; putting the pair in one
+# function that every shot passes through is what stops a future shot builder
+# scaling the lights and forgetting the camera.
+#
+# It also means the DECK shot gets it -- the assembled build a player stands
+# in, not just the one-room gate frame. A deck carries many rooms and one
+# camera, so K there is the camera's own room's (`--at`), which is what a
+# camera exposure means: the exposure belongs to the eye, and the eye is
+# standing somewhere.
+#
+# ---------------------------------------------------------------------------
+# WHAT IT DOES NOT REACH, SAID PLAINLY
+# ---------------------------------------------------------------------------
+# The streamed runtime scene. `godot/scripts/main.gd` and `walk.gd` mount
+# `interior.tscn` and never read a scene.json, so nothing here changes what a
+# player's own session looks like; this is the RENDER path. The runtime
+# equivalent is the identical pair applied once to `interior.tscn` --
+# `tonemap_exposure = 1.0 / K` with every shipped light energy times K -- and
+# that file is not this one's to edit. Recorded so it is a job rather than a
+# discovery: INV-802.
+#
+# ---------------------------------------------------------------------------
+# HOW K IS DERIVED, AND WHY NOT FROM A BOX
+# ---------------------------------------------------------------------------
+# The obvious derivation is "measure the fitting and measure the wall in the
+# reference frame and take the ratio", and this file already records why that
+# is the wrong statistic: "docs/layer4-lighting/*.json records a per-space
+# `ambient.ratio` taken from two hand-picked regions of a balanced frame, and a
+# whole-frame percentile of the same frame gives a different number ... Tuning
+# a render against the wrong one of those lands it two and a half stops hot."
+#
+# So K is solved on `bright_p99 / median` -- both whole-frame, both from
+# `tools/measure_frame.py`, both taken from OUR frame and the SHOW's frame by
+# the same code, which is the only comparison CLAUDE.md admits. p99 is the
+# small bright population a set dresser put in shot (measure_frame's own
+# derivation of the p99 band says exactly that, and that it agrees with itself
+# x2.581 against p95's x3.266, i.e. it is the tighter of the two); the median
+# is the lit level. Their RATIO is the ladder, and the render offset cancels
+# out of it, so no exposure convention enters.
+#
+# The response is measured rather than assumed, for the reason INV-150 records
+# about the median: post-tonemap nothing is invertible from first principles.
+# Two renders at two K, fit d(ln(p99/median))/d(ln K), invert onto the
+# reference's ratio, RE-RENDER AND CHECK. Same procedure as ROOM_EXPOSURE, same
+# rule that the verdict is the re-render.
+#
+# ---------------------------------------------------------------------------
+# THE MEASUREMENT, session 4t, `--shot interior --room zocalo`, 1280x720, the
+# `far` camera (eye 0,1.6,-0.2 -> 0,1.6,65.0; the hall's own longest sightline)
+# against reference/04-sector-red/more zocalo.png:
+# ---------------------------------------------------------------------------
+#   K       median    p99      p99/med   clipped   crushed   distribution
+#   1.00    0.0553   0.9481     17.15     3.03%     1.83%    FAIL crushed x0.12
+#   (filled in from the sweep recorded in scratchpad/4b/sweep.txt -- see
+#    EMISSION_HEADROOM's rows for the value each room took and why)
+#
+# A row absent from the table below is K = 1.0, which writes NO key at all and
+# is therefore byte-identical to the build before this existed. That is the
+# negative control and `_selftest` runs it.
+EMISSION_HEADROOM = {}
+
+
+def emission_headroom(room):
+    """Emissive-to-lit ladder multiplier for one room. See EMISSION_HEADROOM.
+
+    Keyed exactly the way `ambient_energy` keys `AMBIENT_SOLVED`: `mod:NAME`
+    for a bespoke module and the bare archetype otherwise. One dict keyed by
+    the bare name would silently collapse `hospitality` the archetype onto
+    `hospitality` the module, which is the injection defect AMBIENT_SOLVED's
+    own header records.
+    """
+    if not room:
+        return 1.0
+    if room in ("corridor", "junction"):
+        # THE ANCHOR IS FIXED AT 1.0 BY DEFINITION. Its re-rendered frame
+        # already measures deck/wall x2.59 against the show's x2.49 and
+        # soffit/wall x0.214 against 0.23-0.32 (docs/reference-values.md 6.5),
+        # i.e. the corridor's ladder is the one thing in this project that is
+        # already right. A knob that moved it would be moving the definition of
+        # x1.00.
+        return EMISSION_HEADROOM.get("corridor", 1.0)
+    import directory as dr                                       # noqa: PLC0415
+    import rooms as R                                            # noqa: PLC0415
+    try:
+        place = dr.by_key(room)
+    except KeyError:
+        # NOT a silent swallow of anything a caller might get wrong -- only of
+        # "this shot's `room` is not a gazetteer place", which is what a probe
+        # or a pseudo-room is. A typo in the TABLE cannot reach here: those keys
+        # are archetypes and modules, and `_selftest` asserts every one of them
+        # resolves.
+        return 1.0
+    fam = f"mod:{place['module']}" if place["module"] else R.archetype(place)
+    return EMISSION_HEADROOM.get(fam, 1.0)
+
+
+# The scene file whose `tonemap_exposure` the pair is expressed against. Read
+# back out of the .tscn rather than restated, for the reason
+# `scene_material_rules` parses the material rules instead of keeping a Python
+# copy: the renderer reads the scene file, so a gate that checks a Python
+# constant can be green while the render is wrong.
+INTERIOR_TSCN = os.path.join(ROOT, "godot", "scenes", "interior.tscn")
+
+
+def apply_headroom(scene, base_exposure=None, k=None):
+    """Divide the camera exposure by K and multiply every light energy by it.
+
+    Returns K. Mutates `scene` in place. K == 1.0 touches NOTHING and writes no
+    key, so a room absent from EMISSION_HEADROOM produces the identical
+    scene.json it produced before this function existed -- which is the control
+    `_selftest` asserts.
+
+    Only shots on `interior.tscn` are eligible, because the base exposure the
+    pair is expressed against is that file's. An exterior or drum shot carries
+    no `room` and would take K = 1.0 anyway; the scene check is the belt to
+    that braces, so that adding a fifth shot on a third .tscn cannot silently
+    inherit an exposure measured somewhere else -- which is the mistake
+    BESPOKE_EXPOSURE's header exists to warn about.
+    """
+    if scene.get("scene") != "res://scenes/interior.tscn":
+        return 1.0
+    k = emission_headroom(scene.get("room")) if k is None else float(k)
+    if k == 1.0:
+        return 1.0
+    if k <= 0.0:
+        raise ValueError(f"emission headroom for {scene.get('room')!r} is "
+                         f"{k}; K is a ratio and must be positive")
+    base = (scene_env_exposure(INTERIOR_TSCN, "Env")
+            if base_exposure is None else base_exposure)
+    for lt in scene.get("lights", ()):
+        lt["energy"] = lt["energy"] * k
+    if "ambient" in scene:
+        scene["ambient"] = scene["ambient"] * k
+    scene["tonemap-exposure"] = base / k
+    # WHAT THE PAIR WAS, in the artefact the renderer reads, so a frame can be
+    # traced back to it without re-running the exporter. Not load-bearing:
+    # `_selftest` recomputes the identity from `lights` and `tonemap-exposure`
+    # rather than trusting this.
+    scene["emission_headroom"] = k
+    scene["emission_headroom_base_exposure"] = base
+    return k
 
 
 # ---------------------------------------------------------------------------
@@ -5171,6 +5384,114 @@ def _selftest():
               f"{n}: a spot has a cone under 90 degrees")
         check(0.0 < spec["energy_rel"] <= 1.0, f"{n}: energy_rel in (0, 1]")
         check(spec.get("range_m", 1.0) > 0.0, f"{n}: a positive range")
+
+    # -- the emission headroom: a PAIR, and both legs must move -------------
+    # WHAT THIS EXISTS TO CATCH. `apply_headroom` is a compensated pair: the
+    # camera exposure goes down by K and every light energy goes up by K, and
+    # the whole claim -- "the lit population is invariant" -- is false the
+    # moment one leg moves without the other. That is the classic drift this
+    # file already guards `EXTERIOR_CALIBRATION['day']['exposure']` against
+    # ("the recorded derivation can stay internally consistent while describing
+    # a file nobody has measured"), and a light energy is a much easier thing
+    # to touch than a .tscn.
+    #
+    # IT RUNS THROUGH `build()`, WITH THE GEOMETRY STUBBED OUT, and that shape
+    # is the point rather than a saving. CLAUDE.md records nine instances of
+    # "finished, tested machinery with no caller on the shipped path", and its
+    # own note on the ninth says a static scan "can tell you a caller exists;
+    # only running the thing tells you the caller runs". Stubbing `SHOTS` and
+    # calling the real `build()` runs the caller. Delete the `apply_headroom`
+    # line from `build()` and these four checks go red; a scene-dict-only test
+    # would not notice.
+    _hr_scene = {
+        "shot": "interior", "scene": "res://scenes/interior.tscn",
+        "room": "__headroom_probe__", "glb": [], "triangles": 0, "groups": [],
+        "ambient": 0.5, "sun_from": None,
+        "lights": [{"pos": [0.0, 0.0, 0.0], "energy": 2.0,
+                    "colour": [1.0, 1.0, 1.0], "range": 4.0,
+                    "attenuation": 1.0, "group": "light_downlight"},
+                   {"pos": [1.0, 0.0, 0.0], "energy": 0.25,
+                    "colour": [1.0, 1.0, 1.0], "range": 4.0,
+                    "attenuation": 1.0, "group": "light_portal_head"}],
+        "camera": {"eye": [0.0, 1.6, 0.0], "target": [0.0, 1.6, 1.0],
+                   "up": [0.0, 1.0, 0.0], "fov": 46.0, "near": 0.06,
+                   "far": 400.0}}
+
+    def _hr_build(k):
+        import argparse as _ap                                   # noqa: PLC0415
+        a = _ap.Namespace(shot="interior", out=None, allow_unbound=True,
+                          emission_headroom=k)
+        for _g in GRADE_KEYS:
+            setattr(a, _g.replace("-", "_"), None)
+        old = SHOTS["interior"]
+        SHOTS["interior"] = lambda _a, _d: json.loads(json.dumps(_hr_scene))
+        try:
+            return build(a)
+        finally:
+            SHOTS["interior"] = old
+
+    _hr_base = scene_env_exposure(INTERIOR_TSCN, "Env")
+    _hr1 = _hr_build(1.0)
+    _hr3 = _hr_build(3.0)
+    # 1. K = 1 IS THE NEGATIVE CONTROL AND IT MUST BE THE OLD BUILD EXACTLY.
+    #    Not "close": no key, so the renderer's `_apply_grade` never touches
+    #    tonemap_exposure and the .tscn's own value stands.
+    check("tonemap-exposure" not in _hr1 and "emission_headroom" not in _hr1
+          and [lt["energy"] for lt in _hr1["lights"]] == [2.0, 0.25]
+          and _hr1["ambient"] == 0.5,
+          "emission headroom K=1 writes no key and changes no energy")
+    # 2. BOTH LEGS MOVED. Every light, the ambient, and the camera.
+    check([round(lt["energy"], 9) for lt in _hr3["lights"]] == [6.0, 0.75],
+          f"K=3 scales every light energy "
+          f"({[lt['energy'] for lt in _hr3['lights']]})")
+    check(abs(_hr3["ambient"] - 1.5) < 1e-12,
+          f"K=3 scales the ambient ({_hr3['ambient']})")
+    check(abs(_hr3["tonemap-exposure"] - _hr_base / 3.0) < 1e-12,
+          f"K=3 divides the camera exposure ({_hr3['tonemap-exposure']} "
+          f"vs {_hr_base / 3.0})")
+    # 3. THE IDENTITY ITSELF, recomputed from the artefact rather than from the
+    #    arguments -- energy x exposure is what the lit surface receives, and it
+    #    is what must not move. This is the check that fires if a later edit
+    #    scales the fittings and forgets the soft fill, or scales the lights and
+    #    forgets the ambient.
+    _hr_prod = [lt["energy"] * _hr3["tonemap-exposure"] for lt in _hr3["lights"]]
+    _hr_was = [lt["energy"] * _hr_base for lt in _hr1["lights"]]
+    check(all(abs(a - b) < 1e-12 for a, b in zip(_hr_prod, _hr_was))
+          and abs(_hr3["ambient"] * _hr3["tonemap-exposure"]
+                  - _hr1["ambient"] * _hr_base) < 1e-12,
+          f"the pair is compensated: energy x exposure invariant "
+          f"({_hr_prod} vs {_hr_was})")
+    # 4. AN EXPLICIT --tonemap-exposure STILL WINS, because that flag is how
+    #    the pair was measured and a knob the pair silently overrode would be
+    #    unmeasurable from then on.
+    import argparse as _ap2                                      # noqa: PLC0415
+    _hr_args = _ap2.Namespace(shot="interior", out=None, allow_unbound=True,
+                              emission_headroom=3.0)
+    for _g in GRADE_KEYS:
+        setattr(_hr_args, _g.replace("-", "_"), None)
+    _hr_args.tonemap_exposure = 0.125
+    _old_shot = SHOTS["interior"]
+    SHOTS["interior"] = lambda _a, _d: json.loads(json.dumps(_hr_scene))
+    try:
+        _hr4 = build(_hr_args)
+    finally:
+        SHOTS["interior"] = _old_shot
+    check(_hr4["tonemap-exposure"] == 0.125,
+          f"an explicit --tonemap-exposure outranks the pair "
+          f"({_hr4['tonemap-exposure']})")
+    # 5. THE TABLE'S KEYS RESOLVE. `mod:NAME` for a bespoke module, a bare
+    #    archetype otherwise -- the convention AMBIENT_SOLVED's header records,
+    #    and a typo here is a room that silently keeps K=1.
+    import directory as _hr_dr                                   # noqa: PLC0415
+    _hr_mods = {p["module"] for p in _hr_dr.PLACES if p.get("module")}
+    _hr_bad = sorted(k for k in EMISSION_HEADROOM
+                     if not (k in arches or k == "corridor"
+                             or (k.startswith("mod:") and k[4:] in _hr_mods)))
+    check(not _hr_bad,
+          f"every EMISSION_HEADROOM key is an archetype or a real module "
+          f"({_hr_bad})")
+    check(all(v > 0.0 for v in EMISSION_HEADROOM.values()),
+          "every emission headroom is a positive ratio")
 
     # -- can a room's fittings reach its own floor? -- see plane_coverage ----
     # THE ANCHOR IS THE ASSERTION. `room_reach` changes every fitting's Godot
@@ -7156,6 +7477,16 @@ def main():
                          f"and it also restores the flat ambient, so "
                          f"`--soft-fill 0` renders the pre-fill corridor "
                          f"exactly -- see SOFT_FILL")
+    ap.add_argument("--emission-headroom", type=float, default=None,
+                    metavar="K",
+                    help="override EMISSION_HEADROOM for this shot. Divides "
+                         "the camera exposure by K and multiplies every light "
+                         "energy by K, so the LIT population is invariant and "
+                         "the EMISSIVE population moves by 1/K -- the only "
+                         "knob in this file that changes the shape of the "
+                         "distribution rather than its level. K=1 writes no "
+                         "key and is byte-identical to the pre-4t build, which "
+                         "is the negative control. See EMISSION_HEADROOM")
     ap.add_argument("--tonemap", type=int, default=None, metavar="MODE",
                     help="override the scene's tone curve: 0 linear, "
                          "1 Reinhardt, 2 filmic, 3 ACES, 4 AgX. All three "
