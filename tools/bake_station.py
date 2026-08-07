@@ -167,7 +167,23 @@ def decks():
     out = []
     for g in sorted(glob.glob(os.path.join(SRC, "*.glb"))):
         stem = os.path.basename(g)[:-4]
-        if stem.endswith("_collision") or stem.startswith("column_"):
+        # NOT EVERY .glb IN THIS DIRECTORY IS A DECK, and the exclusion list has
+        # to name all four kinds that are not. `_collision` and `column_` were
+        # here from the start; `_col` (the spelling `walkable.py` uses, and the
+        # one `boot.collision_shell` now derives) and `crowd_lod*` (the shared
+        # body library, which lives beside the crowd placement lists it is
+        # indexed by) were not, so a bake reported
+        #
+        #     BAKED 70 of 74 decks ... FAILED blue_0_0_col: no collision mesh
+        #     FAILED crowd_lod2/4/8: no collision mesh on disk
+        #
+        # -- four failures that are not decks and cannot fail. A denominator
+        # that counts non-decks makes every coverage number from this tool
+        # wrong, and a FAILED row nobody can act on is how a real failure gets
+        # skimmed past. `boot.decks()` grew the same filter for the same reason;
+        # this is that fix applied to the second site rather than only the first.
+        if (stem.endswith(("_collision", "_col")) or stem.startswith("column_")
+                or stem.startswith("crowd_lod")):
             continue
         col = os.path.join(SRC, stem + "_collision.glb")
         if not os.path.exists(col):
