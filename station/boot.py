@@ -88,6 +88,42 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 DECK_DIR = os.path.join(ROOT, "station/generated/scene/deck")
+# The whole-station export -- `tools/export_station.py` writes here and
+# `tools/bake_station.py` cuts these decks into streaming cells.
+STATION_DIR = os.path.join(ROOT, "station/generated/scene/station")
+
+
+def preferred_deck_dir():
+    """Where to boot from when the caller names nothing.
+
+    THE STREAMED BUILD WINS WHENEVER IT EXISTS, and this is a DEFAULT rather
+    than a flag because the flag was a footgun the moment it existed.
+
+    `scene/deck/` is what `walkable.py` writes as a side effect of a walk test:
+    one z-cluster, no corridor crowd, no cell set. `scene/station/` is the real
+    export: every cluster of the deck, its actors, its crowd placements and its
+    baked cells. For the whole of this project's life `boot.py` could only see
+    the first one -- `decks()` enumerates `*_col.obj` and only the walk-test
+    path emits that name -- so the packaged game shipped a 39 MB test fixture
+    with 83 people in it while the real deck sat in the next directory.
+
+    Adding `--deck-dir` fixed the run that passes it AND LEFT EVERY OTHER
+    CALLER WRONG. `tools/bootstrap.py`'s boot step runs `python3
+    station/boot.py` bare, so a container recovery would have quietly rewritten
+    boot.json back to the walk-test deck and undone the fix with no error
+    anywhere. That is this project's signature defect one more time: a repair
+    applied to the instance instead of to the rule.
+
+    So the rule: prefer the streamed build, fall back to the walk-test deck,
+    and let `--deck-dir` override either. A caller that names nothing gets the
+    deck a player should be in.
+    """
+    try:
+        if decks(STATION_DIR):
+            return STATION_DIR
+    except Exception:                                           # noqa: BLE001
+        pass
+    return DECK_DIR
 OUT = os.path.join(ROOT, "station/generated/scene/boot.json")
 # `tools/bake_station.py`'s output -- 70 decks, 955 cells, one `<stem>_cells.json`
 # each. Consulted last, because a deck built into `scene/deck/` is the one this
@@ -235,14 +271,62 @@ def spawn_from_shell(col_obj):
 
 
 def decks(deck_dir=None):
-    """Every deck on disk that has both a mesh and a collision shell."""
-    dd = deck_dir or DECK_DIR
+    """Every deck on disk that has both a mesh and a collision shell.
+
+    IT ACCEPTS BOTH NAMING CONVENTIONS, and the cost of not doing so was the
+    whole station. `walkable.py` writes `<stem>_col.obj`/`_col.glb`;
+    `tools/export_station.py` writes `<stem>_collision.glb`. This function
+    looked for the first spelling ONLY, so all 71 exported decks were invisible
+    to the file that decides what the game boots into, and the one deck that
+    was visible was visible because somebody had hand-made its `_col.obj`.
+
+    A deck is present when it has a render mesh AND a collision shell under
+    EITHER spelling. `collision_shell` then hands back a path the caller can
+    actually read, deriving the OBJ from the GLB when only the GLB exists.
+    """
+    dd = deck_dir or preferred_deck_dir()
     out = []
-    for col in sorted(glob.glob(os.path.join(dd, "*_col.obj"))):
-        stem = os.path.basename(col)[:-len("_col.obj")]
-        if os.path.exists(os.path.join(dd, stem + ".glb")):
+    for g in sorted(glob.glob(os.path.join(dd, "*.glb"))):
+        stem = os.path.basename(g)[:-len(".glb")]
+        # `crowd_lod2.glb` is a shared body library, not a deck, and the
+        # collision spellings are not decks either.
+        if stem.startswith("crowd_lod") or stem.endswith(("_col", "_collision")):
+            continue
+        if (os.path.exists(os.path.join(dd, stem + "_col.obj"))
+                or os.path.exists(os.path.join(dd, stem + "_collision.glb"))
+                or os.path.exists(os.path.join(dd, stem + "_col.glb"))):
             out.append(stem)
     return out
+
+
+def collision_shell(stem, deck_dir=None):
+    """-> (obj_path, glb_path) for `stem`'s collision shell, both readable.
+
+    `spawn_from_shell` reads named groups out of an OBJ -- it derives the
+    player's spawn from the floor triangles, *"measured off the collision
+    shell's own floor, never copied"* -- and the whole-station export writes
+    only a GLB. Rather than teach this file a second geometry reader or make
+    every caller remember a conversion step, the OBJ is DERIVED ON DEMAND from
+    the GLB that exists, once, and cached on disk.
+
+    `tools/glb_to_obj.py --collision` does the translation, including the group
+    names: the GLB calls the shell `deck_untagged`/`join<z0>_<z1>` and the OBJ
+    convention `boot.FLOOR_GROUP` reads is the literal string `collision`.
+    """
+    dd = deck_dir or preferred_deck_dir()
+    obj = os.path.join(dd, stem + "_col.obj")
+    glb = os.path.join(dd, stem + "_col.glb")
+    src = os.path.join(dd, stem + "_collision.glb")
+    if not os.path.exists(glb) and os.path.exists(src):
+        glb = src
+    if not os.path.exists(obj):
+        if not os.path.exists(glb):
+            raise SystemExit("boot: %s has no collision shell in %s" % (stem, dd))
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import glb_to_obj as _g2o                               # noqa: PLC0415
+        meshes = _g2o.read_glb(glb)
+        _g2o.write_obj(obj, meshes, rename=_g2o.collision_group)
+    return obj, glb
 
 
 def _checks():
@@ -301,7 +385,7 @@ def _collapses(rooms, day=1, seed="b5"):
 
 
 def sidecar(stem, suffix, deck_dir=None):
-    p = os.path.join(deck_dir or DECK_DIR, stem + suffix)
+    p = os.path.join(deck_dir or preferred_deck_dir(), stem + suffix)
     return p if os.path.exists(p) else ""
 
 
@@ -390,7 +474,7 @@ def cells_for(stem, deck_dir=None, why=None):
     `why` collects one line per candidate considered, so a boot that picks
     nothing can say what it looked at rather than only that it failed.
     """
-    dd = deck_dir or DECK_DIR
+    dd = deck_dir or preferred_deck_dir()
     best = ("", None)
     for p in _cell_candidates(stem, dd):
         if not os.path.exists(p):
@@ -436,7 +520,7 @@ def cells_describe(stem, man, deck_dir=None):
     = 5,270) while the render mesh had moved by 5,308 triangles, so a
     collision-only check would have called a stale set fresh.
     """
-    dd = deck_dir or DECK_DIR
+    dd = deck_dir or preferred_deck_dir()
     rows = man.get("cells") or []
     got = {"count": len(rows),
            "tris": sum(int(c.get("tris", 0)) for c in rows),
@@ -514,7 +598,7 @@ def bake_cells(stem, deck_dir=None, timeout=900):
     all 70 decks; the difference is that this one bakes the ONE cluster the
     shipped scene boots into, beside the deck it was built from.
     """
-    dd = deck_dir or DECK_DIR
+    dd = deck_dir or preferred_deck_dir()
     glb = os.path.join(dd, stem + ".glb")
     col = os.path.join(dd, stem + "_col.glb")
     for p in (glb, col):
@@ -610,7 +694,7 @@ def _crowd_ladder(stem, deck_dir=None):
     whole library load, so naming a rung that was never baked is worse than
     naming none -- it turns a partial crowd into no crowd.
     """
-    dd = deck_dir or DECK_DIR
+    dd = deck_dir or preferred_deck_dir()
     if not sidecar(stem, "_crowd.json", dd):
         return {"crowd_ladder": "", "crowd_glbs": ""}
     try:
@@ -633,7 +717,7 @@ def _crowd_ladder(stem, deck_dir=None):
 
 def build(stem=None, hour=None, deck_dir=None):
     """The boot manifest for one deck, derived from what is on disk."""
-    dd = deck_dir or DECK_DIR
+    dd = deck_dir or preferred_deck_dir()
     have = decks(dd)
     if not have:
         raise SystemExit("boot: no built deck in %s -- run the deck exporter"
@@ -646,7 +730,8 @@ def build(stem=None, hour=None, deck_dir=None):
     if stem not in have:
         raise SystemExit("boot: %s is not built (have: %s)"
                          % (stem, ", ".join(have)))
-    col_obj = os.path.join(dd, stem + "_col.obj")
+    # Both spellings, and the OBJ derived from the GLB if only the GLB exists.
+    col_obj, col_glb = collision_shell(stem, dd)
     spawn, detail = spawn_from_shell(col_obj)
     # WHICH PLACE THE SPAWN IS IN is read off the cast standing in it -- the
     # actors carry their own place key and their own position, so the nearest
@@ -699,7 +784,7 @@ def build(stem=None, hour=None, deck_dir=None):
     return {
         "deck": stem,
         "glb": os.path.join(dd, stem + ".glb"),
-        "collision": os.path.join(dd, stem + "_col.glb"),
+        "collision": col_glb,
         "interact": sidecar(stem, "_interact.json", dd),
         # The deck's occlusion geometry, written by
         # `export_scene.write_deck_occluder`. `sidecar` returns "" when the file
