@@ -1,38 +1,34 @@
 {
-  "version": 1,
-  "_note": "Written here rather than into docs/aaa-scorecard.json: nine 4t agents share that file and one `git add -A` has already swept another agent's work into a commit. Round zero is the build, so this is not a review round -- it is the builder's own reading, and it is the input a panel argues with.",
-  "bar": { "min_score": 4, "clean_rounds_required": 2, "max_rounds": 4 },
-  "subsystems": {
-    "verbs_economy_sell": {
-      "status": "active",
-      "rounds": [
-        {
-          "round": 0,
-          "reviewer": "build-4t-verbs_economy (self, NOT a review round)",
-          "scores": { "craft": 3, "fidelity": 4, "performance": 3, "robustness": 4 },
-          "evidence": {
-            "fidelity": "not one new number: BUY_BACK 0.5 is CLASS_BAND's own staple/meal derivation re-read; FENCE_TAKE is SUPPLY_MULT['route'] = 0.75 from LAW-CRIME:858-879; the hotel rung is quarters_command (authority 1) x the civilian row's own 1.5 spread; `licence` is PEOPLE.md:758's sourced 4 cr/wk. INV-721..724.",
-            "robustness": "`python3 station/economy.py --trade` = 23/23 with four refusal paths; `--break-margin` sets BUY_BACK=1.2 and two assertions go red, exit 1. `station/spec_harness/vrb.py` replaces a NAME SCAN with a run of the transaction and its control installs a hollow `sell` that returns the right shape and moves nothing -- VRB-05 catches it, quoting the frozen numbers."
-          },
-          "broke_assertions": true,
-          "what_is_good": [
-            "credits and stock move both ways at a named place: BUY 1 bunk mattress from Ada Roskoe at shops_kiosks for 11.43 cr, SELL it back for 5.71, shelf 1010->1009->1010, till 0.00->11.43->5.72",
-            "the fence is a mechanic and not a second shopfront: a licensed counter refuses a customs-sealed line naming the docket it would file, and downbelow takes it at 37.5% of shelf",
-            "`sell()` has a caller on the shipped path -- `background_sales` -- so the artefact `interact.gd` reads carries 48 sell rows after bootstrap's own build command",
-            "the till equals the sum of its own signed rows, and no counter anywhere pays more than it charges (0 pairs over 18 counters)"
-          ],
-          "findings": [
-            { "severity": "major", "dimension": "craft", "descriptor": "C3",
-              "where": "godot/scripts/interact.gd",
-              "text": "THERE IS NO KEYPRESS. The verb is complete in Python and the engine has no SELL branch: `_verb_serve` buys only, and `interact.counter_offer` bakes {sells, goods, tier} with no `buys`/`bid` half. Both files are outside this agent's ownership. Until that lands a player cannot perform the verb, only the world can." },
-            { "severity": "major", "dimension": "performance", "descriptor": "P3",
-              "where": "station/economy.py::_coverage",
-              "text": "Coverage is computed by building every vendor's goods_list once and memoising. Measured only as part of --trade's wall clock; there is no marginal-rate measurement of it and no budget it is scored against." },
-            { "severity": "minor", "dimension": "craft", "descriptor": "C3",
-              "text": "A sale is a number in a ledger. No sound, no animation, no counter-side reaction, and the keeper is a name in a constant rather than anybody a player meets." }
-          ]
-        }
-      ]
+  "item": "verbs_economy",
+  "round": 2,
+  "date": "2026-08-07",
+  "subject": "station/economy.py -- VRB-05 BUY/SELL, the cross-place money pump",
+  "gate": "python3 station/economy.py --trade && ! python3 station/economy.py --break-crossplace && ! python3 station/economy.py --break-margin",
+  "scores": {
+    "craft": {
+      "score": 3,
+      "why": "The verb set reads as a market rather than a pair of functions: a shopfront pays BUY_BACK, a fence pays FENCE_TAKE of that and is the only buyer for a sealed line, and the round trip is a loss everywhere on the station. Not a 4: SELL has no engine-side prompt -- interact.counter_offer bakes prices and not bids, and interact.py/interact.gd are not this agent's files."
+    },
+    "fidelity": {
+      "score": 4,
+      "why": "No new constant. The clamp is the law of one price applied to a closed market whose diameter is a walk, and both ratios (BUY_BACK 0.5, FENCE_TAKE 0.75) were already derived in this file for other purposes. The fence stays the mechanic FACTIONS 11.4 describes. INV-1015/1016."
+    },
+    "performance": {
+      "score": 4,
+      "why": "shelf_floor is one pass over the register per seed, memoised; cross_pump over 65 goods x 129 places is 0.2 s. The whole --trade gate including the launched shipped writer is 8.4 s standalone, 25 s for gate + both controls."
+    },
+    "robustness": {
+      "score": 3,
+      "why": "Two negative controls, both shown firing. The station-wide assertion fails on CONTENT rather than on an author's knob. Still red: VRB-005 as a spec row, because CAST-41 files Solly Vane at `subfloor_stack` and the register gives that place no trading function -- a one-tuple edit in directory.py, which this agent does not own."
     }
+  },
+  "measured": {
+    "cross_place_pump_before": "23 of 58 tradable lines; worst identicard blanks: buy black_market 6.88 -> sell ngrath 18.68 = +11.80 cr/lap",
+    "cross_place_pump_after": "0 of 58; best lap on the board is drum greens at -0.16 cr",
+    "trade_gate": "29/29 passed, exit 0",
+    "break_crossplace": "26/29, exit 1 -- reproduces the +11.80 cr lap by name",
+    "break_margin": "27/29, exit 1",
+    "shipped_artefact": "station/generated/economy.json -- 68 purses, 1 player (player:downbelow), 67 lurker:, 67 SELL rows (n<0)",
+    "spec_red_rows_VRB_GDS_PLY": "13 before, 13 after, byte-identical -- this round fixed a defect inside already-passing machinery, it did not turn a row"
   }
 }
