@@ -771,25 +771,77 @@ def _verdict(out, tag):
     return m.group(1) == "PASS", m.group(2).strip()
 
 
-def _boot_ready():
+#: The four commands that turn a fresh clone into a container this gate can run
+#: in. `station/generated/` is gitignored, so a recycled container or a new
+#: checkout has no deck, no dialogue sidecar, no boot manifest and no ragdoll
+#: bodies -- and a gate whose answer depends on whether somebody happened to
+#: build one earlier is a gate that reads a committed artefact it cannot
+#: rebuild, which is this project's own named defect.
+#:
+#: THE ORDER IS NOT INTERCHANGEABLE and one edge here cost a run: `boot.py`
+#: records the paths of the sidecars it finds NEXT TO the deck, so a `boot.json`
+#: written before `<deck>_dialogue.json` exists carries `dialogue: ""` for ever
+#: and the shipped scene has 83 people who cannot speak. The sidecar is written
+#: before the manifest that names it.
+_BUILD_STEPS = (
+    (["python3", "station/arrival.py", "--build"],
+     "assemble the deck the playable arrival runs on (~2.5 min)"),
+    (["python3", "-c",
+      "import sys; sys.path.insert(0, 'station'); import dialogue as D; "
+      "import glob; "
+      "[print('sidecar rows', D.write_sidecar(a, a.replace('_actors.json', "
+      "'_dialogue.json'))) for a in "
+      "glob.glob('station/generated/scene/deck/*_actors.json')]"],
+     "bake what the deck's cast says at each of dialogue.py's four hours"),
+    (["python3", "station/npc/ragdoll.py", "--emit",
+      "station/generated/scene/npc"],
+     "the per-species bodies an incident drops"),
+    (["python3", "station/boot.py"],
+     "the boot manifest, AFTER the sidecars it names"),
+)
+
+
+def _boot_ready(build=True):
+    """`(ok, why)` -- is there a deck this gate can launch into?
+
+    IT BUILDS ONE RATHER THAN SKIPPING, because the acceptance test has to be a
+    command a reader can run with no arguments of their own and no prior state.
+    `--no-build` is the way to ask the older question ("is there a deck here
+    already"), and the build is announced step by step so a four-minute silence
+    is not mistaken for a hang.
+    """
     p = os.path.join(ROOT, "station/generated/scene/boot.json")
+    if os.path.exists(p):
+        return True, ""
+    if not build:
+        return False, ("no station/generated/scene/boot.json and --no-build "
+                       "was passed -- run `python3 station/journal.py --gate` "
+                       "without it, or build the deck by hand")
+    print("JOURNAL: no deck in this container -- station/generated/ is "
+          "gitignored, so building one. Four steps, about four minutes.")
+    for cmd, why in _BUILD_STEPS:
+        print("  ... %s" % why)
+        r = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
+                           timeout=2400)
+        if r.returncode != 0:
+            return False, ("`%s` failed (rc=%d): %s"
+                           % (" ".join(cmd[:3]), r.returncode,
+                              (r.stderr or r.stdout).strip()[-300:]))
     if not os.path.exists(p):
-        return False, ("no station/generated/scene/boot.json -- run "
-                       "`python3 station/arrival.py --build && "
-                       "python3 station/boot.py`")
+        return False, "the build ran and wrote no boot.json"
     return True, ""
 
 
-def gate(verbose=False) -> bool:                                 # noqa: C901
+def gate(verbose=False, build=True) -> bool:                     # noqa: C901
     """Learn it, QUIT, reload, still have it -- plus time compression."""
     godot = godot_binary()
     if godot is None:
         print("JOURNAL SKIP -- no double-precision Godot binary found")
         return True
-    good, why = _boot_ready()
+    good, why = _boot_ready(build)
     if not good:
-        print("JOURNAL SKIP -- %s" % why)
-        return True
+        print("JOURNAL FAIL -- %s" % why)
+        return False
     if not os.path.exists(EMIT):
         emit()
     ok = True
@@ -1105,12 +1157,14 @@ def main():
     ap.add_argument("--gate", action="store_true",
                     help="learn a fact in-world, QUIT, reload, still have it")
     ap.add_argument("--verbose", action="store_true")
+    ap.add_argument("--no-build", dest="build", action="store_false",
+                    help="do not build a deck if this container has none")
     a = ap.parse_args()
     if a.emit:
         print("journal manifest -> %s" % emit(a.emit))
         raise SystemExit(0)
     if a.gate:
-        raise SystemExit(0 if gate(a.verbose) else 1)
+        raise SystemExit(0 if gate(a.verbose, a.build) else 1)
     if a.report and not a.selftest:
         report()
         raise SystemExit(0)
