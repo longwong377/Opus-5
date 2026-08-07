@@ -2394,8 +2394,21 @@ def _near_proto(item, group, index, lod):
         tram = item.endswith("t")
         _nm, ch, wfrac, cfrac, _tl = CROP_TYPES[ci]
         rows = 1 if lod >= 2 else CROP_ROWS
-        pitch = crop_pitch_m() * (CROP_ROWS if lod >= 2 else 1)
-        halfw = pitch * wfrac * 0.5
+        p1 = crop_pitch_m()
+        pitch = p1 * (CROP_ROWS if lod >= 2 else 1)
+        halfw = p1 * wfrac * 0.5
+        if lod >= 2:
+            # THE COARSE RUNG MUST COVER THE FINE ONE, NOT STAND BESIDE IT.
+            # One drill replaces three at the 28.1 m switch, and the first
+            # version sized it `pitch * wfrac / 2` -- narrower than the three
+            # it stands in for on a narrow-drilled crop and wider on a broad
+            # one. Either way the fine drills' end caps come out from behind it
+            # and stand in shadow, which is the hard black line running across
+            # the field in `scratchpad/drum4t/after-near.png`'s second take.
+            # Sized to the OUTER extent of the three instead, the coarse drill
+            # swallows them and the switch stops being a seam. The height is
+            # the mean of the three rows for the same reason.
+            halfw = p1 * (CROP_ROWS - 1) / 2.0 + p1 * wfrac * 0.5
         cz = (dg.Z1 - dg.Z0) / dg.CELLS_Z
         # SEGMENTS PER CELL, and the count went DOWN at the middle rung while
         # the section went from three points to four. A three-point section is a
@@ -2422,7 +2435,11 @@ def _near_proto(item, group, index, lod):
             # object that TILES is a seam, however small it is; the variation
             # has to live where the envelope takes it to zero, which is what
             # `CROP_CROWN_BREAK` is.
-            hh = ch * (0.90 + 0.20 * _unit(SEED, "drill", ci, r))
+            if rows == 1:
+                hh = ch * sum(0.90 + 0.20 * _unit(SEED, "drill", ci, q)
+                              for q in range(CROP_ROWS)) / CROP_ROWS
+            else:
+                hh = ch * (0.90 + 0.20 * _unit(SEED, "drill", ci, r))
             _drill(v, t, g, group, x0, halfw, halfw * cfrac,
                    -cz / 2.0, cz / 2.0, hh, segs, seed=f"{seed}/{r}")
     elif item == "clod":
