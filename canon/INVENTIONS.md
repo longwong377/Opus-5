@@ -13659,9 +13659,12 @@ run-length-encoding first and attributing the span's centroid afterwards gives t
 centroid in the middle of the drum and an interactable box 1,749 m across. Prefixing per triangle
 splits the run exactly at the footprint boundary.
 
-**Measured, at the hour the build ran.** 1,521,066 render triangles in 47,289 groups (128.0 MB
-glTF); 627,056 collision triangles (52.7 MB); ground slope worst 16.6 degrees against Godot's 45;
-200 of 200 radial casts land on floor between r 257.2 and 280.9 m.
+**Measured, at the hour the build ran.** 1,538,502 render triangles in 48,681 groups (129.4 MB
+glTF) -- 573,440 of ground, 788,080 of dressing over 1,945 features, 176,982 of fixed parts;
+627,056 collision triangles (52.7 MB); ground slope worst **16.83 degrees, 0 of 573,440 triangles
+over Godot's 45 degree `floor_max_angle`**; 200 of 200 radial casts land on floor between r 257.2
+and 280.9 m; 31 actors, 536 walkers, 9 of the register's 31 declared interactables resolved. The
+whole build is 130 s on one core.
 
 **What would overturn it.** A streaming unit smaller than a deck — `stream.gd::bake()` already
 cuts a deck on `interior.deck_cell`'s 20-degree grid, and if the drum ever needs its own grid this

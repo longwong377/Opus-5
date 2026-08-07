@@ -654,6 +654,20 @@ def main(argv=None):
 
         # The two the eye decides, replaced by the two a static deck needs.
         by_name = {n: i for i, (n, _v, _t, _g) in enumerate(parts)}
+
+        # AND THE TRAMS GET THEIR SALOONS, which the drum SHOT correctly does
+        # not build. `tram.tram_car`'s docstring states the reason for the
+        # default: "three guideways of cars are always in frame in the drum and
+        # only the one you are riding needs a saloon" -- right for a still, and
+        # wrong for a deck, because `drum_tram` DECLARES `seat`, `tram_door` and
+        # `handhold` and a shell has none of them. Measured before deciding:
+        # 12,624 tri -> 30,060 over six cars, +1.1% of this deck, every one of
+        # the fifteen new groups already bound in `materials`' drum scene, and
+        # `seat` resolves to `tram_in_seat`.
+        import tram as _tram                                     # noqa: PLC0415
+        tv, tt, tm = _tram.drum_trams(schema, profile, sector, per_guideway=2,
+                                      interior=True, glazed=True)
+        parts[by_name["trams"]] = ("trams", tv, tt, tm["groups"])
         t0 = time.time()
         gv, gt, gg = full_ground(stride)
         parts[by_name["ground"]] = ("ground", gv, gt, gg)
