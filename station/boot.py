@@ -715,7 +715,7 @@ def _crowd_ladder(stem, deck_dir=None):
     return {"crowd_ladder": ",".join(rungs), "crowd_glbs": ",".join(glbs)}
 
 
-def build(stem=None, hour=None, deck_dir=None):
+def build(stem=None, hour=None, deck_dir=None, single_deck=False):
     """The boot manifest for one deck, derived from what is on disk."""
     dd = deck_dir or preferred_deck_dir()
     have = decks(dd)
@@ -768,7 +768,37 @@ def build(stem=None, hour=None, deck_dir=None):
              "tris_max": 0,
              "why": "no cell set for %s -- run `python3 station/boot.py "
                     "--bake`" % stem}
-    if cman is not None:
+    # THE WHOLE STATION, WHEN IT HAS BEEN MERGED. `tools/merge_cells.py`
+    # concatenates the 70 per-deck sets into one manifest, which is sufficient
+    # because every deck is already in one world frame and `stream.gd` loads by
+    # DISTANCE rather than by deck. Preferring it here is what turns 113
+    # unreachable places into 129 reachable ones.
+    #
+    # IT TAKES ITS OWN BRANCH RATHER THAN JOINING THE CANDIDATE LIST, because
+    # `cells_for` admits a set only once `_describes` agrees it describes THIS
+    # DECK -- correctly, that check is what stopped a stale sibling bake
+    # streaming a third of the floor. A merged manifest describes seventy decks
+    # and would be rejected by exactly the guard that should reject a wrong
+    # one. Same reason `cells_describe` is not called on it: that function
+    # compares the set's triangle sum against ONE deck's mesh, and against
+    # seventy the comparison is not stale, it is meaningless.
+    merged = os.path.join(STATION_CELLS, "station_cells.json")
+    if os.path.exists(merged) and not single_deck:
+        with open(merged) as f:
+            mman = json.load(f)
+        cells = {"path": merged, "count": len(mman.get("cells", [])),
+                 "start": start_cell(mman, spawn), "fresh": True,
+                 "z_band_m": -1.0, "z_bands": 0, "z_span_max_m": 0.0,
+                 "tris_max": max((int(c.get("tris", 0) or 0)
+                                  for c in mman.get("cells", ())), default=0),
+                 "why": "the whole station: %d cells over %d decks"
+                        % (len(mman.get("cells", [])),
+                           mman.get("merged_from", {}).get("decks", 0))}
+        if cells["start"] < 0:
+            cells["fresh"] = False
+            cells["why"] += ("; the spawn %.1f,%.1f,%.1f is in none of them"
+                             % tuple(spawn))
+    elif cman is not None:
         cells = cells_describe(stem, cman, dd)
         cells["path"] = cells_p
         cells["start"] = start_cell(cman, spawn)
@@ -1383,6 +1413,11 @@ def main():
     # this file and the packaged game shipped a test fixture. The flag exists
     # so the choice is stated in the command that writes the manifest, rather
     # than falling out of a filename convention.
+    # THE ESCAPE HATCH, and it exists so the merged manifest can be A/B'd
+    # against the per-deck one rather than being an unfalsifiable default.
+    ap.add_argument("--single-deck", action="store_true",
+                    help="ignore the merged whole-station cell manifest and "
+                         "boot this deck's own cell set only")
     ap.add_argument("--deck-dir", default=None,
                     help="directory to boot from (default: scene/deck). "
                          "Use scene/station for the streamed build")
@@ -1401,12 +1436,12 @@ def main():
                   "ran. This is NOT a pass and the line above says so")
             return 0
         return rc
-    man = build(a.deck, a.hour, a.deck_dir)
+    man = build(a.deck, a.hour, a.deck_dir, a.single_deck)
     if a.bake and not (man["cells_count"] > 1 and man["cells_fresh"]
                        and man["cells_start"] >= 0):
         ok, why = bake_cells(man["deck"], a.deck_dir)
         print("boot: bake %s -- %s" % ("ok" if ok else "FAILED", why))
-        man = build(a.deck, a.hour, a.deck_dir)
+        man = build(a.deck, a.hour, a.deck_dir, a.single_deck)
     d = man["spawn_derivation"]
     print("boot: %s -- spawn %.3f,%.3f,%.3f in %s, %d rooms; standing on 1 of "
           "%d floor triangles (of %d in the shell) at r=%.3f, %.0f deg"
