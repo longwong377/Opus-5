@@ -1110,15 +1110,19 @@ NEVER_CULLED = frozenset({"skirt"})
 CUFF_YF = 0.055           # of the arm part's height, from the wrist end
 CUFF_HALF_H_F = 0.010     # of stature: a 35 mm turned cuff
 CUFF_R = 1.070            # of the sleeve radius there
-# SIZED BY THE RENDER, and the first pass was wrong in a way only a frame
-# could say. At 0.045 -- a 157 mm band at constant radius flaring OUTWARD to
-# the top -- the panel read at half distance as a barrel around the shoulders
-# rather than as a seam in a coat. 157 mm -> 91 mm with the taper inverted,
-# because a yoke follows the shoulder slope IN toward the neck and does not
-# stand off it. The SEAM's height is untouched: `YOKE_TOP_FRACTION` is the
-# authority-1 measurement and this is only how deep the panel below it is.
-YOKE_PANEL_HALF_H_F = 0.026
-YOKE_PANEL_R = 1.008
+# SIZED BY THE RENDER, twice, and both corrections are things only a frame
+# could say. The panel runs from just below the measured seam
+# (`YOKE_TOP_FRACTION`, authority 1, untouched) up to the shoulder, where its
+# top ring is pulled INSIDE the torso so the closing cap cannot be seen -- see
+# the note at the build site. The first pass was a 157 mm capped band flaring
+# outward, and at 0.6 m it read as a barrel around the shoulders.
+YOKE_LO_YF = 0.74         # = YOKE_TOP_FRACTION - 0.04; `_selftest` asserts
+                          # the two agree, because YOKE_TOP_FRACTION is
+                          # declared below this block and a forward
+                          # reference would not import
+YOKE_HI_YF = 0.94
+YOKE_PANEL_R = 1.008      # of the torso's radius at the seam
+YOKE_BURY = 0.86          # of the torso's radius at the shoulder -- inside it
 HEM_YF = 0.045
 HEM_HALF_H_F = 0.009
 HEM_R = 1.022
@@ -1132,7 +1136,7 @@ PLACKET_HI_YF = 0.90
 
 CONSTRUCTION = {a.key: a for a in (
     Attachment("yoke_panel", "Shoulder yoke panel", 0.007,
-               value_m=_band_m(YOKE_PANEL_HALF_H_F),
+               value_m=(YOKE_HI_YF - YOKE_LO_YF) * 0.318 * body.HUMAN_STATURE_M,
                note="The seam `YOKE_TOP_FRACTION` was measured for, built as "
                     "the panel it is instead of as a span of the torso. Same "
                     "measurement, same fabric, same place -- the only change "
@@ -1930,12 +1934,30 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
     # --- the yoke, as the panel it was measured as -------------------------
     if (on("yoke_panel") and c.trim and c.trim != c.cloth
             and c.split != "plastron" and torso_verts):
-        cx, cz, r, y = _axis_at(torso_verts, YOKE_TOP_FRACTION, band=0.05)
-        piece("yoke_panel", trim_g, lambda m, cx=cx, cz=cz, r=r, y=y: _band(
-            m, cx, cz, y + 0.55 * YOKE_PANEL_HALF_H_F * H,
-            r * YOKE_PANEL_R, YOKE_PANEL_HALF_H_F * H, trim_g,
-            CONSTRUCTION_HANGS_ON["yoke_panel"],
-            _att_seg(r * YOKE_PANEL_R, distance_m, cap=16), taper=0.93))
+        # NOT `_band`, AND THE REASON IS A CAP YOU CAN SEE. `_band` is two
+        # rings capped at both ends; at conversational range the player's eye
+        # is ABOVE a yoke and 0.6 m from it, so the upper cap -- a horizontal
+        # disc the width of the shoulders -- projects to a quarter of the frame
+        # and reads as a shelf. The render said so and nothing else could have.
+        # The panel is therefore a loft whose TOP RING IS BURIED INSIDE THE
+        # TORSO, which is the same trick `_skirt` records for its own top cap
+        # and `body.py` uses for the arm root and the neck: the cap still
+        # exists, so the solid is closed, and no camera outside the body can
+        # reach it.
+        cx0, cz0, r0, y0 = _axis_at(torso_verts, YOKE_LO_YF, band=0.05)
+        cx1, cz1, r1, y1 = _axis_at(torso_verts, YOKE_HI_YF, band=0.05)
+        yseg = _att_seg(r0 * YOKE_PANEL_R, distance_m, cap=16)
+
+        def _yoke(m, cx0=cx0, cz0=cz0, r0=r0, y0=y0,
+                  cx1=cx1, cz1=cz1, r1=r1, y1=y1, yseg=yseg):
+            rings = [body._ring(cx0, y0, cz0, r0 * YOKE_PANEL_R,
+                                r0 * YOKE_PANEL_R, yseg),
+                     body._ring(cx1, y1, cz1, r1 * YOKE_BURY,
+                                r1 * YOKE_BURY, yseg)]
+            v, t = body._loft(rings)
+            m.add(v, t, trim_g, CONSTRUCTION_HANGS_ON["yoke_panel"])
+
+        piece("yoke_panel", trim_g, _yoke)
 
     # --- the front closure -------------------------------------------------
     # Not on a robe (it has no front to close) and not on a plastron set (the
@@ -1971,7 +1993,7 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
         piece("hem", g, lambda m, cx=cx, cz=cz, r=r, y=y, g=g: _band(
             m, cx, cz, y, r * HEM_R, HEM_HALF_H_F * H, g,
             CONSTRUCTION_HANGS_ON["hem"],
-            _att_seg(r * HEM_R, distance_m, cap=16), taper=1.02))
+            _att_seg(r * HEM_R, distance_m, cap=16), taper=0.90))
 
     # --- the cuffs ---------------------------------------------------------
     if on("cuff"):
@@ -1981,7 +2003,7 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
             piece("cuff", g, lambda m, cx=cx, cz=cz, r=r, y=y, g=g: _band(
                 m, cx, cz, y, r * CUFF_R, CUFF_HALF_H_F * H, g,
                 CONSTRUCTION_HANGS_ON["cuff"],
-                _att_seg(r * CUFF_R, distance_m, cap=10), taper=1.04))
+                _att_seg(r * CUFF_R, distance_m, cap=10), taper=0.92))
 
     # --- the boot tops -----------------------------------------------------
     if on("boot_top") and not c.robed:
@@ -1991,7 +2013,7 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
             piece("boot_top", g, lambda m, cx=cx, cz=cz, r=r, y=y, g=g: _band(
                 m, cx, cz, y, r * BOOT_TOP_R, BOOT_TOP_HALF_H_F * H, g,
                 CONSTRUCTION_HANGS_ON["boot_top"],
-                _att_seg(r * BOOT_TOP_R, distance_m, cap=10), taper=0.97))
+                _att_seg(r * BOOT_TOP_R, distance_m, cap=10), taper=0.90))
 
     # The material already at the end of the mesh goes first, so the block
     # joins the run it is next to instead of starting a new one.
@@ -3266,6 +3288,10 @@ def _selftest():
     check(span > 0.75,
           f"and it runs down most of the torso's height rather than sitting on "
           f"the shoulders like a yoke (covers {span:.2f} of it)")
+    check(abs(YOKE_LO_YF - (YOKE_TOP_FRACTION - 0.04)) < 1e-9,
+          f"the yoke PANEL starts 0.04 below the yoke SEAM "
+          f"({YOKE_LO_YF} against {YOKE_TOP_FRACTION} - 0.04) -- the two are "
+          f"declared in different blocks and only this stops them drifting")
     check(FABRICS["civ_collar_yoke"].value() > FABRICS["civ_dark_warm"].value() * 1.4,
           f"the yoke is measurably lighter than the coat body, as the frame "
           f"shows ({FABRICS['civ_collar_yoke'].value():.3f} vs "
