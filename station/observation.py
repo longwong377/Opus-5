@@ -203,6 +203,104 @@ VEST_HALF_W_M = _bsp.DOOR_HALF_W_M + 0.45
 VEST_L_M = _bsp.APPROACH_DEPTH_M + 1.40
 VEST_H_M = kit.PROVISIONAL["door_height_m"] + 0.80
 
+# ---------------------------------------------------------------------------
+# THE PALETTE -- INV-760, and it is the single largest thing that was wrong
+# ---------------------------------------------------------------------------
+# `reference/05-sector-green/rotunda.webp`, authority 1, read again in session
+# 4t rather than from the summary above it: **the room is DARK WARM BRONZE and
+# the dome is GOLD**. The wall below the window band, the columns and the
+# corbel tiers are warm brown-bronze; the floor mosaic is cream and ochre; the
+# two flanking lattice panels are DEEP BLUE and so is the lectern's glowing
+# top. There is no grey anywhere in that frame.
+#
+# What this module built is grey, and not by choice -- by NAMING. Every
+# `worship_*` and `transit_*` group in `materials.py` resolves to exactly three
+# materials: `shell_wall_panel` 0.455, `shell_rib_painted` 0.469 and
+# `shell_deck_stone` 0.400. Wall, dado, cornice, panel, skirt, rail, mullion
+# and rib are EIGHT names for ONE value. So however the room is modelled it
+# comes out one flat grey, which is `docs/AAA-STANDARD.md` CRAFT 3 verbatim --
+# *"materials exist as groups but carry one flat value each"* -- and it is why
+# round 1 read the rotunda as *"grey-on-grey at half distance"*.
+#
+# `materials.py` is not this session's file and `export_scene.py` is not
+# either. The lever that IS inside this one is that **`materials.resolve_any`
+# matches by PREFIX**: a group named `<bound_name>_<shell_suffix>` takes the
+# bound name's material, and `rooms._SHELL_SUFFIXES` still classes it as SHELL,
+# so it does not become a collision box a player walks into. `dress_kerb_rib`
+# -- already in this file for the dome ribs, with its reason written beside it
+# -- is the existing instance of the idiom; this block is the same trick
+# applied to the whole surface instead of to one part.
+#
+# Each pick names the clause of the frame it answers and the measured value it
+# resolves to. Nothing here invents a colour: every value was measured into
+# `materials.py` by another session, and the choice is which measured value the
+# reference asks for.
+M_WALL = "zoc_rail_wall"                   # 0.290,0.145,0.084 r0.42 met0.15
+#   "the wall below the window band is dark warm brown" -- the one warm brown
+#   in the library, measured off the Zocalo's own handrail.
+M_WALL_UP = "dress_furnace_panel"          # 0.215,0.198,0.190 r0.78
+#   the darker storey above the entablature. The scorched roughness is what
+#   stops the upper wall reading as the same paint as the lower one.
+M_PIER = "dress_post_rib"                  # 0.300,0.255,0.242 r0.52 met0.30
+#   column shafts and stair piers: bronze structure, part-metallic, so it takes
+#   a highlight where the flat shell material takes none.
+M_BRONZE = "zoc_table_edge_rib"            # 0.600,0.510,0.458 r0.30 met0.85
+#   "a group of THREE narrow ring collars" and the capitals. In the frame the
+#   collars are distinctly LIGHTER than the shaft they ring, which is the whole
+#   reason the order reads at all against a bright window.
+M_GOLD = "dress_kerb_rib"                  # 0.900,0.720,0.060 r0.62
+#   "a smooth warm gold-bronze dome with broad radial ribs". Already this
+#   file's choice; kept, and now it has a dome field to sit against.
+M_STONE = "prop_level_plaque_panel"        # 0.391,0.379,0.321 r0.72
+#   the cream of the sunburst floor and of the pale corbel tiers.
+M_STONE_D = "zoc_deck_chevron_deck_joint"  # 0.265,0.262,0.209 r0.34
+#   "a broad concentric band of chevrons at larger radius" -- the darker ochre
+#   the chevrons are laid in.
+M_RECESS = "prop_planter_panel"            # 0.094,0.092,0.093 r0.24
+#   every shadow gap, coffer ground and reveal. A recess the same value as the
+#   thing it is cut into is not a recess.
+M_METAL = "dress_conduit"                  # 0.545,0.540,0.528 r0.42 met0.95
+#   service risers and cable runs -- CRAFT 4's "a fitting is where a fitting
+#   would be needed".
+M_GRILLE = "zoc_chair_frame_mullion"       # 0.075,0.074,0.074 r0.32
+#   the dark lattice in FRONT of the backlight. See `_lattice_panel`.
+M_CLOTH_B = "prop_gaming_table_panel"      # 0.138,0.276,0.483 r0.95
+M_CLOTH_P = "prop_stall_panel"             # 0.380,0.345,0.312 r0.92
+#   "four hanging banners". The frame shows two dark blue-violet and two pale,
+#   and they are matte cloth: both of these are cloth at r 0.92-0.95.
+M_SIGIL = "sign_text_panel"                # em 1.000,0.970,0.620 ee 0.9
+#   the sigil in the lower third, IN RELIEF. Round 1's C1 finding was that the
+#   banner was "a lit rectangle standing in for a named object"; a figure at
+#   ee 0.9 is a figure, and 0.9 does not blow the way `signage_panel`'s 3.0 did.
+M_GLOW_B = "prop_shrine_panel"             # em 0.240,0.320,1.000 ee 2.2
+#   the backlit blue behind the lattice, and the lectern's sloping top. The
+#   frame's lectern glow is BLUE; this module had it warm at ee 6.0 and it read
+#   as a white hole in the middle of the room.
+M_RIBBON = "alien_frost_panel"             # em 0.691,0.760,1.000 ee 0.55
+#   "a continuous band of narrow pale vertical slats ... lit so it reads as a
+#   bright ribbon". `light_pilaster_strip` is ee 0.23 and reads as paint.
+L_COVE = "light_house_cove"                # CASTS: omni, 1.000,0.966,0.944,
+#   energy_rel 0.35, range 18.0 m -- it is in `export_scene.FIXTURE_LIGHTING`,
+#   which is the whole point. See `_cove_ring`.
+L_BLUE = "cc_light_strip"                  # CASTS: omni, 0.243,0.546,1.000,
+#   energy_rel 0.44, range 3.5 m. C&C's own measured strip, and the rotunda's
+#   blue is the same blue.
+
+# THE OVERLAP RULE -- INV-761, and it is why the non-manifold count was 489.
+# Two closed solids that ABUT on an exact plane weld into edges used by four
+# triangles. `_prism` is closed and correctly wound every time, so no gate
+# fired: the ring wall's fifteen bays shared fourteen radial faces, the head
+# reveal shared its top face with the wall above it, and every stair tread
+# shared its riser with the next. Session 3x rebuilt `portal_frame` for exactly
+# this and got 8,832 FEWER triangles, because coincident faces are geometry
+# nobody can see. The cure is one constant used wherever two solids meet:
+# solids OVERLAP by `LAP_M`, or they are separated by a reveal. They never
+# abut. `_selftest` gates the count at zero and the control is in this file.
+LAP_M = 0.02
+# The angular half-gap between two ring segments. At the rotunda's r = 7.00 m,
+# 0.010 rad is 70 mm -- a reveal a person sees, not a tolerance.
+GAP_A = 0.010
+
 
 def _dome_mullions():
     """The dome's radial spoke count, READ from the exterior component.
@@ -493,9 +591,172 @@ def _vestibule(v, t, g, prog):
          (1.02, kit.PROVISIONAL["door_height_m"] + 0.16, z0 + 0.36))
 
 
+def _seg(v, t, g, name, r0, r1, a0, a1, y0, y1):
+    """One annular-sector solid. Every ring element in this module is one."""
+    return _prism(v, t, g, name, _ring_quad(r0, r1, a0, a1), y0, y1)
+
+
+def _recessed_panel(v, t, g, r, ro, a0, a1, y0, y1,
+                    frame=None, field=None, bead=None, depth=0.075):
+    """A framed panel with its field SET BACK, not a flat rectangle.
+
+    THE RULE, NOT THE INSTANCE. Round 1 said of the domes *"roughly 80% of the
+    frame is flat panelled wall"*, and it was right: the wall was one prism per
+    bay per storey. A panel that is a rectangle of the same material at the
+    same depth is a rectangle; a panel is a frame, a reveal, and a field behind
+    it, and the reveal is what a raking light finds. Both programs call this,
+    which is session 4h's lesson about fixing a table rather than an entry.
+
+    `depth` is how far the field sits outboard of the frame's inner face. At
+    75 mm it throws a shadow the eye reads at four metres and does not eat the
+    wall's 180 mm thickness.
+    """
+    frame = frame or M_PIER
+    field = field or M_RECESS
+    da = min(0.055, (a1 - a0) * 0.22)
+    dy = min(0.14, (y1 - y0) * 0.16)
+    # the field, set back, and OVERLAPPING the frame rather than abutting it
+    _seg(v, t, g, field, r + depth, ro, a0 + da * 0.5, a1 - da * 0.5,
+         y0 + dy * 0.5, y1 - dy * 0.5)
+    # the frame: two stiles and two rails, each a separate closed solid
+    _seg(v, t, g, frame, r, ro, a0, a0 + da, y0, y1)
+    _seg(v, t, g, frame, r, ro, a1 - da, a1, y0, y1)
+    _seg(v, t, g, frame, r, ro, a0 + da - LAP_M * 0.1, a1 - da + LAP_M * 0.1,
+         y0, y0 + dy)
+    _seg(v, t, g, frame, r, ro, a0 + da - LAP_M * 0.1, a1 - da + LAP_M * 0.1,
+         y1 - dy, y1)
+    if bead:
+        _seg(v, t, g, bead, r - 0.012, r + 0.02,
+             a0 + da * 0.6, a1 - da * 0.6, y1 - dy - 0.024, y1 - dy + 0.006)
+    return v, t, g
+
+
+def _lattice_panel(v, t, g, r, a, half_a, y0, y1, bars=9, rungs=6):
+    """"Tall blue backlit lattice panels" -- a GRILLE in front of a glow.
+
+    Round 1 photographed the failure without naming it: the old panel was nine
+    solid bars of `light_bar_backlight` filling the whole aperture, so it
+    rendered as one clipped cyan slab with no lattice in it at all. A backlit
+    lattice is three things at three depths -- a recessed emissive ground, a
+    dark grille standing in front of it, and a frame round both -- and the
+    frame's own panels read exactly that way: dark blue-violet, with the light
+    coming through the gaps rather than off the face.
+    """
+    a0, a1 = a - half_a, a + half_a
+    # THREE DEPTHS, AND THEY MAY NOT ENCLOSE EACH OTHER. The first version of
+    # this put the glow inside a solid reveal box spanning r-0.34..r-0.14 and
+    # the panel rendered as a flat dark slab, because an emissive surface
+    # sealed inside an opaque solid emits into the inside of that solid. It is
+    # INV-024's lesson at fitting scale -- glass in a bulkhead with no aperture
+    # -- and it is why the back plate is now a PLATE.
+    _seg(v, t, g, M_RECESS, r - 0.20, r - 0.15, a0, a1, y0 - 0.10, y1 + 0.10)
+    _seg(v, t, g, M_GLOW_B, r - 0.255, r - 0.215, a0 + 0.012, a1 - 0.012,
+         y0, y1)
+    # the grille: verticals and rungs, standing 60 mm proud of the glow
+    for k in range(bars):
+        f = (k + 0.5) / bars
+        ac = a0 + (a1 - a0) * f
+        _seg(v, t, g, M_GRILLE, r - 0.315, r - 0.265,
+             ac - (a1 - a0) * 0.026, ac + (a1 - a0) * 0.026, y0 - 0.04,
+             y1 + 0.04)
+    for k in range(rungs):
+        yy = y0 + (y1 - y0) * (k + 0.5) / rungs
+        _seg(v, t, g, M_GRILLE, r - 0.300, r - 0.270, a0 + 0.004, a1 - 0.004,
+             yy - 0.016, yy + 0.016)
+    # the frame, and a real source at head and foot of the reveal
+    for yy0, yy1 in ((y0 - 0.22, y0 - 0.08), (y1 + 0.08, y1 + 0.22)):
+        _seg(v, t, g, M_PIER, r - 0.36, r - 0.12, a0 - 0.018, a1 + 0.018,
+             yy0, yy1)
+    for s in (-1, 1):
+        _seg(v, t, g, M_PIER, r - 0.36, r - 0.12,
+             a + s * half_a - 0.018, a + s * half_a + 0.018,
+             y0 - 0.22, y1 + 0.22)
+    for yy in (y0 + 0.05, y1 - 0.05):
+        _seg(v, t, g, L_BLUE, r - 0.212, r - 0.185, a0 + 0.02, a1 - 0.02,
+             yy - 0.022, yy + 0.022)
+    return v, t, g
+
+
+def _sigil(v, t, g, r, a, y, size=0.30, name=None):
+    """The banner sigil, IN RELIEF -- the object round 1 said was missing.
+
+    Round 1's C1 finding, verbatim: *"the two blue signage panels are the most
+    eye-catching objects in the shot and are BLANK -- a lit rectangle standing
+    in for a named object"*. The frame shows a figure painted in the lower
+    third of each cloth. This builds one: a boss, six radial arms of two
+    lengths, and a broken outer ring -- the same radial-about-a-centre idiom
+    the floor mosaic and the dome ribs already use, so the room has ONE motif
+    rather than a decal.
+
+    It is geometry rather than a texture for the reason the mosaic is: at the
+    grazing angles a banner is seen from, relief is the only thing that reads.
+    """
+    name = name or M_SIGIL
+    rr = r - 0.352
+    da = size / max(0.2, r)
+    _seg(v, t, g, name, rr - 0.018, rr, a - da * 0.20, a + da * 0.20,
+         y - size * 0.20, y + size * 0.20)
+    for k in range(6):
+        th = math.tau * k / 6.0
+        long_arm = (k % 2 == 0)
+        L = size * (0.92 if long_arm else 0.54)
+        ac = a + math.cos(th) * (L * 0.5) / max(0.2, r)
+        yc = y + math.sin(th) * L * 0.5
+        w = size * (0.085 if long_arm else 0.065)
+        _seg(v, t, g, name, rr - 0.014, rr,
+             ac - w / max(0.2, r), ac + w / max(0.2, r), yc - w, yc + w)
+    for k in range(8):
+        if k % 4 == 3:
+            continue
+        th0 = math.tau * (k + 0.10) / 8.0
+        th1 = math.tau * (k + 0.90) / 8.0
+        for th in (th0, th1):
+            ac = a + math.cos(th) * (size * 0.62) / max(0.2, r)
+            yc = y + math.sin(th) * size * 0.62
+            _seg(v, t, g, name, rr - 0.010, rr,
+                 ac - 0.030 / max(0.2, r), ac + 0.030 / max(0.2, r),
+                 yc - 0.030, yc + 0.030)
+    return v, t, g
+
+
+def _cove_ring(v, t, g, r, y, n, ea, name=None, inset=0.34):
+    """The uplight cove -- the source the rotunda did not have.
+
+    THE ROOM WAS LIT BY AMBIENT AND SAID SO IN ITS OWN NUMBERS. The block at
+    the head of this file measured it: one caster, mean irradiance 0.0044
+    against the corridor anchor's 4.2641 -- **970x under** -- because
+    `light_pilaster_strip`, `light_portal_head` and `light_bar_backlight` are
+    all absent from `export_scene.FIXTURE_LIGHTING` and emit without casting.
+    That block ends *"NOT FIXED HERE, deliberately: the remedy is sources"*.
+
+    This is the source. `light_house_cove` IS in that table -- omni, 6300 K,
+    energy_rel 0.35, range 18.0 m, measured off the council chamber -- and a
+    cove is what the frame shows lighting this dome: the corbel course is lit
+    from beneath its own lip, and the dome above it is washed rather than lamped.
+    One per bay behind the cornice lip, which is `FIXTURE_MERGE_M` 0.9 m apart
+    at nothing under a 2.7 m bay pitch, so they stay separate lamps.
+    """
+    name = name or L_COVE
+    for i in range(n):
+        a0 = math.tau * (i + 0.12) / n + ea
+        a1 = math.tau * (i + 0.88) / n + ea
+        _seg(v, t, g, name, r - inset, r - inset + 0.055, a0, a1,
+             y - 0.05, y + 0.05)
+    return v, t, g
+
+
 # ---------------------------------------------------------------------------
 # The rotunda -- rotunda.webp, authority 1
 # ---------------------------------------------------------------------------
+# THE INTENT, WRITTEN BEFORE THE RENDER, because AAA-STANDARD's lighting
+# section requires it and a review without it is a preference:
+#
+#   CEREMONIAL AND WARM, LOOKING OUT AT SOMETHING COLD. The bronze is the
+#   room and the vacuum is the view, so nothing in here may be as bright as
+#   the window; the eye rests on the lit ribbon at waist height, travels up
+#   the colonnade to the gold dome, and is answered at floor level by the
+#   mosaic. The two blue lattices and the blue lectern are the only cold
+#   things inside, and they are the Minbari order's own colour.
 def _rotunda_chamber(v, t, g, prog):
     r = prog["r"]
     ro = r + WALL_T_M
@@ -505,121 +766,147 @@ def _rotunda_chamber(v, t, g, prog):
 
     # THE SUNBURST FLOOR. "Triangular radial wedges about a centre, and a broad
     # concentric band of chevrons at larger radius." Built as a deck slab with
-    # the wedges and the chevron band laid on it as pads, so the mosaic is
-    # geometry at grazing incidence rather than a texture claim.
+    # the mosaic laid on it as pads, so it is geometry at grazing incidence
+    # rather than a texture claim -- AND IN THE FRAME'S OWN CREAM AND OCHRE.
+    # The slab under it stays `worship_deck` because `collision.py` and
+    # `rooms.is_solid` both key the walkable surface off that name and a floor
+    # is not the place to be clever.
     _revolve(v, t, g, "worship_deck",
              [(0.0, 0.0), (ro, 0.0), (ro, -0.18), (0.0, -0.18)], seg)
+    _pad(v, t, g, M_STONE,
+         [(r * 0.995 * math.cos(math.tau * k / seg),
+           r * 0.995 * math.sin(math.tau * k / seg)) for k in range(seg)],
+         0.0, 0.008)
     wedges = n
     for i in range(wedges):
         if i % 2:
             continue
         a0 = math.tau * i / wedges
         a1 = math.tau * (i + 0.62) / wedges
-        _pad(v, t, g, "worship_deck_joint",
+        _pad(v, t, g, M_STONE_D,
              [(0.10 * math.cos((a0 + a1) / 2), 0.10 * math.sin((a0 + a1) / 2)),
               (r * 0.46 * math.cos(a0), r * 0.46 * math.sin(a0)),
               (r * 0.46 * math.cos(a1), r * 0.46 * math.sin(a1))],
-             0.0, 0.011)
+             0.008, 0.019)
     for i in range(wedges * 2):
         a0 = math.tau * i / (wedges * 2)
         a1 = math.tau * (i + 0.5) / (wedges * 2)
         am = (a0 + a1) / 2.0
-        _pad(v, t, g, "worship_deck_joint",
+        _pad(v, t, g, M_STONE_D,
              [(r * 0.58 * math.cos(a0), r * 0.58 * math.sin(a0)),
               (r * 0.70 * math.cos(am), r * 0.70 * math.sin(am)),
               (r * 0.58 * math.cos(a1), r * 0.58 * math.sin(a1)),
               (r * 0.64 * math.cos(am), r * 0.64 * math.sin(am))],
-             0.0, 0.011)
+             0.008, 0.019)
+    # A HUB the wedges radiate from, and a bronze ring round it. The frame's
+    # mosaic has a centre; ours radiated from nothing.
+    _revolve(v, t, g, M_BRONZE,
+             [(0.0, 0.008), (0.46, 0.008), (0.46, 0.026), (0.38, 0.026),
+              (0.38, 0.020), (0.0, 0.020)], seg)
 
     # THE WALL BELOW THE SILL, in segments, with the entry bay left OUT -- an
     # opening is a hole in something and the something is built with the hole
-    # already in it.
+    # already in it. Every segment is inset by `GAP_A` and the gap carries a
+    # recessed pier, so no two ring solids share a face (INV-761) and the bay
+    # rhythm is legible instead of the ring being one continuous surface.
     for i in range(n):
         a0 = math.tau * i / n - math.tau / (2 * n) + ea
         a1 = a0 + math.tau / n
         if abs(((a0 + a1) / 2.0 - ea + math.pi) % math.tau - math.pi) < 1e-6:
             continue
+        b0, b1 = a0 + GAP_A, a1 - GAP_A
         # THE WALL STOPS AT THE SILL. It used to run floor to entablature and
         # the glazing was then laid at r+0.02..r+0.09 -- INSIDE the wall's own
         # 0.18 m thickness. The room had no windows at all, and
-        # `docs/engine-4k-rotunda-normal.png` is the frame that showed it: an
-        # observation rotunda with a blank wall where the view goes. INV-024
-        # records the identical defect on C&C's own window in session 2 --
-        # *"the bulkhead had no aperture; it was one solid slab with the
-        # glazing laid on it, so the glass was sealed inside 0.30 m of steel"*
-        # -- and the lesson is stated there: **an opening is a hole in
-        # something, and the something has to be built with the hole already
-        # in it.** Third instance in this project; first one caught by a frame
-        # rather than by an assertion, which is the part worth fixing next.
-        _prism(v, t, g, "worship_wall", _ring_quad(r, ro, a0, a1),
-               0.0, ROT_SILL_M)
-        # THE PALE VERTICAL SLAT BAND at waist height, right around the room.
+        # `docs/engine-4k-rotunda-normal.png` is the frame that showed it.
+        # INV-024 records the identical defect on C&C's own window in session 2
+        # -- *"the bulkhead had no aperture; it was one solid slab with the
+        # glazing laid on it"* -- and the lesson is stated there: **an opening
+        # is a hole in something, and the something has to be built with the
+        # hole already in it.**
+        _seg(v, t, g, M_WALL, r, ro, b0, b1, 0.0, ROT_SILL_M)
+        # THE SKIRTING, and it is where the wear goes. CRAFT 4 wants lighting
+        # response to VARY across the surface; the bottom 160 mm of a wall in a
+        # room people queue in is scuffed part-metallic bronze and the field
+        # above it is matte brown, which is a difference in ROUGHNESS as well
+        # as in value and therefore survives a change of lighting.
+        _seg(v, t, g, M_PIER, r - 0.055, ro, b0, b1, 0.0, 0.155)
+        # THE PALE VERTICAL SLAT BAND at waist height, right around the room,
+        # standing proud of a dark recess so it reads as a lit ribbon rather
+        # than as a bright wall.
+        _seg(v, t, g, M_RECESS, r - 0.082, r + 0.01, b0, b1,
+             ROT_SLAT_M - 0.40, ROT_SLAT_M + 0.22)
         for k in range(ROT_SLATS_PER_BAY):
             f0 = (k + 0.22) / ROT_SLATS_PER_BAY
             f1 = (k + 0.62) / ROT_SLATS_PER_BAY
-            _prism(v, t, g, "light_pilaster_strip",
-                   _ring_quad(r - 0.055, r, a0 + (a1 - a0) * f0,
-                              a0 + (a1 - a0) * f1),
-                   ROT_SLAT_M - 0.34, ROT_SLAT_M + 0.16)
-        # THE GLAZING, set INTO the bay between sill and head. Glass sits in an
-        # opening; INV-024 records the render that shipped it sealed inside
-        # 0.30 m of steel because the bulkhead had no aperture at all.
-        # The glass sits IN the opening, spanning the reveal, inset from the
-        # jambs so the columns and the reveal read either side of it.
-        _prism(v, t, g, "prop_viewport",
-               _ring_quad(r + 0.055, ro - 0.055, a0 + 0.035, a1 - 0.035),
-               ROT_SILL_M, ROT_HEAD_M)
+            _seg(v, t, g, M_RIBBON, r - 0.075, r - 0.012,
+                 b0 + (b1 - b0) * f0, b0 + (b1 - b0) * f1,
+                 ROT_SLAT_M - 0.34, ROT_SLAT_M + 0.16)
+        _seg(v, t, g, M_BRONZE, r - 0.105, r + 0.015, b0, b1,
+             ROT_SLAT_M + 0.20, ROT_SLAT_M + 0.255)
+        # THE GLAZING, set INTO the bay between sill and head, spanning the
+        # reveal and inset from the jambs so the columns and the reveal read
+        # either side of it.
+        _seg(v, t, g, "prop_viewport", r + 0.055, ro - 0.055,
+             b0 + 0.035, b1 - 0.035, ROT_SILL_M, ROT_HEAD_M)
         # GLAZING BARS, and they are part of the window rather than trim. A
         # pane of glass is a flat prism with almost no visible line in it, and
         # fifteen of them dragged this room's `density.py --machinery` ratio to
-        # **x0.95** -- machinery LESS articulated than the shell behind it,
-        # which is that gate's exact signature failure and the reason it
-        # exists. A transom and two glazing bars are what a 2.4 m window is
-        # actually built from and they carry the lines the pane does not.
+        # x0.95 -- machinery LESS articulated than the shell behind it. A
+        # transom and two glazing bars are what a 2.4 m window is built from.
         #
-        # AND EACH BAR IS TWO PIECES, WHICH THE FIRST RE-RENDER MADE THE CASE
-        # FOR. `prop_viewport` binds `viewport_glazing` -- albedo 0.04, the
-        # colour of glass -- so a bar named `prop_viewport` in front of black
-        # glass carries the line the DENSITY gate measures and shows the eye
-        # nothing: `docs/engine-4k-rotunda-half.png` came back with a plain
-        # black band where a divided window should be. The dark bar stays (it
-        # is the glazing's own division and it is what the gate is asking
-        # about) and a pale cover strip stands proud of it on the room side,
-        # which is what a real window frame is.
+        # AND EACH BAR IS TWO PIECES. `prop_viewport` binds `viewport_glazing`
+        # -- albedo 0.04, the colour of glass -- so a bar named `prop_viewport`
+        # in front of black glass carries the line the DENSITY gate measures
+        # and shows the eye nothing. The dark bar stays and a BRONZE cover
+        # strip stands proud of it on the room side, which is what a real
+        # window frame is; it used to be `worship_mullion`, which is the same
+        # grey as the wall, so the division vanished into the bulkhead.
         for f in (0.30, 0.70):
-            _prism(v, t, g, "prop_viewport",
-                   _ring_quad(r + 0.02, ro - 0.02,
-                              a0 + (a1 - a0) * f - 0.008,
-                              a0 + (a1 - a0) * f + 0.008),
-                   ROT_SILL_M + 0.03, ROT_HEAD_M - 0.03)
-            _prism(v, t, g, "worship_mullion",
-                   _ring_quad(r - 0.05, r + 0.03,
-                              a0 + (a1 - a0) * f - 0.012,
-                              a0 + (a1 - a0) * f + 0.012),
-                   ROT_SILL_M + 0.02, ROT_HEAD_M - 0.02)
+            _seg(v, t, g, "prop_viewport", r + 0.02, ro - 0.02,
+                 b0 + (b1 - b0) * f - 0.008, b0 + (b1 - b0) * f + 0.008,
+                 ROT_SILL_M + 0.03, ROT_HEAD_M - 0.03)
+            _seg(v, t, g, M_BRONZE, r - 0.05, r + 0.03,
+                 b0 + (b1 - b0) * f - 0.012, b0 + (b1 - b0) * f + 0.012,
+                 ROT_SILL_M + 0.02, ROT_HEAD_M - 0.02)
         for yf in (0.34, 0.68):
             yy = ROT_SILL_M + (ROT_HEAD_M - ROT_SILL_M) * yf
-            _prism(v, t, g, "prop_viewport",
-                   _ring_quad(r + 0.02, ro - 0.02, a0 + 0.045, a1 - 0.045),
-                   yy - 0.022, yy + 0.022)
-            _prism(v, t, g, "worship_mullion",
-                   _ring_quad(r - 0.05, r + 0.03, a0 + 0.045, a1 - 0.045),
-                   yy - 0.030, yy + 0.030)
+            _seg(v, t, g, "prop_viewport", r + 0.02, ro - 0.02,
+                 b0 + 0.045, b1 - 0.045, yy - 0.022, yy + 0.022)
+            _seg(v, t, g, M_BRONZE, r - 0.05, r + 0.03, b0 + 0.045, b1 - 0.045,
+                 yy - 0.030, yy + 0.030)
         # The reveal round the aperture -- head, sill and two jambs, which is
-        # what stops a window reading as a decal at grazing incidence.
-        _prism(v, t, g, "worship_cornice", _ring_quad(r, ro, a0, a1),
-               ROT_HEAD_M - 0.10, ROT_HEAD_M)
-        _prism(v, t, g, "worship_cornice", _ring_quad(r - 0.06, ro, a0, a1),
-               ROT_SILL_M - 0.09, ROT_SILL_M)
-        for f0, f1 in ((0.0, 0.035), (1.0 - 0.035 / (a1 - a0), 1.0)):
-            _prism(v, t, g, "worship_mullion",
-                   _ring_quad(r, ro, a0 + (a1 - a0) * f0,
-                              a0 + (a1 - a0) * f1),
-                   ROT_SILL_M, ROT_HEAD_M)
-        _prism(v, t, g, "worship_wall",
-               _ring_quad(r, ro, a0, a1), ROT_HEAD_M, ROT_ENTAB_M)
-        _prism(v, t, g, "worship_dado",
-               _ring_quad(r - 0.05, r, a0, a1), 0.0, ROT_SILL_M)
+        # what stops a window reading as a decal at grazing incidence. Each one
+        # OVERLAPS its neighbour by `LAP_M` instead of abutting it.
+        _seg(v, t, g, M_BRONZE, r - 0.06, ro, b0, b1,
+             ROT_HEAD_M - 0.10, ROT_HEAD_M + LAP_M)
+        _seg(v, t, g, M_BRONZE, r - 0.07, ro, b0, b1,
+             ROT_SILL_M - 0.09, ROT_SILL_M + LAP_M)
+        for f0, f1 in ((0.0, 0.035), (1.0 - 0.035 / (b1 - b0), 1.0)):
+            _seg(v, t, g, M_PIER, r, ro, b0 + (b1 - b0) * f0,
+                 b0 + (b1 - b0) * f1, ROT_SILL_M, ROT_HEAD_M)
+        # THE STOREY ABOVE THE WINDOW, as a framed and recessed panel rather
+        # than a slab. This is the surface round 1 called "flat panelled wall".
+        _recessed_panel(v, t, g, r, ro, b0, b1, ROT_HEAD_M - LAP_M,
+                        ROT_ENTAB_M, frame=M_PIER, field=M_WALL_UP,
+                        bead=M_GOLD, depth=0.070)
+        # A SERVICE RISER every third bay -- the physical plant a station of
+        # 250,000 needs, where it would actually be needed: in the pier between
+        # two windows, running from the skirting to the entablature.
+        if i % 3 == 1:
+            am = (b0 + b1) / 2.0
+            _seg(v, t, g, M_METAL, r - 0.115, r - 0.035,
+                 am - 0.026, am + 0.026, 0.14, ROT_ENTAB_M - 0.10)
+            for k in range(4):
+                yy = 0.40 + k * 0.86
+                _seg(v, t, g, M_PIER, r - 0.135, r - 0.020,
+                     am - 0.040, am + 0.040, yy - 0.035, yy + 0.035)
+        _seg(v, t, g, M_STONE_D, r - 0.055, r, b0, b1, 0.155 - LAP_M,
+             ROT_SILL_M - 0.09 + LAP_M)
+        # THE REVEAL BETWEEN BAYS, set back so the bay rhythm has a shadow in
+        # it. This is also what makes the ring solids non-adjacent (INV-761).
+        _seg(v, t, g, M_RECESS, r + 0.055, ro, a1 - GAP_A * 1.6,
+             a1 + GAP_A * 1.6, 0.0, ROT_ENTAB_M)
 
     # THE COLUMNS. "A plain slightly tapered cylindrical shaft carrying a group
     # of THREE narrow ring collars, then a longer plain shaft, then a short
@@ -633,16 +920,29 @@ def _rotunda_chamber(v, t, g, prog):
         cx, cz = (r - 0.24) * math.cos(a), (r - 0.24) * math.sin(a)
         _column(v, t, g, cx, cz)
 
-    # THE CORBEL COURSE -- stepped rectangular blocks in layered tiers.
+    # THE CORBEL COURSE -- stepped rectangular blocks in layered tiers. In the
+    # frame the tiers ALTERNATE in value, pale over dark over pale, with a
+    # shadow gap behind each; built all one grey they read as one black band,
+    # which is what round 1 saw.
     for tier in range(ROT_CORBEL_TIERS):
         y0 = ROT_ENTAB_M + tier * 0.30
         rr = r - 0.10 - tier * 0.20
         m = n * 2
+        _revolve(v, t, g, M_RECESS,
+                 [(rr - 0.02, y0 + 0.315), (ro, y0 + 0.315),
+                  (ro, y0 - 0.015), (rr - 0.02, y0 - 0.015)], seg)
         for i in range(m):
             a0 = math.tau * (i + 0.14) / m + ea
             a1 = math.tau * (i + 0.86) / m + ea
-            _prism(v, t, g, "worship_cornice",
-                   _ring_quad(rr, ro, a0, a1), y0, y0 + 0.30)
+            _seg(v, t, g, M_STONE if tier % 2 == 0 else M_WALL_UP,
+                 rr, ro, a0, a1, y0, y0 + 0.30)
+            if tier == ROT_CORBEL_TIERS - 1:
+                _seg(v, t, g, M_GOLD, rr - 0.030, rr + 0.02, a0, a1,
+                     y0 + 0.245, y0 + 0.285)
+
+    # THE COVE. One per bay, tucked behind the corbel lip -- and it is the
+    # room's first real source. See `_cove_ring`.
+    _cove_ring(v, t, g, r, ROT_ENTAB_M - 0.13, n, ea, inset=0.20)
 
     # THE DOME. Warm gold-bronze, smooth, with broad radial ribs. A CLOSED
     # SOLID with thickness -- `bespoke.py`'s own note on this work says the
@@ -652,42 +952,99 @@ def _rotunda_chamber(v, t, g, prog):
     y0 = ROT_ENTAB_M + ROT_CORBEL_TIERS * 0.30
     rise = ROT_CROWN_M - y0
     r_in = r - 0.10 - ROT_CORBEL_TIERS * 0.20
-    _dome_solid(v, t, g, "worship_panel", r_in, y0, rise, 0.22, seg)
+    _dome_solid(v, t, g, M_BRONZE, r_in, y0, rise, 0.22, seg)
     # THE RIBS ARE GOLD-BRONZE, which is the frame's own word for the dome:
-    # *"a smooth warm gold-bronze dome with broad radial ribs"*. No `worship_*`
-    # group binds anything but grey, and `materials.py` is not this session's
-    # file; `edge_chevron_nosing` (albedo 0.900 / 0.720 / 0.060, sourced from
-    # `Minbari Flyer 969 in docking bay 17.webp`) is the one sourced gold in
-    # the library and `dress_kerb` is the fragment that reaches it. The name
-    # also has to end in `_rib` so `rooms.is_solid` calls it shell -- a dome
-    # rib named as an object becomes a collision box hanging over the floor.
+    # *"a smooth warm gold-bronze dome with broad radial ribs"*. `dress_kerb`
+    # (albedo 0.900 / 0.720 / 0.060, sourced from `Minbari Flyer 969 in docking
+    # bay 17.webp`) is the one sourced gold in the library. The name has to end
+    # in `_rib` so `rooms.is_solid` calls it shell -- a dome rib named as an
+    # object becomes a collision box hanging over the floor.
+    #
+    # AND THEY ARE NOW BROAD. At 0.16 m on a 6.5 m dome a "broad radial rib"
+    # was 1.4 degrees of arc and read as a wire; the frame's ribs are of the
+    # order of a fifth of the bay they divide.
     ribs = n
     for i in range(ribs):
         a = math.tau * i / ribs + ea
-        _dome_rib(v, t, g, "dress_kerb_rib", r_in, y0, rise, a, 0.16, 0.13)
+        _dome_rib(v, t, g, M_GOLD, r_in, y0, rise, a, 0.52, 0.19)
+    # AND THE FIELD BETWEEN THEM IS COFFERED. A dome that is a smooth shell is
+    # legible only from its silhouette; CRAFT 5 asks that "the form is legible
+    # from shading alone", and a coffer is the cheapest thing that delivers it.
+    _dome_coffers(v, t, g, r_in, y0, rise, ribs, ea, seg=seg)
+    # THE CROWN. Something has to happen where sixteen ribs meet, or the dome
+    # ends in a pinch of coincident geometry the eye reads as a mistake.
+    _cyl(v, t, g, M_GOLD, 0.0, 0.0, y0 + rise - 0.30, y0 + rise - 0.06,
+         0.42, 0.30, seg=16)
+    _cyl(v, t, g, M_RECESS, 0.0, 0.0, y0 + rise - 0.34, y0 + rise - 0.26,
+         0.50, seg=16)
 
     # TWO PALE CONICAL ELEMENTS standing on the cornice, upper left.
     for i in range(ROT_CONES):
         a = ea + math.pi * (0.62 + 0.16 * i)
-        _cyl(v, t, g, "worship_cornice", (r - 0.55) * math.cos(a),
+        _cyl(v, t, g, M_STONE, (r - 0.55) * math.cos(a),
              (r - 0.55) * math.sin(a), y0, y0 + 0.72, 0.26, 0.02, seg=10)
 
     _rotunda_fittings(v, t, g, prog, r, n, ea)
 
 
 def _column(v, t, g, cx, cz):
-    """One column of the frame's order: taper, THREE collars, shaft, capital."""
-    _cyl(v, t, g, "worship_rib", cx, cz, 0.0, 0.16, 0.30, 0.27, seg=12)
-    _cyl(v, t, g, "worship_rib", cx, cz, 0.16, 1.62, 0.26, 0.225, seg=12)
+    """One column of the frame's order: taper, THREE collars, shaft, capital.
+
+    THE COLLARS ARE A DIFFERENT MATERIAL FROM THE SHAFT, which is what makes
+    the order read. In the reference the shafts are dark bronze and the three
+    collars catch the window light as bright rings; built all one grey the
+    whole colonnade disappeared into the wall behind it, and
+    `docs/engine-4k-rotunda-normal.png` shows exactly that -- sixteen columns
+    in frame and not one of them legible.
+    """
+    _cyl(v, t, g, M_STONE, cx, cz, 0.0, 0.17, 0.30, 0.27, seg=12)
+    _cyl(v, t, g, M_PIER, cx, cz, 0.15, 1.63, 0.26, 0.225, seg=12)
     for k in range(ROT_COLLARS):
         y = 1.62 + k * 0.135
-        _cyl(v, t, g, "worship_rib", cx, cz, y, y + 0.085, 0.285, seg=12)
-    _cyl(v, t, g, "worship_rib", cx, cz, 2.03, ROT_HEAD_M - 0.28, 0.215,
-         0.195, seg=12)
-    _cyl(v, t, g, "worship_rib", cx, cz, ROT_HEAD_M - 0.28, ROT_HEAD_M - 0.14,
+        _cyl(v, t, g, M_BRONZE, cx, cz, y, y + 0.085, 0.285, seg=12)
+    _cyl(v, t, g, M_PIER, cx, cz, 2.02, ROT_HEAD_M - 0.27, 0.215, 0.195,
+         seg=12)
+    _cyl(v, t, g, M_BRONZE, cx, cz, ROT_HEAD_M - 0.29, ROT_HEAD_M - 0.13,
          0.255, seg=12)
-    _cyl(v, t, g, "worship_rib", cx, cz, ROT_HEAD_M - 0.14, ROT_ENTAB_M,
+    _cyl(v, t, g, M_STONE, cx, cz, ROT_HEAD_M - 0.15, ROT_ENTAB_M + LAP_M,
          0.295, seg=12)
+
+
+def _dome_coffers(v, t, g, r, y0, rise, ribs, ea, seg=48,
+                  minor=None, band=None, bands=(0.26, 0.50, 0.74)):
+    """Coffer the dome: a MINOR rib between each pair of majors, and concentric
+    bands across them -- INV-762.
+
+    A dome built as one smooth revolve has nothing on it for light to do, and
+    both programs shipped one: the rotunda's read as a pale shell and the
+    domes' as smooth plastic. CRAFT 5 asks that *"the form is legible from
+    shading alone"* and a shell cannot be; a grid of ribs and bands is the
+    cheapest thing that delivers it, and it is what a coffered dome of this
+    order reads as from beneath -- the ribs, not the sinkings.
+
+    IT IS BUILT WITH THE SAME TWO PRIMITIVES THE DOME ALREADY USES, deliberately.
+    `_dome_rib` follows the meridian and `_revolve` follows the parallel, so
+    every piece lies ON the surface the dome was revolved from and cannot poke
+    through it -- which a box spanning a chord of that surface does, and which
+    is how a "coffer" becomes a lump.
+
+    The bands are at three unequal fractions of the meridian rather than at
+    even thirds: an even grid is a period the eye can index, which is the
+    clause CRAFT 5 fails on.
+    """
+    minor = minor or M_STONE
+    band = band or M_GOLD
+    for i in range(ribs):
+        a = math.tau * (i + 0.5) / ribs + ea
+        _dome_rib(v, t, g, minor, r, y0, rise, a, 0.15, 0.07)
+    for f in bands:
+        rr = (r - 0.03) * math.cos(f * math.pi / 2.0)
+        yy = y0 + (rise - 0.03) * math.sin(f * math.pi / 2.0)
+        h = 0.11 + 0.05 * f
+        _revolve(v, t, g, band,
+                 [(rr, yy), (rr, yy + h), (rr - 0.10, yy + h), (rr - 0.10, yy)],
+                 seg)
+    return v, t, g
 
 
 def _dome_solid(v, t, g, name, r, y0, rise, thick, seg):
@@ -752,80 +1109,115 @@ def _dome_rib(v, t, g, name, r, y0, rise, a, w, d, steps=9):
 def _rotunda_fittings(v, t, g, prog, r, n, ea):
     """Banners, lattice panels, the steps and portal, the lectern, the seats."""
     # FOUR HANGING BANNERS -- long vertical cloths, sigil in the lower third.
+    # TWO DARK AND TWO PALE, which is what the frame shows and which is also
+    # the cheapest defence against the thing CRAFT 5 forbids: four identical
+    # cloths at four evenly spaced angles is a period the eye indexes in one
+    # sweep. They alternate material, and the two pairs hang at different
+    # heights because a cloth hung by hand does not.
     for i in range(ROT_BANNERS):
         a = ea + math.pi * (0.42 + 0.39 * i)
-        a0, a1 = a - 0.085, a + 0.085
-        _prism(v, t, g, "sign_face", _ring_quad(r - 0.34, r - 0.30, a0, a1),
-               1.55, ROT_HEAD_M + 0.10)
-        _prism(v, t, g, "signage_panel",
-               _ring_quad(r - 0.345, r - 0.335, a0 + 0.02, a1 - 0.02),
-               1.72, 2.30)
-        _prism(v, t, g, "worship_rib", _ring_quad(r - 0.36, r - 0.28,
-                                                  a0 - 0.012, a1 + 0.012),
-               ROT_HEAD_M + 0.10, ROT_HEAD_M + 0.16)
+        a0, a1 = a - 0.105, a + 0.105
+        cloth = M_CLOTH_B if i % 2 == 0 else M_CLOTH_P
+        drop = 0.0 if i % 2 == 0 else 0.14
+        _seg(v, t, g, cloth, r - 0.34, r - 0.30, a0, a1,
+             1.48 + drop, ROT_HEAD_M + 0.10)
+        # THE SIGIL, IN THE LOWER THIRD AND IN RELIEF. Round 1's C1 finding.
+        _sigil(v, t, g, r, a, 1.94 + drop, size=0.50)
+        # the hanging rail, and a boss at each end of it
+        _seg(v, t, g, M_BRONZE, r - 0.365, r - 0.275, a0 - 0.014, a1 + 0.014,
+             ROT_HEAD_M + 0.08, ROT_HEAD_M + 0.155)
+        for s in (-1, 1):
+            _cyl(v, t, g, M_BRONZE, (r - 0.32) * math.cos(a + s * 0.119),
+                 (r - 0.32) * math.sin(a + s * 0.119),
+                 ROT_HEAD_M + 0.09, ROT_HEAD_M + 0.145, 0.045, seg=8)
 
     # TALL BLUE BACKLIT LATTICE PANELS flanking the room, left and right.
     for i in range(ROT_LATTICE):
         a = ea + math.pi * (0.66 + 0.68 * i)
-        for k in range(9):
-            f0 = -0.19 + 0.042 * k
-            _prism(v, t, g, "light_bar_backlight",
-                   _ring_quad(r - 0.26, r - 0.22, a + f0, a + f0 + 0.028),
-                   0.45, ROT_HEAD_M - 0.20)
-        _prism(v, t, g, "worship_mullion",
-               _ring_quad(r - 0.30, r - 0.20, a - 0.215, a + 0.215),
-               0.30, 0.45)
-        _prism(v, t, g, "worship_mullion",
-               _ring_quad(r - 0.30, r - 0.20, a - 0.215, a + 0.215),
-               ROT_HEAD_M - 0.20, ROT_HEAD_M - 0.05)
+        _lattice_panel(v, t, g, r, a, 0.165, 0.42, ROT_HEAD_M - 0.14,
+                       bars=7, rungs=8)
 
     # THE FLIGHT OF ABOUT TEN PALE STEPS rising to a dark portal, flanked by
     # piers whose lower ends carry a comb of vertical slots.
-    ax = -math.sin(ea)          # the direction opposite the way in
-    az = -math.cos(ea)
-    # (ea is pi/2, so the entry is at +z and the stair is at -z.)
-    sx, sz = 0.0, -1.0
+    #
+    # THE STEPS ARE PALE AND THE NOSINGS ARE BRONZE. They were `worship_deck`
+    # grey with `fix_platform_edge` on the nose, which is the station's HAZARD
+    # CHEVRON -- albedo 0.900 / 0.720 / 0.060 -- so a ceremonial stair in a
+    # Minbari-order chamber was striped like a loading dock, and it is the
+    # first thing the eye goes to in `docs/engine-4k-rotunda-half.png`.
     rise = 0.165
     for i in range(ROT_STEPS):
         zz = -r * 0.42 - i * 0.30
-        _box(v, t, g, "worship_deck", (-1.35, 0.0, zz - 0.30),
+        _box(v, t, g, M_STONE, (-1.35, 0.0, zz - 0.30 - LAP_M),
              (1.35, rise * (i + 1), zz))
-        _box(v, t, g, "fix_platform_edge", (-1.35, rise * (i + 1) - 0.03,
-                                            zz - 0.30),
-             (1.35, rise * (i + 1) + 0.012, zz - 0.24))
+        _box(v, t, g, M_BRONZE, (-1.34, rise * (i + 1) - 0.035, zz - 0.30),
+             (1.34, rise * (i + 1) + 0.014, zz - 0.235))
     top = rise * ROT_STEPS
     zt = -r * 0.42 - ROT_STEPS * 0.30
-    _box(v, t, g, "worship_panel", (-1.60, top, zt - 0.55),
-         (1.60, top + 2.45, zt - 0.30))
+    # THE DARK PORTAL at the head of the flight, with a lit reveal round it so
+    # the way out reads as a way out rather than as a stain on the wall.
+    _box(v, t, g, M_RECESS, (-1.32, top, zt - 0.54), (1.32, top + 2.30,
+                                                      zt - 0.30))
+    _box(v, t, g, M_WALL_UP, (-1.62, top, zt - 0.58), (1.62, top + 2.62,
+                                                       zt - 0.28))
+    _box(v, t, g, M_BRONZE, (-1.66, top + 2.30, zt - 0.60),
+         (1.66, top + 2.46, zt - 0.26))
+    _box(v, t, g, M_RIBBON, (-1.24, top + 2.22, zt - 0.46),
+         (1.24, top + 2.28, zt - 0.40))
     for s in (-1, 1):
-        _box(v, t, g, "worship_rib", (s * 1.35, 0.0, zt - 0.32),
-             (s * 1.72, top + 2.75, zt + 2.40))
+        # the pier: a plinth, a shaft, and a capital -- three solids, three
+        # materials. It was one grey slab 0.37 x 2.72 x 5.7 m, and at half
+        # distance it is the largest object in the room.
+        _box(v, t, g, M_WALL_UP, (s * 1.33, 0.0, zt - 0.34),
+             (s * 1.74, 0.42, zt + 2.42))
+        _box(v, t, g, M_PIER, (s * 1.35, 0.40, zt - 0.32),
+             (s * 1.72, top + 2.46, zt + 2.40))
+        _box(v, t, g, M_BRONZE, (s * 1.31, top + 2.44, zt - 0.36),
+             (s * 1.76, top + 2.62, zt + 2.44))
+        # the comb of vertical slots at the lower end, RECESSED into the pier
         for k in range(8):
-            _box(v, t, g, "worship_mullion",
-                 (s * 1.36, 0.10, zt + 0.30 + k * 0.24),
-                 (s * 1.74, 1.05, zt + 0.36 + k * 0.24))
+            _box(v, t, g, M_RECESS,
+                 (s * 1.345, 0.10, zt + 0.30 + k * 0.24),
+                 (s * 1.755, 1.05, zt + 0.36 + k * 0.24))
+        # a service riser up the room face of each pier
+        _box(v, t, g, M_METAL, (s * 1.30, 0.44, zt + 2.24),
+             (s * 1.36, top + 2.40, zt + 2.34))
     rv, rt = kit.handrail(ROT_STEPS * 0.30, height=1.02, post_spacing=0.9)
     _merge(v, t, g, "prop_gallery_rail",
            [(-z, y + top * (1.0 - x / max(1e-9, ROT_STEPS * 0.30)), x)
             for x, y, z in rv], rt, dx=-1.24, dz=zt)
 
-    # THE LECTERN -- dark plinth, sloping cyan-glowing top, chevron figure.
-    # A DARK PLINTH. `prop_console` binds the station's console shell, which
-    # is a warm lit surface, and at 1.24 x 0.72 x 0.96 m it read in
-    # `docs/engine-4k-rotunda-normal.png` as a glowing orange box in the middle
-    # of a cold grey chamber -- the brightest thing in a frame whose subject is
-    # a window ring. The reference is explicit: *"a dark plinth lectern with a
-    # sloping cyan-glowing top"*, so the plinth takes the room's own wall
-    # material and only the top glows.
-    _box(v, t, g, "worship_panel", (-0.62, 0.0, r * 0.30),
-         (0.62, 0.96, r * 0.30 + 0.72))
-    _box(v, t, g, "worship_mullion", (-0.66, 0.90, r * 0.30 - 0.04),
-         (0.66, 0.98, r * 0.30 + 0.76))
-    _box(v, t, g, "light_dais_key", (-0.56, 0.96, r * 0.30 + 0.04),
-         (0.56, 1.00, r * 0.30 + 0.68))
-    for s in (-1, 1):
-        _box(v, t, g, "worship_mullion", (s * 0.04, 1.00, r * 0.30 + 0.06),
-             (s * 0.30, 1.02, r * 0.30 + 0.66))
+    # THE LECTERN -- dark plinth, sloping BLUE-glowing top, chevron figure.
+    # The reference is explicit: *"a dark plinth lectern with a sloping
+    # cyan-glowing top, the glow divided by dark bars into a symmetrical
+    # chevron figure"*. This module had the plinth right and the glow WARM, on
+    # `light_dais_key` at emission energy 6.0 over a 1.12 x 0.64 m face -- a
+    # white hole in the middle of a cold room, and the brightest thing in a
+    # frame whose subject is a window. It is now `prop_shrine` blue at ee 2.2,
+    # a third of the area, and the dark bars that make the chevron are built.
+    zc = r * 0.30
+    _box(v, t, g, M_WALL_UP, (-0.62, 0.0, zc), (0.62, 0.94, zc + 0.72))
+    _box(v, t, g, M_PIER, (-0.58, 0.0, zc + 0.02), (0.58, 0.16, zc + 0.70))
+    _box(v, t, g, M_BRONZE, (-0.66, 0.90, zc - 0.04), (0.66, 0.99, zc + 0.76))
+    _box(v, t, g, M_RECESS, (-0.57, 0.965, zc + 0.03), (0.57, 1.005, zc + 0.69))
+    # the glowing field, then the dark bars that divide it into a chevron
+    _box(v, t, g, M_GLOW_B, (-0.545, 0.985, zc + 0.05), (0.545, 1.012,
+                                                         zc + 0.67))
+    for k in range(5):
+        f = (k + 0.5) / 5.0
+        xx = -0.545 + 1.09 * f
+        w = 0.019
+        zk = zc + 0.05 + 0.62 * abs(f - 0.5) * 0.9
+        _box(v, t, g, M_GRILLE, (xx - w, 1.008, zk),
+             (xx + w, 1.028, zk + 0.62 - (zk - zc - 0.05)))
+    _box(v, t, g, M_GRILLE, (-0.545, 1.008, zc + 0.345),
+         (0.545, 1.026, zc + 0.375))
+    # AND A REAL SOURCE UNDER THE LIP. `cc_light_strip` is in
+    # `export_scene.FIXTURE_LIGHTING` -- omni, 22000 K, energy_rel 0.44,
+    # range 3.5 m -- so the lectern throws its own blue onto the floor and the
+    # robes standing at it, which is what the frame shows and what an emissive
+    # surface alone can never do.
+    _box(v, t, g, L_BLUE, (-0.50, 0.955, zc + 0.06), (0.50, 0.975, zc + 0.10))
 
     # THE SEATS the register declares, on the ring between the columns.
     for i in range(prog["benches"]):
@@ -846,8 +1238,12 @@ def _rotunda_fittings(v, t, g, prog, r, n, ea):
             ("prop_info_board", 1.15, 2.05, 0.16),
             ("prop_babcom_terminal", 1.05, 1.55, 0.10))):
         a = ea + math.pi + (0.34 if i else -0.34)
+        _seg(v, t, g, M_RECESS, r - 0.13, r - 0.095, a - wd - 0.022,
+             a + wd + 0.022, y0 - 0.05, y1 + 0.05)
         _prism(v, t, g, nm, _ring_quad(r - 0.09, r - 0.02, a - wd, a + wd),
                y0, y1)
+        _seg(v, t, g, M_BRONZE, r - 0.135, r - 0.025, a - wd - 0.030,
+             a + wd + 0.030, y1 + 0.04, y1 + 0.09)
 
 
 # ---------------------------------------------------------------------------
