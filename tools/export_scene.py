@@ -181,6 +181,13 @@ DRUM_SHADOW_LIGHTS = 24
 # cannot be changed by accident together.
 INTERIOR_SHADOW_LIGHTS = 2
 
+# WHAT A SHADOW COSTS, IN THE UNIT THE COST IS ACTUALLY PAID IN. An omni
+# shadow is a cube map: six renders of the scene from one point. A spot shadow
+# is one 2D map. `fixture_lights` rations in this unit rather than in lights,
+# so `INTERIOR_SHADOW_LIGHTS = 2` means "two cube maps' worth" -- twelve faces
+# -- which is exactly two omnis, as it always was, and up to twelve spots.
+OMNI_SHADOW_FACES = 6
+
 # A light 500 m across the drum should not be 20x dimmer than one 40 m
 # overhead: the drum reads near-uniformly lit in `34b`, which is what a line
 # source 2.6 km long inside a reflective cavity actually does.
@@ -1847,6 +1854,67 @@ FIXTURE_LIGHTING = {
     "bay_lamp": {"kind": "spot", "colour": (0.850, 0.830, 1.000),
                  "energy_rel": 1.00, "range_m": 30.0, "shadow": True,
                  "angle_deg": 35.0},
+    # -----------------------------------------------------------------------
+    # THE ZOCALO'S KEY LIGHT, AND IT HAS BEEN MEASURED SINCE LAYER 4 AND WIRED
+    # TO NOTHING -- session 4t round 2
+    # -----------------------------------------------------------------------
+    # `docs/layer4-lighting/public_social.json` carries a fixture record
+    # `zoc_downlight_overhead`, space `zocalo_concourse`, authority 1 off
+    # reference/04-sector-red/more zocalo.png. Every field below is copied from
+    # it, not re-derived:
+    #
+    #   kind spot · colour (0.694, 0.982, 1.000) · 7740 K · energy_rel 1.00 ·
+    #   range 12 m · spacing 2.7 m · shadow TRUE · "ceiling, 7.2 m above deck,
+    #   aimed down; one above each of zocalo.py's pool centres ... Cone must be
+    #   wide (half-angle >= 50 deg): spacing/height = 2.7/7.2 = 0.375 and the
+    #   pools MERGE."
+    #
+    # It is the room's KEY -- the record says so outright: "This is the
+    # Zocalo's key and the reason the room reads as a bright floor under a
+    # black ceiling: the deck is Y 0.657 while the soffit above it is Y 0.062."
+    # Until now the rig's only Zocalo entries were `zoc_rib_lamp` (warm fill,
+    # energy_rel 0.30) and `zoc_stall_light` (warm festoon, 0.19), so EVERY
+    # photon this room cast was orange and the level was carried by a grey
+    # ambient at 0.676. That is the flat red box the round-1 frames show, and
+    # the same JSON warns about it in as many words: "A B5 social interior has
+    # NO neutral fill term. Every photon on a dark surface came from a named
+    # fitting. A grey ambient will kill these rooms."
+    #
+    # THE DEFECT IS THIS PROJECT'S OWN SIGNATURE ONE, ONE LAYER DOWN FROM WHERE
+    # CLAUDE.md RECORDS IT. `station/materials.py` has carried the fitting as
+    # `light_market_pool` ("Market Downlight -- the Zocalo's overhead") with
+    # the same measurement quoted in its `source=` for as long as layer 3 has
+    # been closed. A material binds a GROUP NAME, `light_market_pool`, and
+    # `station/zocalo.py` emits no such group -- so the measurement had a
+    # material, a citation and a colour, and no geometry and no light. Tenth
+    # instance of "finished, tested machinery with no caller on the shipped
+    # path", and `tools/wiring.py` cannot see it because nothing here is a
+    # generated file.
+    #
+    # WHY THE ENTRY IS KEYED ON `zoc_downlight` AND WHAT `mount_m` IS FOR.
+    # `zoc_downlight` is the 1.57 m LIT PATCH on the deck -- `kit.
+    # downlight_pool()`, rise 0.01 m -- and not the lamp. The JSON is explicit:
+    # "kit.downlight_pool() models the POOL, not the lens, so the engine light
+    # belongs overhead and the 1.57 m disc is its baked core." So the fitting
+    # is derived from the pool's own centroid pushed 7.2 m along the room's UP,
+    # which keeps CLAUDE.md's fourth hard rule -- the light is still a function
+    # of geometry the module emits, and a hand-written table of 55 lamp
+    # positions is exactly what `fixture_lights`' docstring exists to forbid.
+    # `mount_m` is that offset and nothing else; see `fixture_lights`.
+    #
+    # AND IT IS THE FIX THE ROUND-1 CRITIC ASKED FOR, BY ITS OWN SOURCE.
+    # The finding was that the floor pools "have no source in frame ... so the
+    # pools correspond to nothing", and that "a table pedestal and four stool
+    # legs stand inside a pool and cast nothing into it". The JSON's `source=`
+    # field states the same thing as a measurement, from the other side:
+    # "Chair legs at (0.05,0.78)-(0.40,1.00) cast two to three distinct shadows
+    # each, so the deck's brightness is from OVERHEAD sources and not from an
+    # emissive floor plate." Two to three shadows per leg is what a 0.375
+    # spacing/height ratio gives, and it is why `shadow` is True here and why
+    # the ration below had to stop counting lights and start counting maps.
+    "zoc_downlight": {"kind": "spot", "colour": (0.694, 0.982, 1.000),
+                      "energy_rel": 1.00, "range_m": 12.0, "shadow": True,
+                      "angle_deg": 50.0, "mount_m": 7.2},
     # zoc_rib_lamp, measured in reference/04-sector-red/zocalo.webp: omni,
     # 2990 K, energy_rel 0.30, range 6 m, no shadow. Five per rib at the
     # measured (x, y) intrados positions, ribs at 5.4 m pitch. This is the
@@ -2448,6 +2516,31 @@ AMBIENT_SOLVED = {
     #
     # WHAT WOULD MAKE IT TAKEABLE: sources. LIGHTING_COVERAGE's `n >= A/(2R^2)`
     # in `station/zocalo.py`, which is not this file's to change.
+    #
+    # ------ AND IT BECAME TAKEABLE IN THE SAME SESSION, ROUND 2 ------------
+    # The sources were not missing from the STATION. They were missing from
+    # THIS FILE'S TABLE. `docs/layer4-lighting/public_social.json`'s
+    # `zoc_downlight_overhead` -- the record that supplies the 0.094 above --
+    # describes the room's KEY, 7740 K spots 7.2 m over every deck pool, and
+    # `FIXTURE_LIGHTING` had no entry for it, so the only cast light in the
+    # Zocalo was two warm FILL families and the ambient was carrying the level
+    # on its own. That is the exact condition the row above says would have to
+    # change, and the same JSON says what the room looks like when it has not:
+    # "A B5 social interior has NO neutral fill term ... A grey ambient will
+    # kill these rooms."
+    #
+    # With the key wired (see FIXTURE_LIGHTING["zoc_downlight"]) the trade the
+    # rejected row measured no longer holds, and the ratio is taken. It is the
+    # room's OWN measured number -- `AMBIENT_BY_ARCHETYPE["commerce"]`, the
+    # 0.094 labelled `# zocalo_concourse` -- and the JSON's own instruction:
+    # "SET AMBIENT/GI AT ROUGHLY 0.08 OF THE KEY IN A SOCIAL SPACE".
+    #
+    # The re-measurement at the new rig is in EMISSION_HEADROOM["mod:zocalo"].
+    # The negative control is the row above: this value with the key withheld
+    # is the x0.31 level that got it rejected the first time, and
+    # `--fixture-energy` cannot recover it -- x3 on the fittings only reached
+    # x0.64 -- which is why "add an ambient row" was never the fix on its own.
+    "mod:zocalo": 0.094,
     # ---------------------------------------------------------------------
     # SESSION 4m -- AND THIS ROW IS NOT A NEW MEASUREMENT. `AMBIENT_BY_
     # ARCHETYPE` above carries `"store": 0.076,  # docking_bay` -- the ratio
@@ -2760,7 +2853,45 @@ ROOM_EXPOSURE = {
 # lighting-design problem with a number attached and this session does not
 # chase it.
 BESPOKE_EXPOSURE = {
-    "zocalo": 0.52,          # UNCHANGED IN 4t, DELIBERATELY, and the reason
+    # ROUND 2 TOOK IT TO 0.26, AND THE PARAGRAPH BELOW IS WHY IT COULD NOT BE
+    # TOUCHED IN ROUND 1 -- kept verbatim, because it is the diagnosis this
+    # round acted on rather than a note that has expired. Its last sentence
+    # names the remedy as "LIGHTING_COVERAGE's `n >= A/(2R^2)` in
+    # station/zocalo.py", and that was WRONG about the file: the room already
+    # has the coverage, it had no KEY. See FIXTURE_LIGHTING["zoc_downlight"].
+    #
+    # WITH THE KEY WIRED, THE EXPOSURE HAD TO COME DOWN BY HALF, which is the
+    # cleanest evidence available that the fitting was missing rather than
+    # weak: adding one measured family took the far camera from x0.77 of its
+    # reference to x2.74 at an unchanged exposure. Solved by two 1280x720 cells
+    # on the hall's longest sightline (eye 0,1.6,-0.2 -> 0,1.6,65.0), each in
+    # its own sequential invocation, K = 4 throughout so the pair is not a
+    # second variable:
+    #
+    #   exposure   fixture-energy   median   level   p5      crushed
+    #     0.52          12.0        0.1636   x2.74   x3.99    1.09%
+    #     0.80          18.5        0.2405   x4.03   x6.22    0.26%
+    #
+    # d(ln median)/d(ln exposure) = 0.896, which inverts onto the x1.40 target
+    # at 0.246; 0.26 is rendered and measured rather than fitted and comes back
+    # x1.42 on that camera and x1.06 on the half-distance one -- BOTH INSIDE
+    # THE x1.05-1.75 WINDOW, which no Zocalo frame has ever been.
+    #
+    # AND THE RESOLUTION IS PART OF THE MEASUREMENT, which cost two cells to
+    # learn and is not written down anywhere else in this file. The same scene
+    # at exposure 0.52 measures median 0.1197 at 640x360 and 0.0362 at
+    # 1280x720 -- x3.3 apart -- while at exposure 1.10 the two agree to 1%
+    # (0.2289 against 0.2317). The screen-space effects have pixel-sized
+    # kernels, so at half resolution they cover four times the world area, and
+    # that matters most when a small bright population is doing the smearing.
+    # A LEVEL SOLVED AT ONE RESOLUTION IS NOT VALID AT ANOTHER, and the 640x360
+    # rows in the block below were solved on the room's own gate shot at that
+    # size. They are kept, and they are not comparable to these.
+    "zocalo": 0.26,          # ROUND 2. Was 0.52 -- the comment below is that
+                             # value's, and it is kept because its diagnosis is
+                             # what round 2 executed.
+                             #
+                             # 0.52: UNCHANGED IN 4t, DELIBERATELY, and the reason
                              # is the measurement rather than caution. The
                              # session's change to this room is ONE knob --
                              # `EMISSION_HEADROOM["mod:zocalo"] = 4.00` -- and
@@ -3289,6 +3420,116 @@ def rerender_frame(frame, shot):
     return True
 
 
+# ---------------------------------------------------------------------------
+# DOES THE EMISSION HEADROOM REACH THE FRAME? -- the gate the round-1 critic
+# asked for, with both of its controls
+# ---------------------------------------------------------------------------
+# The finding was: "Make emission track exposure ... Control that proves it:
+# re-render `zocalo` at two exposures and assert the strip's mean pixel MOVES
+# -- today it is x1.007 over x5.7 of gain, per this file's own measurement."
+#
+# That is the right control and it is only half of one. `EMISSION_HEADROOM` is
+# a COMPENSATED PAIR, and a pair has two claims:
+#
+#   1. the EMISSIVE population moves by 1/K, and
+#   2. the LIT population does not move at all.
+#
+# A gate on (1) alone passes for any change that just turns the room down --
+# including a plain `tonemap_exposure` cut, which is precisely the thing the
+# block above EMISSION_HEADROOM declines to do and gives its reasons for. So
+# this asserts both, and the second is the one with teeth.
+#
+# THE STATISTICS ARE WHOLE-FRAME, for the reason this file already records
+# against `docs/layer4-lighting/*.json`: "a per-space `ambient.ratio` taken
+# from two hand-picked regions of a balanced frame, and a whole-frame
+# percentile of the same frame gives a different number ... Tuning a render
+# against the wrong one of those lands it two and a half stops hot." A box
+# drawn round the deck strip would be a hand-picked region AND would move with
+# the camera. `p99` is the small bright population -- the emissive one -- and
+# the `median` is the lit level; both come from `tools/measure_frame.py`, one
+# code path, the same one the value was solved with.
+#
+# WHAT IT WOULD TAKE TO FAIL, and both have been run:
+#
+#   * `--gate-emissive zocalo --control none` renders both cells at K = 1, so
+#     the pair is off on both sides. p99 stops moving and leg 1 fails:
+#     "the emissive population must move: p99 x1.00 over K 1.00 -> 1.00".
+#   * `--gate-emissive zocalo --control uncompensated` scales the light
+#     energies by K and leaves the camera exposure alone -- the naive version
+#     of this change, and the version that is just a brightness knob. The lit
+#     population moves with everything else and leg 2 fails:
+#     "the lit population must NOT move".
+#
+# It needs the engine. If there is no binary it prints CANNOT-RUN and returns
+# None rather than a pass, because a gate that reports success when it did not
+# execute is the failure mode CLAUDE.md has paid for twice.
+EMISSIVE_GATE_K = (2.0, 8.0)
+EMISSIVE_GATE_MIN_MOVE = 1.25    # p99 must fall by at least this over the pair
+EMISSIVE_GATE_MAX_DRIFT = 1.06   # the median may not move by more than this
+
+
+def gate_emissive(room="zocalo", res="640x360", control=None, mf=None):
+    """Render one room at two K and check the compensated pair reached it.
+
+    Returns (moved, drift, ok) or None if no engine is available.
+    """
+    import subprocess                                            # noqa: PLC0415
+    mf = mf or _measure_frame()
+    sh = os.path.join(ROOT, "tools", "render_godot.sh")
+    out_dir = os.path.join(ROOT, "station", "generated", "gate")
+    os.makedirs(out_dir, exist_ok=True)
+    stats = []
+    for k in EMISSIVE_GATE_K:
+        png = os.path.join(out_dir, f"emissive-{room}-{k:g}.png")
+        if os.path.exists(png):
+            os.remove(png)            # never measure a previous run's frame
+        cmd = [sh, "--shot", "interior", "--room", room, "--res", res,
+               "--out", png]
+        if control == "none":
+            cmd += ["--emission-headroom", "1.0"]
+        elif control == "uncompensated":
+            # Leg 1 only: the lights are scaled and the camera is not. This is
+            # the change without the compensation, i.e. a brightness knob.
+            cmd += ["--emission-headroom", "1.0",
+                    "--fixture-energy", str(12.0 * k)]
+        else:
+            cmd += ["--emission-headroom", str(k)]
+        r = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
+        if not os.path.exists(png):
+            print(f"gate_emissive: CANNOT-RUN -- no frame from K={k:g}\n"
+                  f"{r.stdout[-800:]}{r.stderr[-800:]}")
+            return None
+        # THE RENDERER MUST SAY WHICH RENDERER IT WAS. CLAUDE.md, session 4e:
+        # a container with no Vulkan ICD fell back to OpenGL 3 Compatibility,
+        # printed the warning inside several hundred lines of ALSA noise, and
+        # exited 0 with a PNG. Ten frames were judged through it.
+        if "Forward+" not in r.stdout:
+            print(f"gate_emissive: CANNOT-RUN -- K={k:g} did not report "
+                  f"Forward+; the frame is from a lesser renderer and is "
+                  f"being destroyed rather than measured")
+            os.remove(png)
+            return None
+        stats.append(mf.measure(png))
+    lo, hi = stats                       # K low, K high
+    moved = lo["bright_p99"] / hi["bright_p99"] if hi["bright_p99"] else 0.0
+    drift = max(lo["median"], hi["median"]) / min(lo["median"], hi["median"]) \
+        if min(lo["median"], hi["median"]) else float("inf")
+    ok_move = moved >= EMISSIVE_GATE_MIN_MOVE
+    ok_drift = drift <= EMISSIVE_GATE_MAX_DRIFT
+    lab = control or "the shipped pair"
+    print(f"gate_emissive {room} [{lab}] K {EMISSIVE_GATE_K[0]:g} -> "
+          f"{EMISSIVE_GATE_K[1]:g}")
+    print(f"  emissive population  p99 {lo['bright_p99']:.4f} -> "
+          f"{hi['bright_p99']:.4f}  x{moved:.2f}   "
+          f"{'OK  ' if ok_move else 'FAIL'} (must move >= "
+          f"x{EMISSIVE_GATE_MIN_MOVE})")
+    print(f"  lit population    median {lo['median']:.4f} -> "
+          f"{hi['median']:.4f}  x{drift:.3f}   "
+          f"{'OK  ' if ok_drift else 'FAIL'} (must NOT move, <= "
+          f"x{EMISSIVE_GATE_MAX_DRIFT})")
+    return moved, drift, ok_move and ok_drift
+
+
 def gate_frames(mf=None, rerender=False):
     """Every exposure with a committed frame, on the new comparison.
 
@@ -3648,8 +3889,18 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None,
             # assumed; see FIXTURE_LIGHTING.
             continue
         spec = FIXTURE_LIGHTING[key]
-        reach = ((spec.get("range_m") or rng)
-                 * (reach_of(name) if callable(reach_of) else reach_of))
+        # A MEASURED MOUNT HEIGHT IS A MEASURED RANGE, so it takes no stretch.
+        # `room_reach` exists because most entries' ranges were measured in a
+        # room of one size and are being used in a room of another -- "a range
+        # measured in an 18 m docking bay is wrong in a 7.5 m plant hall". A
+        # fitting carrying `mount_m` was measured WITH its own drop, in this
+        # room, in the frame this room is solved from, so multiplying it is
+        # inventing throw the source does not have: the Zocalo key's 12 m over
+        # a 7.2 m drop becomes 26.4 m at the hall's x2.20, which is a spot with
+        # no falloff left inside the room -- and the falloff is the penumbra.
+        stretch = (1.0 if spec.get("mount_m")
+                   else (reach_of(name) if callable(reach_of) else reach_of))
+        reach = (spec.get("range_m") or rng) * stretch
         gain = energy * (exposure(name) if exposure else 1.0)
         for body in fitting_bodies(verts, tris, lo, hi):
             bidx = {i for k in body for i in tris[k]}
@@ -3675,6 +3926,28 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None,
             fitting = len(seen_bodies)
             seen_bodies.append(name)
             for c, share in parts:
+                # A FITTING WHOSE TAGGED GEOMETRY IS THE LIT PATCH AND NOT THE
+                # LAMP. `mount_m` lifts the source off the group it was derived
+                # from, along the room's own UP, by a MEASURED mount height.
+                # The one fitting that needs it is `zoc_downlight`, whose
+                # geometry is `kit.downlight_pool()` -- the 1.57 m disc baked
+                # into the deck -- while its layer-4 record puts the lamp
+                # 7.2 m above it. See FIXTURE_LIGHTING["zoc_downlight"].
+                #
+                # UP IS -down, WHICH IS WHY IT USES THE SAME FUNCTION THE AIM
+                # DOES rather than +Y. On a spun ring "up" is toward the spin
+                # axis, so a fitting mounted 7.2 m above a deck at ring angle
+                # 200 deg is 7.2 m INWARD, not 7.2 m along world Y -- the
+                # identical mistake `spots_lighting_the_floor` was written to
+                # catch on the aim vector, made one line earlier on the
+                # position. The default with no `down` is world -Y, so the
+                # single-room shot lifts along +Y and every existing shot is
+                # untouched because no other entry carries the field.
+                mount = spec.get("mount_m")
+                if mount:
+                    d = list(down(c)) if down else [0.0, -1.0, 0.0]
+                    n = math.dist(d, (0.0, 0.0, 0.0)) or 1.0
+                    c = [c[k] - mount * d[k] / n for k in range(3)]
                 lt = {"pos": c,
                       # Shared, not repeated: samples are one fitting seen in
                       # several places and `share` sums to 1 across them.
@@ -3746,11 +4019,39 @@ def fixture_lights(verts, tris, spans, energy, rng, shadow_n=2, eye=None,
     # from a downlight lens throws no visible shadow, so the downlight does not
     # get one here either. Rationing by distance to the eye -- the drum's rule
     # -- would have invented three.
+    #
+    # AND THE RATION COUNTS MAPS, NOT LIGHTS -- session 4t round 2. The
+    # sentence above is the whole justification for the number and it is about
+    # CUBE FACES: an omni shadow re-renders the scene six times because a cube
+    # map has six sides. A SPOT shadow is one 2D map. So a budget expressed in
+    # lights charges a spot six times what it costs, and it was the reason the
+    # Zocalo's fifty-five deck downlights could not have shadows at any setting
+    # -- two lights is two lights whether they are cubes or not.
+    #
+    # `shadow_n` keeps its meaning at the call sites (it is a count of OMNIS,
+    # which is what every caller has always passed) and is converted here into
+    # the quantity the comment was really about. An all-omni shot spends 6 per
+    # caster and takes exactly `shadow_n` of them, so it is BYTE-IDENTICAL to
+    # the old rule -- that is the negative control, and `_selftest` runs it.
+    #
+    # THE 4-FOR-1 IS MEASURED, NOT ASSUMED. docs/layer4-lighting/
+    # public_social.json, section 4: "because ~4 deck downlights overlap at any
+    # point and the measured shadow depth is 0.74, turning shadows off on three
+    # of every four costs about 25% of one fitting's contribution. That is a
+    # real, measured budget for a real, measured error." Twelve faces buys
+    # twelve spots where it used to buy two omnis, at the same map count, and
+    # the same section's worth-it list names "one Zocalo deck downlight per
+    # bay" -- the hall is five bays deep from the far camera.
     castable = [i for i, lt in enumerate(out) if lt.pop("_shadow", False)]
     if eye is not None and castable:
         castable.sort(key=lambda i: sum((out[i]["pos"][k] - eye[k]) ** 2
                                         for k in range(3)))
-        for i in castable[:shadow_n]:
+        budget = shadow_n * OMNI_SHADOW_FACES
+        for i in castable:
+            cost = 1 if out[i].get("kind") == "spot" else OMNI_SHADOW_FACES
+            if cost > budget:
+                continue
+            budget -= cost
             out[i]["shadow"] = True
     return out
 
@@ -5110,7 +5411,40 @@ EMISSION_HEADROOM = {
     # and the pinned top of the ladder; what it costs is the level, x1.05 ->
     # x0.77 against a x1.05-1.75 window. That is the whole trade and it is on
     # the table rather than in a summary.
-    "mod:zocalo": 4.00,           # clipping gone and the ladder onto the
+    # ------ ROUND 2: 4.00 -> 8.00, AND THE REASON IS THE KEY, NOT THE KNOB ---
+    # K holds the LIT population invariant and moves the EMISSIVE one by 1/K,
+    # so the right K depends on how much level the lit population is carrying.
+    # In round 1 it was carrying almost none -- the room's only cast light was
+    # two warm FILL families and the level came from a grey ambient -- so K = 4
+    # was as far as the emissive ladder could be pulled before the level fell
+    # out of its window, and the round-1 finding says exactly that: "Level and
+    # shadow are one degree of freedom until the fittings can carry the level
+    # without also filling."
+    #
+    # With `zoc_downlight` wired the fittings carry it, and K re-solves. Three
+    # 1280x720 cells on the hall's longest sightline at exposure 0.26, each its
+    # own invocation:
+    #
+    #   K      median   level    p95     p99    p5/p95   bands   deck strip px
+    #   4.0    0.0850   x1.42   x0.85   x0.79   x2.32     5/7    184,191,201
+    #   8.0    0.0838   x1.40   x0.60   x0.51   x3.23     5/7    149,157,169
+    #  14.0    0.0829   x1.39   x0.42   x0.43   x4.62     4/7    121,128,141
+    #
+    # 8.00 is taken: the level is x1.40 on the nose, p5/p95 is inside its band
+    # at x3.23 and outside it at K = 14 (x4.62 against x3.38), and the strip
+    # stops out-reading the deck it is inlaid into -- 149 against the deck's
+    # 117-138 sRGB, where at K = 4 it was 184 and at round 1's rig 247.
+    #
+    # THE CONTROL IS IN THE SAME TABLE AND IT IS EXACT: the deck pixel is
+    # (117, 88, 84) and (138, 98, 92) at K = 4, K = 8 AND K = 14, byte for
+    # byte. The lit population does not move by one least-significant bit
+    # across a x3.5 change in K, which is the compensated pair's algebra
+    # demonstrated in the frame rather than argued on the page -- and it is the
+    # control the round-1 critic asked for, inverted: it demanded that the
+    # emissive population MOVE, and the emissive population moves x1.52 over
+    # the same range while the lit one does not move at all. `--gate-emissive`
+    # runs both halves and is the CI form of this table.
+    "mod:zocalo": 8.00,           # clipping gone and the ladder onto the
                                   # reference's. The deck strip sat at 0.94
                                   # linear at EVERY gain over x5.7 while the
                                   # wall it lights sat at 0.06-0.19; p99 is
@@ -5759,13 +6093,88 @@ def _selftest():
             _reach = FIXTURE_LIGHTING[_name].get("range_m") or 7.0
             _probe = surface_points(_v, _t, list(range(_lo, _hi)),
                                     _reach / 40.0, max_split=48)
+            # A `mount_m` FITTING IS DELIBERATELY OFF ITS GROUP, so the
+            # question has to become the one that is still meaningful: it must
+            # be off it by EXACTLY the measured mount height, along up. The
+            # group is the lit patch and the lamp is overhead -- see
+            # FIXTURE_LIGHTING["zoc_downlight"] -- and the failure this catches
+            # is the one that matters for a mounted fitting: a mount applied in
+            # the wrong direction, or twice, or not at all. Tolerance is the
+            # same fraction of the same reach, so a mounted fitting is held to
+            # the identical standard about a different point.
+            _mount = FIXTURE_LIGHTING[_name].get("mount_m", 0.0)
             for _lt in fixture_lights(_v, _t, [(_name, _lo, _hi)], 1.0, 7.0):
-                _d = min(math.dist(_lt["pos"], _p) for _p, _w in _probe)
+                _p0 = ([_lt["pos"][0], _lt["pos"][1] - _mount, _lt["pos"][2]]
+                       if _mount else _lt["pos"])
+                _d = min(math.dist(_p0, _p) for _p, _w in _probe)
                 if _d > 0.125 * _reach:
-                    astray.append(f"{_room}/{_name} {_d:.2f} m of {_reach} m")
+                    astray.append(f"{_room}/{_name} {_d:.2f} m of {_reach} m"
+                                  + (f" (mount {_mount} m)" if _mount else ""))
                     break
     check(not astray,
-          f"every light sits ON the fitting it stands for ({astray[:3]})")
+          f"every light sits ON the fitting it stands for, or exactly its "
+          f"mount height above it ({astray[:3]})")
+
+    # -- the mount offset itself, and it can be wrong in three ways ---------
+    # THE DEFECT THIS EXISTS FOR is the one CLAUDE.md records at
+    # `spots_lighting_the_floor`, made one line earlier: "DOWN IS NOT -Y ON A
+    # RING". A fitting mounted "7.2 m above the deck" inside a spun ring is
+    # 7.2 m toward the SPIN AXIS, and hard-coding +Y there puts the Zocalo's
+    # whole key rig sideways at every ring angle except 90 degrees -- with the
+    # frame still lit, from the wrong side, which is exactly the failure a
+    # render does not show.
+    _mv = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
+    _mt = [(0, 1, 2)]
+    _ms = [("zoc_downlight", 0, 1)]
+    _up = fixture_lights(_mv, _mt, _ms, 1.0, 7.0, shadow_n=0)[0]["pos"]
+    check(abs(_up[1] - (FIXTURE_LIGHTING["zoc_downlight"]["mount_m"]
+                        + sum(p[1] for p in _mv) / 3.0)) < 1e-9,
+          f"with no `down`, a mounted fitting lifts along +Y by its mount "
+          f"({_up})")
+    # And along -down when there IS one: a radial deck at ring angle 180 has
+    # down = -X, so up is +X and NOTHING may move in Y.
+    _rad = fixture_lights(_mv, _mt, _ms, 1.0, 7.0, shadow_n=0,
+                          down=lambda _c: (-1.0, 0.0, 0.0))[0]["pos"]
+    check(abs(_rad[0] - (7.2 + sum(p[0] for p in _mv) / 3.0)) < 1e-9
+          and abs(_rad[1] - sum(p[1] for p in _mv) / 3.0) < 1e-9,
+          f"with a `down`, a mounted fitting lifts along -down and not +Y "
+          f"({_rad})")
+    # A fitting with no `mount_m` must be untouched by any of it. This is the
+    # no-op control for the whole feature: 21 of the 22 entries have no mount.
+    _nm = fixture_lights(_mv, _mt, [("zoc_rib_lamp", 0, 1)], 1.0, 7.0,
+                         shadow_n=0)[0]["pos"]
+    check(all(abs(_nm[j] - sum(p[j] for p in _mv) / 3.0) < 1e-12
+              for j in range(3)),
+          f"a fitting with no mount is exactly its own centroid ({_nm})")
+
+    # -- the shadow ration counts MAPS, and 2 omnis is still 2 omnis ---------
+    # THE NEGATIVE CONTROL FOR THE COST-CLASS CHANGE, and it is an identity:
+    # `shadow_n` used to mean "this many casters" and now means "this many
+    # CUBE MAPS' worth". Those are the same number for an all-omni rig, which
+    # is every rig in the project except the Zocalo's, so the change must be a
+    # provable no-op there. It is asked of the corridor anchor -- the frame
+    # `RENDER_OFFSET = 1.40` is defined against -- because a change that moved
+    # that frame would invalidate every exposure in this file at once.
+    _cv, _ct, _cg = interior_geometry("corridor")[:3]
+    _clt = fixture_lights(_cv, _ct, _cg, 1.0, 7.0, shadow_n=2,
+                          eye=(0.0, 1.7, 0.0))
+    _cshadow = [i for i, lt in enumerate(_clt) if lt.get("shadow")]
+    check(all(lt.get("kind", "omni") == "omni" for lt in _clt)
+          and len(_cshadow) == 2,
+          f"the corridor anchor is all-omni and still takes exactly 2 shadow "
+          f"casters at shadow_n=2 ({len(_cshadow)} of {len(_clt)})")
+    # And it must be able to grant MORE when they are cheap: twelve spots cost
+    # what two omnis cost. Asked of the Zocalo, where the key IS a spot.
+    _zv, _zt, _zg = interior_geometry("zocalo")[:3]
+    _zlt = fixture_lights(_zv, _zt, _zg, 1.0, 7.0, shadow_n=2,
+                          eye=(0.0, 1.7, 0.0))
+    _zfaces = sum(1 if lt.get("kind") == "spot" else OMNI_SHADOW_FACES
+                  for lt in _zlt if lt.get("shadow"))
+    check(_zfaces <= 2 * OMNI_SHADOW_FACES
+          and sum(1 for lt in _zlt if lt.get("shadow")) > 2,
+          f"the Zocalo spends the same {2 * OMNI_SHADOW_FACES} map faces on "
+          f"more than 2 casters ({_zfaces} faces, "
+          f"{sum(1 for lt in _zlt if lt.get('shadow'))} casters)")
 
     # -- the camera stands ON a floor ---------------------------------------
     # It did not. Session 3o's level search scored candidate standing heights
@@ -7494,6 +7903,20 @@ def main():
                          "tools/measure_frame.py's whole-distribution "
                          "comparison, and report which exposures have no "
                          "committed frame to verify against at all")
+    ap.add_argument("--gate-emissive", nargs="?", const="zocalo",
+                    default=None, metavar="ROOM",
+                    help="render ROOM at two emission-headroom values and "
+                         "assert the compensated pair reached the frame: the "
+                         "EMISSIVE population must move and the LIT one must "
+                         "not. Needs the engine; prints CANNOT-RUN and exits "
+                         "non-zero rather than passing if there is none")
+    ap.add_argument("--control", choices=("none", "uncompensated"),
+                    default=None,
+                    help="with --gate-emissive: run a NEGATIVE CONTROL. "
+                         "`none` disables the pair on both cells (leg 1 must "
+                         "fail); `uncompensated` scales the lights without "
+                         "the camera, i.e. a plain brightness knob (leg 2 "
+                         "must fail)")
     ap.add_argument("--rerender", action="store_true",
                     help="with --gate-frames: RE-TAKE every frame from the "
                          "shot EXPOSURE_FRAMES records before measuring it. "
@@ -7641,6 +8064,14 @@ def main():
     if a.gate_lighting is not None:
         gate_lighting(a.gate_lighting or None)
         sys.exit(0)
+
+    if a.gate_emissive is not None:
+        _r = gate_emissive(a.gate_emissive or "zocalo",
+                           control=a.control)
+        # CANNOT-RUN is its own state and is not a pass. See
+        # `gate_emissive`, and scratchpad/PATCHES-4t-interior_lighting_4b.md
+        # for the CI step.
+        sys.exit(0 if _r and _r[2] else 1)
 
     if a.gate_frames:
         _p, _f, _s = gate_frames(rerender=a.rerender)
