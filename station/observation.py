@@ -204,7 +204,7 @@ VEST_L_M = _bsp.APPROACH_DEPTH_M + 1.40
 VEST_H_M = kit.PROVISIONAL["door_height_m"] + 0.80
 
 # ---------------------------------------------------------------------------
-# THE PALETTE -- INV-760, and it is the single largest thing that was wrong
+# THE PALETTE -- INV-950, and it is the single largest thing that was wrong
 # ---------------------------------------------------------------------------
 # `reference/05-sector-green/rotunda.webp`, authority 1, read again in session
 # 4t rather than from the summary above it: **the room is DARK WARM BRONZE and
@@ -286,7 +286,7 @@ L_BLUE = "cc_light_strip"                  # CASTS: omni, 0.243,0.546,1.000,
 #   energy_rel 0.44, range 3.5 m. C&C's own measured strip, and the rotunda's
 #   blue is the same blue.
 
-# THE OVERLAP RULE -- INV-761, and it is why the non-manifold count was 489.
+# THE OVERLAP RULE -- INV-951, and it is why the non-manifold count was 489.
 # Two closed solids that ABUT on an exact plane weld into edges used by four
 # triangles. `_prism` is closed and correctly wound every time, so no gate
 # fired: the ring wall's fifteen bays shared fourteen radial faces, the head
@@ -580,7 +580,7 @@ def _vestibule(v, t, g, prog):
     # `bespoke.doorway_wall` owns the dimensions -- three modules may not agree
     # about them by hand and then stop agreeing -- and it emits a head and two
     # jambs that meet on exact planes, which welds into two non-manifold edges
-    # per room (INV-761). Inflating what it hands back keeps its arithmetic and
+    # per room (INV-951). Inflating what it hands back keeps its arithmetic and
     # separates the faces; the aperture loses 4 mm of a 2.20 m clear width,
     # against `kit.PROVISIONAL["door_width_m"]` of 1.50, and
     # `near_face_opening` is asserted against that in `_selftest`.
@@ -827,7 +827,7 @@ def _rotunda_chamber(v, t, g, prog):
     # THE WALL BELOW THE SILL, in segments, with the entry bay left OUT -- an
     # opening is a hole in something and the something is built with the hole
     # already in it. Every segment is inset by `GAP_A` and the gap carries a
-    # recessed pier, so no two ring solids share a face (INV-761) and the bay
+    # recessed pier, so no two ring solids share a face (INV-951) and the bay
     # rhythm is legible instead of the ring being one continuous surface.
     for i in range(n):
         a0 = math.tau * i / n - math.tau / (2 * n) + ea
@@ -925,7 +925,7 @@ def _rotunda_chamber(v, t, g, prog):
         _seg(v, t, g, M_STONE_D, r - 0.055, r, b0, b1, 0.155 - LAP_M,
              ROT_SILL_M - 0.09 + LAP_M)
         # THE REVEAL BETWEEN BAYS, set back so the bay rhythm has a shadow in
-        # it. This is also what makes the ring solids non-adjacent (INV-761).
+        # it. This is also what makes the ring solids non-adjacent (INV-951).
         _seg(v, t, g, M_RECESS, r + 0.055, ro, a1 - GAP_A * 1.6,
              a1 + GAP_A * 1.6, 0.0, ROT_ENTAB_M)
 
@@ -1034,7 +1034,7 @@ def _column(v, t, g, cx, cz):
 def _dome_coffers(v, t, g, r, y0, rise, ribs, ea, seg=48,
                   minor=None, band=None, bands=(0.26, 0.50, 0.74)):
     """Coffer the dome: a MINOR rib between each pair of majors, and concentric
-    bands across them -- INV-762.
+    bands across them -- INV-952.
 
     A dome built as one smooth revolve has nothing on it for light to do, and
     both programs shipped one: the rotunda's read as a pale shell and the
@@ -1453,7 +1453,7 @@ def _dome_chamber(v, t, g, prog):
                 _seg(v, t, g, D_TRIM, r - 0.135, r - 0.020, am - 0.046,
                      am + 0.046, yy - 0.036, yy + 0.036)
         # THE REVEAL BETWEEN BAYS -- the bay rhythm gets a shadow in it, and no
-        # two ring solids share a face (INV-761).
+        # two ring solids share a face (INV-951).
         _seg(v, t, g, M_RECESS, r + 0.055, ro, a1 - GAP_A * 1.6,
              a1 + GAP_A * 1.6, 0.0, DOME_WALL_M)
         _seg(v, t, g, D_FRAME, r - 0.075, r + 0.03, a1 - GAP_A * 1.1,
@@ -1882,7 +1882,7 @@ def _selftest():
     # is that a name built by interpolation is invisible to the source scan in
     # `materials._scan_generator_groups`, so 45 groups sat on the fallback and
     # nothing could see it. This module now composes `<bound>_<shell-suffix>`
-    # names deliberately (INV-760), which is exactly the shape that goes
+    # names deliberately (INV-950), which is exactly the shape that goes
     # unnoticed, so it asserts resolution HERE, in the module that builds them.
     for key, (_v, _t, gg) in built.items():
         unbound = sorted({nm for nm, _a, _b in gg

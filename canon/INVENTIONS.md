@@ -12361,3 +12361,127 @@ an occupancy model for the brig (see INV-770), which replaces the cell draw with
 **What it does NOT claim.** That the fine is right for the offence — that is `fine_for`'s, and
 unchanged. Only that the person charged is the person booked. Failing that check is fail-SAFE:
 `_fine_of` returns −1, nothing is charged, and the run says `fine UNPRICED`.
+
+---
+
+## INV-950 — the observation rooms' palette, composed out of names rather than invented
+
+**What.** `station/observation.py` gives every architectural element of the two Blue domes and
+the Green rotunda an explicit material, by naming its mesh group
+`<already-bound-name>_<shell-suffix>` — `zoc_rail_wall`, `dress_post_rib`, `prop_level_plaque_panel`
+and eighteen more, listed in the module's PALETTE block with the resolved albedo beside each.
+
+**Why.** `reference/05-sector-green/rotunda.webp`, authority 1, is a dark warm bronze room with a
+gold dome, a cream-and-ochre mosaic floor, deep blue lattice panels and a blue-glowing lectern.
+The module rendered it in three greys, and not by choice: every `worship_*` and `transit_*` group
+in `materials.py` resolves to `shell_wall_panel` 0.455, `shell_rib_painted` 0.469 or
+`shell_deck_stone` 0.400. Wall, dado, cornice, panel, skirt, rail, mullion and rib are eight names
+for one value, so no amount of modelling could produce a second colour. Session 4k's review scored
+both programs CRAFT 2 and named the symptom exactly — *"grey-on-grey at half distance"*, *"each
+material carries one flat value"*.
+
+**What constrained it.** Three things, and together they leave almost no freedom. (a) **No colour
+is invented**: every value used was measured into `materials.py` by an earlier session from a named
+frame, and the only decision here is *which measured value the reference asks for*. (b)
+`materials.resolve_any` matches by PREFIX, which is what makes the composition legal rather than a
+trick — `dress_kerb_rib` was already in this file for the dome ribs with its reason written beside
+it. (c) `rooms._SHELL_SUFFIXES` must still match, or the group becomes a collision box a player
+walks into; that is why every composed name ends in `_wall`, `_rib`, `_panel`, `_dado`, `_mullion`,
+`_cornice`, `_conduit` or `_deck_joint`.
+
+**What would overturn it.** A `materials.py` that binds distinct materials to the `worship_*` and
+`transit_*` families directly, which is the right long-term home for this and is not
+`observation.py`'s file to change. At that point the composed names should be retired in favour of
+the semantic ones. Also overturned by a better reference read: if a production still shows the
+rotunda's wall as, say, oxidised copper rather than the brown `zoc_rail` was measured from, the
+pick changes and nothing else does.
+
+**Authority 5** for the mapping, **authority 1** for the reading of the frame it answers.
+
+---
+
+## INV-951 — solids overlap, they never abut: the non-manifold rule
+
+**What.** A single constant, `observation.LAP_M = 0.02`, and the rule that everywhere two closed
+solids meet in this module they overlap by it (or are separated by a visible reveal, `GAP_A`).
+Asserted by `_selftest` at **zero** non-manifold edges on all three places, with the control that
+withdraws `LAP_M` and `_dome_rib`'s `f_max` and watches the count come back.
+
+**Why.** The three rooms carried **489, 360 and 209 non-manifold edges** and every gate was green,
+because `_prism` and `_box` are individually closed and correctly wound and no assertion asked the
+other question. `interior_kit.boundary_edges` had been returning the count all along and nothing
+read it. `docs/AAA-STANDARD.md`'s geometry checklist is explicit: *"Non-manifold edges: zero. A face
+used by three triangles is a modelling error that renders perfectly."*
+
+**What constrained it.** The measurement, not a guess. Attributing every offending edge to its own
+mesh group found four causes and no others: ring segments sharing radial faces with their
+neighbours; a reveal sharing its top face with the wall above it; stair treads sharing their
+flanks; and — two thirds of the whole count — `_dome_rib` walking its meridian to `f = 1`, where
+the radius is zero and its four-point ring collapses onto the axis. 20 mm is the smallest overlap
+that survives `boundary_edges`' `round(x, 4)` welding tolerance by two orders of magnitude and is
+still invisible against a 180 mm wall.
+
+**What would overturn it.** A welding tolerance change in `interior_kit.boundary_edges`, or a
+decision to CSG-union the room instead of assembling it from closed solids, in which case
+coincident faces stop being a hazard and the constant goes away.
+
+**Authority 5.** Session 3x reached the same conclusion on `portal_frame` from the other end —
+828 non-manifold edges a deck, and rebuilding it gave **8,832 fewer triangles**, because coincident
+faces are geometry nobody can see.
+
+---
+
+## INV-952 — the domes are coffered, and the coffering is made of the dome's own two primitives
+
+**What.** `observation._dome_coffers` puts a minor rib between each pair of major ribs and three
+concentric bands across them, each band over a recessed shadow gap. Both programs call it — the
+rotunda in gold over cream, the domes in cool steel over pale — with the bands at 0.26/0.50/0.74
+(rotunda) and 0.30/0.58/0.80 (domes) of the meridian.
+
+**Why.** `rotunda.webp` shows a ribbed dome over a layered corbel course, and `LOCATIONS.md`'s C&C
+reading at authority 1 is *"a large circle on radial spoke mullions with a broad concentric ring
+band, set in a flat-panelled bulkhead with angled bracing"* — panelled, banded and braced, none of
+which a smooth revolve is. `docs/AAA-STANDARD.md` CRAFT 5 asks that *"the form is legible from
+shading alone"*, and a shell has nothing for light to do.
+
+**What constrained it.** That it is built from `_dome_rib` (which follows the meridian) and
+`_revolve` (which follows the parallel) and from nothing else. Every piece therefore lies ON the
+surface the dome was revolved from and cannot poke through it — which a box spanning a chord of
+that surface does, and which is how a "coffer" becomes a lump. The band fractions are deliberately
+unequal: an even grid is a period the eye can index, which is the clause CRAFT 5 fails on.
+
+**What would overturn it.** A production drawing of either dome's interior. The rib and band counts
+come from `components.DOME_MULLIONS` and from the bay count, both already sourced; the *number of
+bands* and their spacing is the invented part and one frame of either ceiling would replace it.
+
+**Authority 5** for the band count and spacing; **authority 1** for ribbed-and-banded as the form.
+
+---
+
+## INV-953 — the banner sigil, and the angled bracing
+
+**What.** Two small pieces of geometry `observation.py` now builds and did not: `_sigil`, a boss
+with six radial arms of two lengths inside a broken outer ring, in relief on the lower third of
+each of the rotunda's four banners; and `_strut`, a capped strut between two arbitrary points, used
+to build a pair of angled braces per bay from the head of each dome pier to the springing ring.
+
+**Why.** Session 4k's review of the rotunda logged a CRAFT 1 finding verbatim — *"the two blue
+signage panels are the most eye-catching objects in the shot and are BLANK — a lit rectangle
+standing in for a named object"* — and `rotunda.webp` shows a figure painted in the lower third of
+each cloth. The bracing is a clause of the authority-1 reading of the C&C dome that had simply
+never been built, because every primitive in the module was axis-aligned or a solid of revolution
+and neither can make a diagonal.
+
+**What constrained it.** The sigil's *form* is invented; what is not invented is that it is a
+radial figure about a centre, which is the motif the room already carries twice — the sunburst
+floor and the dome's own ribs — so it reads as one building's decoration rather than as a decal.
+It is geometry rather than a texture because a banner is seen at grazing angles, where only relief
+reads. Its material is `sign_text_lit`, emission energy **0.9**, chosen against `signage_panel`'s
+**3.0**, which is the value that made the blank panel the brightest object in the frame.
+
+**What would overturn it.** A legible capture of any of the four cloths in `rotunda.webp` at better
+than the ~40 px the figure occupies, which would replace the invented figure with the attested one.
+For the bracing, any frame showing the C&C dome's springing from inside.
+
+**Authority 5** for the sigil's figure and the brace positions; **authority 1** for both being
+present at all.
