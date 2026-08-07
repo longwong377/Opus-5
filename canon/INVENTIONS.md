@@ -12220,3 +12220,104 @@ it should shrink.
 **What it does NOT claim.** That a player sees a collapse. `main.gd` reads `collapses` and not
 `if_helped`, so the stance the simulation resolved is baked and unread; and on the shipped deck
 the array is empty. The gate's own output says so in words.
+## INV-880 — the emission headroom: a compensated pair, so a room's LADDER can be set apart from its LEVEL
+
+**What.** `tools/export_scene.py::apply_headroom` divides the shot's camera exposure
+(`tonemap_exposure`) by a per-room constant **K** and multiplies every light energy in the shot
+— fittings, soft fill and the flat ambient alike — by the same K. `EMISSION_HEADROOM` holds K
+per room, keyed `mod:NAME` for a bespoke module and by bare archetype otherwise, the same
+convention `AMBIENT_SOLVED` uses and for the same anti-collision reason. K = 1 writes no key at
+all and is byte-identical to the build before this existed. First value:
+`EMISSION_HEADROOM["mod:zocalo"] = 4.00`.
+
+**Why.** Layer 4b is the *distribution* test and every knob this file had moved *level*.
+`emission_energy` is a `StandardMaterial3D` property and no light energy reaches it, which
+`export_scene.py` had already measured on the Zocalo over ×5.7 of gain — the lit wall moved
+×3.48 and the deck strip ×1.007 — and concluded "the top of the ladder is pinned". Godot
+tonemaps `out = tonemap(E · (L_emissive + L_lit))`, so
+
+    tonemap((E/K)·(L_e + K·L_l)) == tonemap(E·(L_e/K + L_l))
+
+leaves the lit population **algebraically invariant** and moves the emissive population by 1/K.
+In the shipped implementation the two axes are therefore orthogonal: `--fixture-energy` and the
+room exposure set the LIT population and never touch the emissive one; K sets the EMISSIVE
+population and never touches the lit one. It is two-sided — K > 1 pulls a clipping fitting back
+onto the ladder, K < 1 raises a *missing* bright population, which is the diagnosis already
+written in this file against `command_control` (p95 ×0.34), `industrial` (p99 ×0.31) and
+`quarters` (p95 ×0.48).
+
+**Constrained by.** `p99 / median` measured on our frame and on the reference by one code path
+(`tools/measure_frame.py`), whole-frame on both sides so the render offset cancels and no
+hand-drawn region enters — the failure mode `docs/layer4-lighting/*.json`'s two-box ambient
+ratios already cost this project two and a half stops. The reference
+`reference/04-sector-red/more zocalo.png` sits at **10.83** at our offset. Measured, Forward+ on
+lavapipe, three renders in one sequential loop per camera:
+
+| | K=1 | K=2 | K=4 | reference |
+|---|---|---|---|---|
+| gate shot 640×360, p99/median | 15.10 | 14.62 | **10.86** | 10.83 |
+| gate shot, clipped | 0.33% | 0.00% | 0.00% | — |
+| gate shot, level | ×1.05 | ×0.81 | ×0.77 | window ×1.05–1.75 |
+| 1280×720 longest sightline, p99/median | 15.62 | 15.23 | **11.12** | 10.83 |
+| 1280×720, clipped | 2.12% | 0.00% | 0.00% | — |
+
+Fitting the long camera gives `d(ln(p99/median))/d(ln K) = −0.245`, which inverts onto the
+reference at K = 4.45; 4.00 is taken because it is a measured cell rather than a fitted one and
+the two are 3% apart on the statistic being matched.
+
+**What it does not do, and the cost.** The band count is 5/7 either side: `p5` and `crushed` both
+fail at K=1 and both still fail at K=4 (p5 ×1.50 → ×1.41 against a ×1.29 band, crushed ×0.02 →
+×0.05 against ×11.42). Both are ambient-owned. And the level goes ×1.05 → ×0.77, i.e. the room
+leaves the level window by its bottom edge, because 23% of that frame's median *was* the
+emissive population. Putting the level back with the exposure re-opens p5 exactly — at K=4 and
+exposure 0.73 the median returns to ×0.91 and p5 to ×1.50, where it started.
+
+**What would overturn it.** A tonemapper whose response to `tonemap_exposure` is not a scale on
+the HDR buffer, which breaks the identity. Emissive materials gaining a scene-level energy
+multiplier in Godot, which would make `emission_energy` reachable directly and this indirection
+unnecessary. Or a ruling that the level window outranks the ladder, in which case K for this room
+drops to 1 or 2 and the deck strip goes back to 0.94 linear.
+
+**Authority 5.**
+
+## INV-881 — the Zocalo's own measured ambient exists, is in the table, and cannot be taken
+
+**What.** `AMBIENT_SOLVED` gets **no** `mod:zocalo` row. The candidate value is 0.094 and it is
+recorded in the table's comments as a measured, sourced, *rejected* row.
+
+**Why it was a candidate.** `AMBIENT_BY_ARCHETYPE` carries `"commerce": 0.094,  # zocalo_concourse`
+— the ratio was measured **in this room, off this room's own reference frame, and labelled with
+this room's name** — and the Zocalo has never used it, because `ambient_energy` takes the
+`place["module"]` branch for every bespoke place and that branch returns
+`AMBIENT_CALIBRATED_RATIO` (0.300), the *residential corridor's*. The 22 m × 67 m market hall is
+lit with 3.2× the flat fill its own frame was measured to have. This is the identical defect
+session 4m found and closed for `docking_bay` — and closed **for that row** rather than for the
+shape of the table, which is exactly CLAUDE.md's "a fix applied to an instance and not to the
+rule is a fix that will be needed again". Eleven other `mod:` places are still on the corridor's
+0.300.
+
+**Why it is rejected.** Measured both ways. On the hall's longest sightline it does precisely
+what an ambient should: **p5 ×1.51 → ×1.23 against a ×1.29 band**, closing the room's recorded
+layer-4b failure, with crushed 0.89% → 3.97%. On the room's own gate shot it costs the level, and
+the level is what this room is actually failing:
+
+all four cells at K = 4 so the ambient is the only variable, each from a loop with no md5
+collision in it:
+
+| ambient | fittings | median | level | distribution |
+|---|---|---|---|---|
+| 0.676 (shipped) | ×1 | 0.0459 | ×0.77 | 5/7 |
+| 0.4073 | ×1 | 0.0184 | ×0.31 | 7/7 |
+| 0.4073 | ×3 | 0.0380 | ×0.64 | 6/7 |
+
+Tripling the fittings does not get back to where the shipped fill already was. That is verbatim the failure this
+table's own header describes for the seven rooms it could not solve — "the ambient cut fixed p5
+and the fittings could not make the level up". It is recorded rather than deleted so the next
+session does not rediscover 0.094 and spend the same renders finding out.
+
+**What would overturn it.** Sources. `LIGHTING_COVERAGE`'s `n >= A / (2 R²)` applied in
+`station/zocalo.py`: a hall whose fittings can carry its own level can afford its own measured
+fill, which is the sequence `AMBIENT_SOLVED["mod:quarters"]` already went through.
+
+**Authority 3** — the 0.094 is measured off an authority-1 frame; the decision not to take it is
+this session's, on this project's own level window.

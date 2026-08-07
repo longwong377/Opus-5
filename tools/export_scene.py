@@ -2411,6 +2411,44 @@ AMBIENT_BY_ARCHETYPE = {
 AMBIENT_SOLVED = {
     # archetype / mod:module      ambient   what it did
     # ---------------------------------------------------------------------
+    # SESSION 4t -- A NEGATIVE RESULT, AND IT IS THE ROW THIS TABLE'S OWN
+    # HEADER PREDICTS. `AMBIENT_BY_ARCHETYPE` carries
+    # `"commerce": 0.094,  # zocalo_concourse` -- measured IN the Zocalo, off
+    # the Zocalo's own reference frame, labelled with the Zocalo's name -- and
+    # the Zocalo has never used it, because `ambient_energy` takes the
+    # `place["module"]` branch and that branch returns the RESIDENTIAL
+    # CORRIDOR'S 0.300. That is the identical defect the `mod:docking_bay` row
+    # below records, on a different room, which is CLAUDE.md's "a fix applied
+    # to an instance and not to the rule is a fix that will be needed again".
+    # Eleven other `mod:` places are still on the corridor's 0.300.
+    #
+    # IT WAS TAKEN, MEASURED, AND PUT BACK, and the measurement is why. On the
+    # `far` camera it does exactly what an ambient is supposed to do: p5
+    # x1.51 -> x1.23 against a x1.29 band, closing the room's recorded layer-4b
+    # failure, and crushed 0.89% -> 3.97%. On the room's OWN GATE CAMERA
+    # (`--shot interior --room zocalo`, 640x360, the shot EXPOSURE_FRAMES
+    # records) it costs the level and the level is the thing this room is
+    # actually failing:
+    #
+    # (all four cells at K=4, so the ambient is the only variable, and every one
+    # from a loop with no md5 collision in it -- see BESPOKE_EXPOSURE)
+    #
+    #   ambient  fittings   median   level vs ref   distribution
+    #    0.676     x1       0.0459      x0.77        FAIL p5, crushed
+    #    0.4073    x1       0.0184      x0.31        PASS 7/7
+    #    0.4073    x3       0.0380      x0.64        FAIL crushed x0.08
+    #
+    # The window is x1.05-1.75. The cut takes the level to x0.31 and tripling
+    # the fittings gets it to x0.64, which is still below where the shipped fill
+    # already was. That is verbatim the failure mode this table's own
+    # header describes for the seven rooms it could not solve -- "the ambient
+    # cut fixed p5 and the fittings could not make the level up" -- so the row
+    # is NOT taken, and it is recorded here rather than deleted because the
+    # next session will otherwise rediscover 0.094 and spend the same renders.
+    #
+    # WHAT WOULD MAKE IT TAKEABLE: sources. LIGHTING_COVERAGE's `n >= A/(2R^2)`
+    # in `station/zocalo.py`, which is not this file's to change.
+    # ---------------------------------------------------------------------
     # SESSION 4m -- AND THIS ROW IS NOT A NEW MEASUREMENT. `AMBIENT_BY_
     # ARCHETYPE` above carries `"store": 0.076,  # docking_bay` -- the ratio
     # was measured IN THIS ROOM, is labelled with this room's name, and this
@@ -2722,15 +2760,54 @@ ROOM_EXPOSURE = {
 # lighting-design problem with a number attached and this session does not
 # chase it.
 BESPOKE_EXPOSURE = {
-    "zocalo": 0.52,          # 0.84, at the reach fix median x2.11 p5 x2.93
-                             # UNCHANGED IN 4a, and now swept: x0.35/x0.5/x0.8/x1/x2
-                             # all measured, x1.00 is the only one inside the
-                             # level window. median x1.19, p5 x1.19, FAIL
-                             # crushed x0.12 -- we hold 8x less black than the
-                             # reference. NOT an exposure defect: at x0.35 the
-                             # frame passes 7/7 and reads as a dim hall, and
-                             # its deck strip is blown at every gain (see the
-                             # emission finding below).
+    "zocalo": 0.52,          # UNCHANGED IN 4t, DELIBERATELY, and the reason
+                             # is the measurement rather than caution. The
+                             # session's change to this room is ONE knob --
+                             # `EMISSION_HEADROOM["mod:zocalo"] = 4.00` -- and
+                             # a second knob moving in the same session would
+                             # have made the A/B a diff of two changes.
+                             #
+                             # WHAT THE LEVEL COSTS, on the row's own shot
+                             # (`--shot interior --room zocalo` 640x360), three
+                             # renders in ONE sequential loop with nothing else
+                             # running:
+                             #
+                             #   K    median   lvl     p5      p99   clip  crush
+                             #  1.0   0.0626  x1.05  0.0173  0.9449 0.33%  0.99%
+                             #  2.0   0.0482  x0.81  0.0165  0.7045 0.00%  2.16%
+                             #  4.0   0.0459  x0.77  0.0162  0.4987 0.00%  2.33%
+                             #
+                             # The level goes x1.05 -> x0.77 against a
+                             # x1.05-1.75 window, i.e. this room leaves the
+                             # window by its bottom edge, and that is the price
+                             # of the ladder. It is NOT recoverable here: the
+                             # exposure scales the LIT population, which is the
+                             # same axis the ladder is on, so putting the level
+                             # back re-opens p5 -- at K=4 and exposure 0.73 the
+                             # median returns to x0.91 and p5 returns to x1.50,
+                             # exactly where it started. Level and shadow are
+                             # one degree of freedom in a room whose fittings
+                             # cannot reach without also filling. The remedy is
+                             # LIGHTING_COVERAGE's `n >= A/(2R^2)` in
+                             # station/zocalo.py.
+                             #
+                             # AND TWO EARLIER SWEEPS THIS SESSION WERE THROWN
+                             # AWAY, which is worth more than the row. A batch
+                             # of five `--fixture-energy` cells came back with
+                             # two frames sharing an md5 with a third run's
+                             # output; re-run strictly sequentially they were
+                             # all different. `station/generated/scene/<shot>/`
+                             # is written by every render and CLAUDE.md says so
+                             # -- "two renders that were supposed to differ only
+                             # in an SSAO flag came back as two entirely
+                             # different framings, and the first reading of it
+                             # was 'the renderer is non-deterministic'". The
+                             # tell is an md5 collision between two runs that
+                             # differ in a flag; check it before believing a
+                             # sweep. The numbers above are from the loop that
+                             # has no collisions in it.
+                             #
+                             # PREVIOUSLY: 0.84, at the reach fix median x2.11 p5 x2.93
     "hospitality": 1.88,     # 2.07, at the reach fix median x1.52 p5 x2.14.
                              # vs reference/04-sector-red/Doug's Dugout.webp
     "command_control": 4.08,  # 0.65, and its ambient is in AMBIENT_SOLVED: the
@@ -4948,7 +5025,7 @@ def apply_grade(scene, args):
 # equivalent is the identical pair applied once to `interior.tscn` --
 # `tonemap_exposure = 1.0 / K` with every shipped light energy times K -- and
 # that file is not this one's to edit. Recorded so it is a job rather than a
-# discovery: INV-802.
+# discovery: INV-880.
 #
 # ---------------------------------------------------------------------------
 # HOW K IS DERIVED, AND WHY NOT FROM A BOX
@@ -4988,7 +5065,57 @@ def apply_grade(scene, args):
 # A row absent from the table below is K = 1.0, which writes NO key at all and
 # is therefore byte-identical to the build before this existed. That is the
 # negative control and `_selftest` runs it.
-EMISSION_HEADROOM = {}
+EMISSION_HEADROOM = {
+    # archetype / mod:module         K      what it did
+    # ---------------------------------------------------------------------
+    # SESSION 4t. Solved on `p99 / median` -- the small bright population over
+    # the lit level -- because that ratio is whole-frame on both sides, taken
+    # by one code path, and the render offset cancels out of it. The
+    # reference's own figure at our offset is 10.83.
+    #
+    # THE ROOM'S OWN GATE SHOT, `--shot interior --room zocalo` 640x360, three
+    # renders in ONE sequential loop (BESPOKE_EXPOSURE records why that matters):
+    #
+    #   K      median     p99    p99/med   clipped   crushed   level
+    #   1.00   0.0626   0.9449    15.10     0.33%     0.99%    x1.05
+    #   2.00   0.0482   0.7045    14.62     0.00%     2.16%    x0.81
+    #   4.00   0.0459   0.4987    10.86     0.00%     2.33%    x0.77
+    #
+    # THE HALL'S LONGEST SIGHTLINE, 1280x720, eye 0,1.6,-0.2 -> 0,1.6,65.0:
+    #
+    #   1.00   0.0599   0.9363    15.62     2.12%     0.89%    x1.00
+    #   2.00   0.0476   0.7250    15.23     0.00%     2.58%    x0.80
+    #   4.00   0.0459   0.5106    11.12     0.00%     2.72%    x0.77
+    #
+    # K = 4 lands the ladder at 10.86 and 11.12 on two independent cameras --
+    # 0.3% and 2.7% from the frame it is being matched to. Fitting the long
+    # camera gives d(ln(p99/med))/d(ln K) = -0.245 and inverts to K = 4.45;
+    # 4.00 is taken because it is a MEASURED cell rather than a fitted one and
+    # the two are 3% apart on the statistic being matched. The verdict is the
+    # re-render, as it has to be.
+    #
+    # THE MEDIAN MOVES ONLY -23% ACROSS A x4 CHANGE on the long camera, and
+    # that is the pair working rather than a weak knob: 77% of that frame's
+    # level is lit surface, which the pair holds invariant by construction, and
+    # the 23% is the emissive contribution leaving. Nothing else in this file
+    # can move one of those without the other.
+    #
+    # WHAT IT DOES NOT DO, said because a table of improvements reads as a pass.
+    # The band count is 5/7 before and after on the gate camera: `p5` and
+    # `crushed` fail at K=1 and still fail at K=4, improved and not closed
+    # (p5 x1.50 -> x1.41 against a x1.29 band; crushed x0.02 -> x0.05 against
+    # x11.42). Both are ambient-owned, and this room's ambient cannot come down
+    # without its fittings carrying the level, which they cannot -- measured, in
+    # AMBIENT_SOLVED's `mod:zocalo` note. What K closes outright is the CLIPPING
+    # and the pinned top of the ladder; what it costs is the level, x1.05 ->
+    # x0.77 against a x1.05-1.75 window. That is the whole trade and it is on
+    # the table rather than in a summary.
+    "mod:zocalo": 4.00,           # clipping gone and the ladder onto the
+                                  # reference's. The deck strip sat at 0.94
+                                  # linear at EVERY gain over x5.7 while the
+                                  # wall it lights sat at 0.06-0.19; p99 is
+                                  # 0.4987 now, against the same wall
+}
 
 
 def emission_headroom(room):
