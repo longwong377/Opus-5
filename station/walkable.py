@@ -1313,7 +1313,7 @@ def main():
         # deck run is six minutes; printing the tokens it already has costs
         # nothing and is the difference between "something is snagging" and
         # knowing which leg, how far, and whether it left the floor.
-        if a.json or not good:
+        if True:
             print("        " + " ".join(
                 f"{k}={d[k]}" for k in
                 ("legs", "traverse_m", "net_m", "sweep_deg", "offfloor",
