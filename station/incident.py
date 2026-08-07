@@ -3456,11 +3456,64 @@ def visible_bodies(places, day=1, seed="b5", step_min=None, hours=24,
                     "stance": i.stance,
                     "if_helped": _body_survives_help(i.cid)})
     out.sort(key=lambda r: (r["hour"], r["place"], r["cid"]))
+    exp = collapse_expectation(places, ctx)
     print("incident.visible_bodies: %d collapse row(s) over %d place(s), "
-          "observer=%s" % (len(out), len(tuple(places)),
-                           observer.describe() if observer else "none (absent)"),
+          "observer=%s; %.3f expected a day from %d ragdoll class(es) here, "
+          "so P(a day like this one is empty) = %.2f"
+          % (len(out), len(tuple(places)),
+             observer.describe() if observer else "none (absent)",
+             exp[0], len(exp[1]), math.exp(-exp[0])),
           file=sys.stderr)
+    if not out:
+        # AN EMPTY LIST IS NOT AN ERROR AND IT IS NOT A QUIET DAY EITHER, AND
+        # THE CALLER CANNOT TELL THEM APART. `boot.py::_collapses` only prints
+        # when this RAISES, so a legitimate zero and a broken producer reach
+        # `main.gd::_fire_collapses` as the same empty array -- which is how the
+        # shipped boot.json has carried 0 collapses since the join was built.
+        # Say which one it is, in the producer, on the shipped path.
+        print("incident.visible_bodies: EMPTY -- and it is a RATE, not a "
+              "break: %s. The first day in 1..10 that puts a body on this "
+              "deck is day %s" % (
+                  ", ".join("%s %.4f/day" % (c, r) for c, r in exp[1].items())
+                  or "no ragdoll class can happen in these places at all",
+                  collapse_first_day(places, seed=seed, max_days=10)
+                  or ">10"),
+              file=sys.stderr)
     return out
+
+
+def collapse_expectation(places, ctx=None):
+    """(expected collapses a day, {class: rate a day}) over `places`.
+
+    The ANALYTIC companion to `visible_bodies`, so a zero it returns can be read
+    as a rate rather than as a failure. Summed from the classes' own rate
+    functions at each hour's bucket -- nothing here is a second number written
+    down beside the generator.
+    """
+    ctx = Ctx() if ctx is None else ctx
+    per = {}
+    for cid in sorted(RAGDOLL_OF):
+        k = BY_ID[cid]
+        r = sum(k.rate(ctx, pk, float(h) + 0.5)
+                for pk in places if k.here(pk) for h in range(24))
+        if r > 0.0:
+            per[cid] = r
+    return sum(per.values()), per
+
+
+def collapse_first_day(places, seed="b5", max_days=30, step_min=None):
+    """The first day in 1..max_days on which a body falls over on `places`.
+
+    Drawn rather than estimated -- it runs the days. Returns None if none of
+    them do, which is a different answer from 1 and is reported as one.
+    """
+    for d in range(1, int(max_days) + 1):
+        ctx = Ctx(day=d, seed=seed)
+        kw = {} if step_min is None else {"step_min": step_min}
+        _w, fired = headless_day(ctx, scope=tuple(places), **kw)
+        if any(i.cid in RAGDOLL_OF for i in fired):
+            return d
+    return None
 
 
 _HELP_KEEPS = {}
@@ -4582,6 +4635,110 @@ def near_gate(out=print, at="customs_north", seed="b5", step_min=STEP_MIN,
     return n
 
 
+def collapse_gate(out=print, at="customs_north", seed="b5", max_days=10):
+    """CAN A BODY EVER FALL OVER WHERE THE PLAYER STANDS, AND IN HOW LONG.
+
+    Written because running the SHIPPED bake found instance ten of this
+    project's signature defect, one level down from where it usually sits. The
+    join is built and wired both ways -- `visible_bodies` produces rows,
+    `boot.py::_collapses` bakes them, `main.gd::_fire_collapses` drops the body
+    -- and `station/generated/scene/boot.json` carries **0 collapses**,
+    deterministically, on every build. Not because anything is broken: the
+    shipped deck is three customs rooms, the only ragdoll class that can happen
+    in them is INC-SICK at 0.2323/day, and the bake asks for day 1, which is one
+    of the 79% of days nobody falls over on. An empty array reached the engine
+    and read as a quiet day.
+
+    So this asserts the thing the wiring scan cannot: that the producer's output
+    is NON-EMPTY somewhere inside a horizon a player would actually play, and it
+    names the day. It is deliberately a horizon rather than a single day,
+    because demanding a body on day 1 would be demanding the content be tuned.
+
+    Two mechanisms are pointed at each other rather than one being trusted: the
+    ANALYTIC expectation summed from the classes' own rate functions, and the
+    DRAWN day found by running the days. If they disagree in sign, one of them
+    is wrong about what a ragdoll class is.
+    """
+    out("")
+    probe = Probe(at)
+    exp, per = collapse_expectation(probe.places)
+    day = collapse_first_day(probe.places, seed=seed, max_days=max_days)
+    out("CAN A BODY FALL OVER WHERE THE PLAYER STANDS")
+    out(f"  probe = {probe.describe()}")
+    out(f"  ragdoll classes reachable here: "
+        f"{', '.join(f'{c} {r:.4f}/day' for c, r in sorted(per.items())) or 'NONE'}"
+        f" -- {exp:.3f} expected a day, P(an empty day) = {math.exp(-exp):.2f}")
+    out(f"  first day in 1..{max_days} that puts a body on this deck: "
+        f"{day if day else 'NONE'}")
+    n = 0
+    n += 1
+    check(day is not None,
+          f"a body falls over somewhere the player can walk to within "
+          f"{max_days} days of play -- the producer that feeds boot.json's "
+          f"`collapses` is not empty for the whole horizon",
+          f"first day {day}, {exp:.4f} expected a day over {probe.places}")
+    n += 1
+    check((exp > 0.0) == (day is not None),
+          "...and the ANALYTIC expectation and the DRAWN day agree in sign: "
+          "the rate functions say a body is possible here and running the days "
+          "produces one, or neither does. Two mechanisms, pointed at each "
+          "other",
+          f"expectation {exp:.4f}/day against first day {day}")
+    # --- AND THE SHIPPED DECK'S OWN ROOMS, WHICH ARE NOT THE PROBE --------
+    # The probe is `at` plus its register adjacencies, and at customs_north that
+    # reaches docking_bays -- where INC-SICK and INC-STRAY are common. The
+    # SHIPPED deck is three customs rooms and does NOT include docking_bays,
+    # which is the whole finding: the same gate answers 1 for the probe and 5
+    # for the thing that is actually baked. Read from the shipped artefact when
+    # it exists and REPORTED rather than asserted, because this cannot rebuild
+    # a deck and a gate that reads an artefact it cannot rebuild must not be
+    # the thing that decides.
+    rooms = _shipped_rooms()
+    if rooms:
+        dexp, dper = collapse_expectation(rooms)
+        dday = collapse_first_day(rooms, seed=seed, max_days=max_days)
+        out(f"  THE SHIPPED DECK is {', '.join(rooms)} -- not the probe. Its "
+            f"reachable ragdoll classes are "
+            f"{', '.join(f'{c} {r:.4f}/day' for c, r in sorted(dper.items())) or 'NONE'}"
+            f", {dexp:.4f} expected a day, and the first day that puts a body "
+            f"on it is day {dday if dday else 'NONE in ' + str(max_days)}")
+        out(f"  `boot.py::_collapses` asks for day 1 ONLY, so boot.json's "
+            f"`collapses` is [] on this deck and `main.gd::_fire_collapses` "
+            f"has never fired on the shipped build. That is a RATE, not a "
+            f"break, and `visible_bodies` now says which one it is on the "
+            f"bake's own stderr instead of returning a silent empty array")
+    else:
+        out("  (no station/generated/scene/boot.json here, so the shipped "
+            "deck's own room set could not be read)")
+
+    n += 1
+    # THE CONTROL, SOURCED FROM THE REGISTER RATHER THAN NAMED. A place where
+    # no ragdoll class can happen must produce neither mechanism's yes.
+    quiet = tuple(p["key"] for p in dr.PLACES
+                  if collapse_expectation((p["key"],))[0] == 0.0)[:1]
+    qexp = collapse_expectation(quiet)[0] if quiet else -1.0
+    check(bool(quiet) and qexp == 0.0
+          and collapse_first_day(quiet, seed=seed, max_days=2) is None,
+          "CONTROL: over a register place where no ragdoll class can happen -- "
+          "found by asking the register rather than named here -- both "
+          "mechanisms say nobody falls over. So the assertion above is about "
+          "the content and not about a function that always says yes",
+          f"{quiet or 'no such place'}, expectation {qexp:.4f}/day")
+    return n
+
+
+def _shipped_rooms():
+    """The room list the shipped boot.json was baked for, or ()."""
+    import json                                              # noqa: PLC0415
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                     "generated", "scene", "boot.json")
+    try:
+        with open(p) as f:
+            return tuple(json.load(f).get("rooms") or ())
+    except Exception:                                        # pragma: no cover
+        return ()
+
+
 def gate(out=print, at="customs_north", hour=13.0, step_min=STEP_MIN,
          window_min=WINDOW_MIN, seed="b5"):    # noqa: C901
     del _FAILED[:]
@@ -5431,6 +5588,9 @@ def main(argv=None):                                         # pragma: no cover
                          "three worlds are not three")
     ap.add_argument("--absence", action="store_true",
                     help="the same seeded day with and without a player")
+    ap.add_argument("--collapses", action="store_true",
+                    help="can a body fall over where the player stands, "
+                         "and in how many days")
     ap.add_argument("--near", action="store_true",
                     help="incidents per station-hour NEAR the player, "
                          "measured over a day, denominator printed")
@@ -5492,6 +5652,12 @@ def main(argv=None):                                         # pragma: no cover
         del _FAILED[:]
         absence_gate(at=a.at, seed=a.seed, step_min=a.step, policy=a.policy,
                      full=a.full)
+        for f in _FAILED:
+            print(f"  FAIL {f}")
+        return 0 if not _FAILED else 1
+    if a.collapses:
+        del _FAILED[:]
+        collapse_gate(at=a.at, seed=a.seed)
         for f in _FAILED:
             print(f"  FAIL {f}")
         return 0 if not _FAILED else 1
