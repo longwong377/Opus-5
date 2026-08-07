@@ -1108,17 +1108,24 @@ NEVER_CULLED = frozenset({"skirt"})
 # built mesh by `_axis_at`, never off `body.FIGURE`. Same reason the collar is:
 # a pak'ma'ra's sleeve and a Minbari's are not the same sleeve.
 CUFF_YF = 0.055           # of the arm part's height, from the wrist end
-CUFF_HALF_H_F = 0.013     # of stature
-CUFF_R = 1.075            # of the sleeve radius there
-YOKE_PANEL_HALF_H_F = 0.045
-YOKE_PANEL_R = 1.012
+CUFF_HALF_H_F = 0.010     # of stature: a 35 mm turned cuff
+CUFF_R = 1.070            # of the sleeve radius there
+# SIZED BY THE RENDER, and the first pass was wrong in a way only a frame
+# could say. At 0.045 -- a 157 mm band at constant radius flaring OUTWARD to
+# the top -- the panel read at half distance as a barrel around the shoulders
+# rather than as a seam in a coat. 157 mm -> 91 mm with the taper inverted,
+# because a yoke follows the shoulder slope IN toward the neck and does not
+# stand off it. The SEAM's height is untouched: `YOKE_TOP_FRACTION` is the
+# authority-1 measurement and this is only how deep the panel below it is.
+YOKE_PANEL_HALF_H_F = 0.026
+YOKE_PANEL_R = 1.008
 HEM_YF = 0.045
-HEM_HALF_H_F = 0.012
-HEM_R = 1.028
+HEM_HALF_H_F = 0.009
+HEM_R = 1.022
 BOOT_TOP_YF = 0.185
 BOOT_TOP_HALF_H_F = 0.011
 BOOT_TOP_R = 1.070
-PLACKET_HALF_W_F = 0.016  # of stature: a 56 mm closure strip
+PLACKET_HALF_W_F = 0.010  # of stature: a 35 mm closure strip
 PLACKET_THICK_F = 0.004
 PLACKET_LO_YF = 0.10      # of the torso's height
 PLACKET_HI_YF = 0.90
@@ -1928,7 +1935,7 @@ def _construct(out, c, H, torso_verts, arm_parts, leg_parts, seg, distance_m):
             m, cx, cz, y + 0.55 * YOKE_PANEL_HALF_H_F * H,
             r * YOKE_PANEL_R, YOKE_PANEL_HALF_H_F * H, trim_g,
             CONSTRUCTION_HANGS_ON["yoke_panel"],
-            _att_seg(r * YOKE_PANEL_R, distance_m, cap=16), taper=1.03))
+            _att_seg(r * YOKE_PANEL_R, distance_m, cap=16), taper=0.93))
 
     # --- the front closure -------------------------------------------------
     # Not on a robe (it has no front to close) and not on a plastron set (the
