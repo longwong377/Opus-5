@@ -1113,9 +1113,10 @@ def axial_gate(stem=None, extra=(), timeout=1500):
         if p:
             runs.append((s, p))
     if not runs:
-        return 2, ("no deck on disk has a cell set. Bake one:\n"
-                   "    python3 tools/export_station.py --max-decks 1\n"
-                   "    python3 tools/bake_station.py --max-decks 1")
+        return 2, _cannot_run(
+            "no deck on disk has a cell set. Bake one:\n"
+            "    python3 tools/export_station.py --max-decks 1\n"
+            "    python3 tools/bake_station.py --max-decks 1")
     print("boot: axial gate over %d deck(s) with a cell set, of %d candidate "
           "deck stem(s) on disk: %s"
           % (len(runs), len(cands), ", ".join(s for s, _ in runs)))
@@ -1124,10 +1125,10 @@ def axial_gate(stem=None, extra=(), timeout=1500):
         import walkable as W                                      # noqa: PLC0415
         godot = W.godot_binary()
     except Exception as e:                                        # noqa: BLE001
-        return 2, "could not find a Godot binary (%s)" % e
+        return 2, _cannot_run("could not find a Godot binary (%s)" % e)
     if godot is None:
-        return 2, ("no double-precision Godot binary -- "
-                   "`bash tools/build_godot.sh`")
+        return 2, _cannot_run("no double-precision Godot binary -- "
+                              "`bash tools/build_godot.sh`")
     bad, good = [], []
     for picked, man_p in runs:
         rc, why = _axial_run_one(picked, man_p, godot, extra, timeout)
@@ -1138,6 +1139,32 @@ def axial_gate(stem=None, extra=(), timeout=1500):
                       ("; passed: " + ", ".join(good)) if good else ""))
     return 0, "PASS on %d of %d deck(s) with a cell set: %s" % (
         len(good), len(runs), ", ".join(s for s, _ in runs))
+
+
+def _cannot_run(why):
+    """`--axial-gate` could not be attempted at all. Says so in one grep-able
+    line, and the line exists because the alternative is worse than either
+    outcome it sits between.
+
+    THE GATE NEEDS TWO THINGS CI DOES NOT HAVE: a Godot binary and a baked cell
+    set, and `station/generated/` is gitignored precisely so that a hosted run
+    never carries 266 MB of geometry. So a CI step running this can only ever
+    report "could not run" -- and the review's own recommendation was to add
+    that step. Following it literally, with no state of its own, gives a choice
+    between two lies: exit 0, and a green tick means "the walk was never
+    attempted"; exit 1, and the job is permanently red for an environment fact
+    while `tools/bootstrap.py --check` already reports that fact honestly and
+    cheaply.
+
+    The third answer is a NAMED THIRD STATE. `AXIALGATE state=CANNOT-RUN` is
+    printed whichever exit code the caller asked for, so no reader of a log can
+    mistake it for a walk that happened, and `--allow-unbaked` maps ONLY this
+    state to 0 -- a walk that ran and failed still exits 1 under it. That is
+    the distinction CLAUDE.md's session-4e lesson is about: the honest red stays
+    red and stops blinding the answers behind it.
+    """
+    print("AXIALGATE state=CANNOT-RUN reason=%s" % why.splitlines()[0])
+    return "CANNOT RUN -- " + why
 
 
 def _axial_run_one(picked, man_p, godot, extra, timeout):
@@ -1198,6 +1225,11 @@ def main():
                     help="--axial-gate: also fail on the resident triangle "
                          "overage, which stream.gd's own policy prints rather "
                          "than pops a cell for")
+    ap.add_argument("--allow-unbaked", action="store_true",
+                    help="--axial-gate: exit 0 when the gate CANNOT RUN (no "
+                         "cell set, no Godot) -- for CI, where "
+                         "station/generated/ is gitignored. A walk that runs "
+                         "and FAILS still exits 1. See `_cannot_run`")
     ap.add_argument("--out", default=OUT)
     a = ap.parse_args()
     if a.gate:
@@ -1206,6 +1238,13 @@ def main():
         rc, why = axial_gate(a.deck,
                              ("--strict-budget",) if a.strict_budget else ())
         print("boot: axial gate %s" % why)
+        # ONLY rc 2 -- the CANNOT-RUN state -- is forgiven, and only when the
+        # caller asked. rc 1 is a walk that happened and failed and stays a
+        # failure under every flag this file has.
+        if rc == 2 and a.allow_unbaked:
+            print("boot: --allow-unbaked -- exiting 0 on a gate that never "
+                  "ran. This is NOT a pass and the line above says so")
+            return 0
         return rc
     man = build(a.deck, a.hour)
     if a.bake and not (man["cells_count"] > 1 and man["cells_fresh"]

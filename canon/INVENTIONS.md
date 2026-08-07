@@ -13077,3 +13077,71 @@ shipped content, day 3 discards **18.00 points** on `criminal`.
 
 **What would overturn it.** A change to `STANDING_MIN/MAX`, or a rate change that moves which
 day the bound is reached on; either makes the second assertion fail loudly rather than quietly.
+
+## INV-1120 — a cell's place membership is a WHOLE-SEGMENT match on the group name
+
+**What.** `stream.gd::cell_place_keys` derives which register places have geometry inside a
+resident streaming cell by walking the cell's own `MeshInstance3D` names, splitting each on
+`__`, and reading segment 1 as the place key — so `z7920__obs_dome_2__dress_top` puts
+`obs_dome_2` in `blue_0_0_c04z15`, and `join7440_7920__deck_grid` (two segments) puts nothing
+anywhere. `cell_has_place(id, key)` returns the group count. Authority 5.
+
+**Why.** `--axial-gate`'s claim "the body ARRIVED at Observation Dome 2" rested on two facts —
+the body's z inside a footprint read from `<stem>_places.json`, and the cell under it being
+resident — and **neither mentions the station**. A reviewer moved `obs_dome_2`'s `z_m` from
+7960 to 7700 in that 4 KB sidecar, changed nothing else, and the gate walked a body into
+`blue_0_0_c04z12` — a generic connecting corridor whose every group is `join7440_7920__*` —
+printed `ARRIVED … which is RESIDENT`, and exited 0. This is CLAUDE.md's session-4h shape: the
+register names a place, a build path drops it, and every gate scores the register.
+
+**What constrained it.** The convention already exists and is not invented here:
+`stream.gd::_write_cell` sets `mi.name` to the source group name verbatim, and every place
+builder emits `z<z>__<place_key>__<part>`. Measured over the one baked deck, the cells carry 16
+distinct place keys under that pattern (`cobra_bays`, `docking_bays`, `customs_north`,
+`obs_dome_1`, `obs_dome_2`, `cnc`, …). What IS chosen is **whole-segment equality rather than
+substring containment**: `customs` is a substring of `customs_north` and `obs_dome_1` differs
+from `obs_dome_2` in one character, so a substring test would report a place present in a cell
+holding a different place — the same lie, by the back door.
+
+**What would overturn it.** A builder that names its groups without the `z<z>__<key>__` prefix,
+or one that emits a place under a key the register does not use. Either shows up as a gate that
+goes red on content a human can see is correct, which is the loud failure and not the quiet one.
+
+## INV-1121 — entering a footprint retargets the walk to the footprint's CENTRE
+
+**What.** `--axial-gate` walks to `z_b`, the target footprint's near edge. On the first frame
+inside the footprint, `_ax["goal_z"]` moves to the footprint centre `z_m` and the progress
+baseline resets, so the body keeps walking into the place while the geometry test re-runs every
+frame. `z_b` is untouched and remains what the report calls `target_z`.
+
+**Why.** INV-1120's geometry test is evaluated where the body is standing, and a place 36 m deep
+can begin in a cell that carries none of it. Without the retarget, a legitimate room whose
+geometry starts a few metres past its near edge would be failed by the stall detector — a gate
+failing for its own bookkeeping, which this gate has already paid for once at the turn-back.
+
+**What constrained it.** The footprint is the only volume with an exact boundary in the data;
+its centre is the deepest point reachable without inventing a number. On the shipped content the
+retarget fires at z=7942.05 and arrival is confirmed in the same frame (0 ghost frames), so it
+costs nothing on the passing case and is load-bearing only on the failing one.
+
+**What would overturn it.** A place whose geometry sits past its own centre. The gate reports
+`ghost_frames=N` for exactly that and names the cell and its inventory.
+
+## INV-1122 — CANNOT-RUN is a third state, not a pass and not a failure
+
+**What.** `station/boot.py::_cannot_run` prints `AXIALGATE state=CANNOT-RUN reason=…` and
+`--axial-gate` exits **2**. `--allow-unbaked` maps only that state to 0; a walk that ran and
+failed exits 1 under every flag in the file.
+
+**Why.** The review asked for this gate in CI. It needs a Godot binary and a baked cell set, and
+`station/generated/` is gitignored so a hosted run has neither — so a CI step has only two
+honest-looking options and both lie: exit 0 and a green tick means "never attempted"; exit 1 and
+the job is permanently red for an environment fact that `tools/bootstrap.py --check` already
+reports cheaply and correctly.
+
+**What constrained it.** CLAUDE.md's session-4e rule — the honest red must stay red and must
+stop blinding the answers behind it. The named state is what lets a log reader tell the three
+apart without reading the exit code, which is the property a CI summary strips.
+
+**What would overturn it.** A CI runner with Godot and a bake, at which point the step drops
+`--allow-unbaked` and the state stops being reachable there.
