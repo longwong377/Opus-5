@@ -567,8 +567,38 @@ def bake_cells(stem, deck_dir=None, timeout=900):
                 if ln.strip()][-3:]
         return False, "exit %d and no cell set for %s: %s" % (
             r.returncode, stem, " | ".join(tail))
-    return True, "%d cells in %s" % (len(man.get("cells") or []),
-                                     os.path.relpath(path, ROOT))
+    # THE PLACES SIDECAR, WRITTEN BY THE SECOND BAKE PATH AS WELL AS THE FIRST.
+    #
+    # `stream.gd`'s `--axial-gate` reads `<stem>_places.json` to know that
+    # `obs_dome_2` is a thing a walk can arrive AT rather than a z coordinate
+    # it can reach. `tools/bake_station.py` writes it for the whole-station
+    # bake. This function is the OTHER bake -- the single cluster the shipped
+    # scene boots into -- and a sidecar written by only one of them would be
+    # absent on exactly the deck a gate gets pointed at.
+    #
+    # That is this project's ninth-instance defect in its cheapest form:
+    # machinery with no caller on the path that ships. CLAUDE.md's rule from
+    # the `bespoke.BESPOKE_GEOMETRY` table is the one being followed here --
+    # when a defect is found in one entry, fix the RULE, not the entry. There
+    # are two bake paths; both write the sidecar; `wiring.py` can see the
+    # import.
+    #
+    # NOT FATAL IF IT FAILS, and that is deliberate rather than lax: the cells
+    # are the artefact this function promises and they are on disk. A deck the
+    # register places nothing on legitimately has no sidecar, and turning that
+    # into a bake failure would break decks that are fine.
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    try:
+        import bake_station as _BS                               # noqa: PLC0415
+        pp, npl = _BS.write_places(stem, sec, ring, dk, out_dir)
+        side = (", %d register place(s) -> %s" % (npl, os.path.basename(pp))
+                if pp else ", no places sidecar (no register place on this "
+                           "deck, or no deck_table row)")
+    except Exception as e:                                       # noqa: BLE001
+        side = ", places sidecar FAILED (%s) -- --axial-gate cannot name " \
+               "where a walk arrives without it" % e
+    return True, "%d cells in %s%s" % (len(man.get("cells") or []),
+                                       os.path.relpath(path, ROOT), side)
 
 
 def build(stem=None, hour=None, deck_dir=None):
@@ -1016,6 +1046,112 @@ def gate():
     return 1 if bad else 0
 
 
+def axial_gate(stem=None, extra=(), timeout=1500):
+    """Run `stream.gd --axial-gate` on a deck that HAS a cell set. (rc, why).
+
+    WHY THE DRIVER IS HERE. The gate itself is 400 lines of GDScript inside
+    `stream.gd` and it needs four things a caller must not have to know: a
+    Godot binary, the `res://scenes/stream_gate.tscn` entry point, an absolute
+    path to a cells manifest, and a places sidecar beside it. `bake_cells`
+    above already assembles the first three for the bake, off the same two
+    helpers. A gate whose invocation lives only in a session's shell history
+    is a gate nobody runs -- which is the failure this whole file's `--gate`
+    exists to prevent, one level out.
+
+    IT FINDS THE CELLS IN BOTH LOCATIONS, through `cells_for`, which is the
+    function that already knows there are two: `scene/deck/cells_<stem>/` for
+    the single-cluster bake the shipped scene boots into, and
+    `scene/station/cells/` for the whole-station one. `tools/bootstrap.py` was
+    blind to the second until this session and reported a 70-deck bake as "no
+    cell set at all"; a driver that could only see one of them would be the
+    same defect wearing a different hat.
+
+    THE SIDECAR IS WRITTEN IF ABSENT, and that is not the gate marking its own
+    homework: `write_places` reads the REGISTER, not the mesh, so it cannot
+    make a failing walk pass -- it can only make the difference between the
+    gate naming `obs_dome_2` and the gate refusing to run. A cell set baked
+    before this session has no sidecar and there is no reason to make a human
+    re-bake 266 MB of geometry to get a 4 KB JSON file.
+    """
+    dd = DECK_DIR
+    cands = []
+    if stem:
+        cands = [stem]
+    else:
+        # Every deck with a cell set in either location, the boot deck first.
+        seen = set()
+        # THE BOOT DECK FIRST, BUT ONLY IF THERE IS ONE. `build()` exits the
+        # process when `scene/deck/` holds no deck -- correct for its own
+        # callers and fatal here, where a cell set in the OTHER location is a
+        # perfectly good subject. Caught as BaseException on purpose: the exit
+        # is a `SystemExit`, which `except Exception` does not see, and the
+        # first run of this driver died on exactly that with the deck sitting
+        # baked on disk two directories away.
+        if glob.glob(os.path.join(dd, "*.glb")):
+            try:
+                seen.add(build()["deck"])
+            except BaseException:                                # noqa: BLE001
+                pass
+        for p in sorted(glob.glob(os.path.join(dd, "cells_*"))):
+            seen.add(os.path.basename(p)[len("cells_"):])
+        for p in sorted(glob.glob(os.path.join(STATION_CELLS,
+                                               "*_cells.json"))):
+            seen.add(os.path.basename(p)[:-len("_cells.json")])
+        cands = sorted(seen)
+    picked, man_p = "", ""
+    for s in cands:
+        p, _m = cells_for(s, dd)
+        if p:
+            picked, man_p = s, p
+            break
+    if not picked:
+        return 2, ("no deck on disk has a cell set. Bake one:\n"
+                   "    python3 tools/export_station.py --max-decks 1\n"
+                   "    python3 tools/bake_station.py --max-decks 1")
+    part = picked.split("_")
+    if len(part) >= 3:
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        try:
+            import bake_station as _BS                           # noqa: PLC0415
+            side = os.path.join(os.path.dirname(man_p),
+                                picked + "_places.json")
+            if not os.path.exists(side):
+                pp, npl = _BS.write_places(picked, part[0], part[1], part[2],
+                                           os.path.dirname(man_p))
+                print("boot: wrote the missing places sidecar -- %d place(s)"
+                      % npl if pp else "boot: no places sidecar could be "
+                      "written for %s" % picked)
+        except Exception as e:                                   # noqa: BLE001
+            print("boot: could not write a places sidecar (%s)" % e)
+    sys.path.insert(0, HERE)
+    try:
+        import walkable as W                                     # noqa: PLC0415
+        godot = W.godot_binary()
+    except Exception as e:                                       # noqa: BLE001
+        return 2, "could not find a Godot binary (%s)" % e
+    if godot is None:
+        return 2, "no double-precision Godot binary -- `bash tools/build_godot.sh`"
+    cmd = [godot, "--headless", "--path", GODOT_DIR,
+           "res://scenes/stream_gate.tscn", "--", "--axial-gate",
+           "--cells=" + os.path.abspath(man_p)] + list(extra)
+    print("boot: axial gate on %s -- %s\n     %s"
+          % (picked, os.path.relpath(man_p, ROOT), " ".join(cmd[-3:])))
+    env = dict(os.environ)
+    # THE RENDERER MUST SAY WHICH ONE IT IS. CLAUDE.md's most expensive
+    # environment lesson: a tool that silently substitutes a lesser mode and
+    # exits 0 manufactures evidence. This gate is headless and never rasters,
+    # so the ICD only has to exist for the engine to start -- but it is named
+    # here rather than left to the caller's shell, so a run from CI and a run
+    # from a session are the same run.
+    env.setdefault("VK_ICD_FILENAMES", "/usr/share/vulkan/icd.d/lvp_icd.json")
+    try:
+        r = subprocess.run(cmd, cwd=ROOT, timeout=timeout, env=env)
+    except subprocess.TimeoutExpired:
+        return 2, "the axial gate timed out after %d s" % timeout
+    return r.returncode, ("PASS" if r.returncode == 0 else
+                          "FAIL -- see the axial-gate line above")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--deck", default=None, help="deck stem to boot into")
@@ -1027,10 +1163,23 @@ def main():
                          "is missing or no longer describes it (needs Godot)")
     ap.add_argument("--gate", action="store_true",
                     help="CI: does the shipped scene stream?")
+    ap.add_argument("--axial-gate", action="store_true",
+                    help="CI: can a body walk out of its own z-cluster into "
+                         "another and back, arriving at a NAMED place, with "
+                         "cells loading and freeing (needs Godot)")
+    ap.add_argument("--strict-budget", action="store_true",
+                    help="--axial-gate: also fail on the resident triangle "
+                         "overage, which stream.gd's own policy prints rather "
+                         "than pops a cell for")
     ap.add_argument("--out", default=OUT)
     a = ap.parse_args()
     if a.gate:
         return gate()
+    if a.axial_gate:
+        rc, why = axial_gate(a.deck,
+                             ("--strict-budget",) if a.strict_budget else ())
+        print("boot: axial gate %s" % why)
+        return rc
     man = build(a.deck, a.hour)
     if a.bake and not (man["cells_count"] > 1 and man["cells_fresh"]
                        and man["cells_start"] >= 0):

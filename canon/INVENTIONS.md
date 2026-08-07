@@ -11377,3 +11377,127 @@ moving 29→30 and 27→28 (which recomputes DLG-03's total 174→180 and the gr
 6,544→6,550), or remove the counter that was added.
 
 **What would overturn it.** A gazetteer entry naming a counter's actual stock. Authority 5.
+---
+
+## INV-731 — a walk arrives at a PLACE, and a place is a volume with a footprint
+
+**What.** `stream.gd --axial-gate` chooses where to walk by reading a sidecar of the
+register's places (`tools/bake_station.write_places`) rather than by picking a z coordinate,
+and "arrived" means the body stood **inside the place's own footprint**: for
+`obs_dome_2` that is `|z − 7960.0| ≤ 18.0` with the walk angle inside its 2.71° half-width.
+The half-width is `degrees((across_m / 2) / floor_r_m)` — `directory._P`'s `foot` is
+(across, along) and across is an **arc**.
+
+**Why.** R5's acceptance is *"arrives at a place in the far cluster"*. Before this the gate
+could report 774 m of floor and ten cell hand-offs without anyone being able to say the player
+had got **anywhere**; a streamer that pages cells across empty spine is not a station you can
+walk across. The distinction is the difference between a statement about a cache and a
+statement about the station.
+
+**Constrained by.** Nothing here is chosen. The floor radius comes from
+`cell_manifest.json`'s `deck_table`, the angle, z and footprint from `directory.PLACES`, and
+the cluster size from `deck.Z_CLUSTER_M`. The selection rule has three clauses, each of which
+would exclude a place for a reason: its footprint must straddle the walk angle (the spine is
+3.28 m wide and a place 40° round the ring is not somewhere this walk can arrive); its z must
+lie inside the spine's own **measured** range; and the start is then the ring-corridor run
+furthest from it, so the walk is the longest one this deck's spine supports.
+
+**What it measured.** On `blue/0/0`, of sixteen register places, **exactly one** —
+`obs_dome_2`, Observation Dome 2 — has a footprint straddling the measured spine at 89.183°.
+`docking_bays` does not, and that is the correction worth recording: 360 m of arc reads as
+"spans the ring" and is **±48.75°** at r = 211.55. So the walk R5 asks for begins on a stretch
+of spine inside no named place and ends inside exactly one.
+
+**What would overturn it.** A place whose geometry is built somewhere its register row does
+not say, or a footprint convention where `across_m` is a chord rather than an arc. Both are
+checked by `tools/bake_station.py --selftest`, which asserts the arc inverts exactly and that
+the spine lies inside some footprints and outside others — a sidecar every one of whose places
+"contains" the walk angle would pass every arrival test ever written and mean nothing.
+
+**Authority 5.**
+
+---
+
+## INV-732 — the goal is the footprint's near edge, and the turn is arrival itself
+
+**What.** On the outbound leg the gate steers at `z_m ∓ half_z_m` — the edge of the target's
+footprint facing the start — and it turns round when the **arrival predicate** fires, not when
+it is within `reach_m` of a coordinate.
+
+**Why.** Both halves were found by running it. Aiming at the place's **centre** (7960.0), the
+body arrived inside `obs_dome_2` at z = 7942.05, kept walking toward the centre, stalled 6.5 m
+short of it against something solid, and the run was recorded FAIL — a gate failing on a claim
+nobody was making, because a centre is a point that may be inside a wall, a console or a
+bulkhead. Moving the goal to the near edge then produced the opposite error: the 3.0 m `reach`
+tolerance stopped the body at 7939.04, **2.96 m outside** the place, and the run reported
+`legs=2` with `arrived=NO`. A tolerance is the right way to decide "close enough to a
+coordinate" and the wrong way to decide "inside a volume", because the volume already has an
+exact boundary and the tolerance can only cross it the wrong way.
+
+**Constrained by.** `half_z_m` is `along_m / 2` from the register. `reach_m` keeps its meaning
+on the **return** leg, which does go back to a coordinate.
+
+**Why this is not circular.** `arrived` is set by the footprint test alone. A body that never
+enters the footprint never turns, and the run ends on the stall detector or the frame cap with
+`legs < 2` **and** `arrived=NO` — which is what the pre-change control does.
+
+**Overturned by.** A place whose built geometry does not fill its declared footprint, which
+would make the near edge a point in the void. `deck.py --sweep` is the check that would say so.
+
+**Authority 5.**
+
+---
+
+## INV-733 — freeing is measured as DRAWDOWN, because a peak at the end is not a leak
+
+**What.** The gate asserts `drawdown ≥ 1`, where drawdown is the largest fall of the resident
+cell count from a running peak, sampled every physics frame.
+
+**Why.** `frees > 0` says a cell was released **once**; it does not say the resident set ever
+came **down**. The first version of this check measured "the minimum resident count after the
+peak" and failed a run that plainly freed: the peak of 7 happened at the **end** of the
+traverse, in the dense cluster the body finished in, so "min after peak" was 7 and the gate
+reported *cells are accumulating* about a run whose own step log shows the set going
+4 → 2 → 4 → 2 → 4 all the way along, with `loads=35 frees=30`. **A statistic that depends on
+where the maximum falls is not measuring the property.**
+
+**Constrained by.** Drawdown does not care where the peak is, and it is still zero — still
+failing — for a set that only ever grows, which is the case the check exists for.
+
+**Measured.** The passing run reports `resident_peak=7 resident_drawdown=5`.
+
+**Overturned by.** Nothing about the station; this is a property of the statistic. It would be
+strengthened by asserting the resident set is bounded by the nominal three plus in-flight,
+which is a different claim and belongs with the triangle budget.
+
+**Authority 5.**
+
+---
+
+## INV-734 — the triangle overage is printed, not failed, and the module's own header says so
+
+**What.** `--axial-gate` reports `peak resident 359,584 tri against a 180,000 budget (2.00×)`
+on its own labelled `OVER BUDGET` line, in the PASS text as well, and puts it in the **exit
+code only under `--strict-budget`**.
+
+**Why.** `stream.gd`'s header sets the policy explicitly, under *"WHEN THEY DISAGREE,
+CORRECTNESS WINS AND IT SAYS SO"*: if the sight line demands more triangles than the budget
+allows the streamer keeps the cells and prints `OVER BUDGET`, *"because dropping a cell the
+player can see is a pop and going over budget is a frame cost"*, and it states the measured
+consequence outright. The gate in the same file then took that printed, expected, deliberate
+condition and made it a **FAIL** — so the residency acceptance could never pass on real
+content, and the streaming question and the content-cost question were welded into one verdict
+where the second always won.
+
+**Constrained by.** This is CLAUDE.md's session-4e lesson: one honestly-red gate must not blind
+every answer behind it, and the fix there was **not** to make the red gate pass but to stop it
+hiding the others. Nothing here is quieter than it was — the overage is computed identically,
+printed on its own line, and repeated inside the PASS text so a PASS cannot be read as "in
+budget". `station/budget.py` remains the authority that owns the number.
+
+**What would overturn it.** A ruling that the resident budget is a hard ceiling rather than a
+target. `CLAUDE.md` currently says the opposite — *"the triangle budget is a TARGET, not a
+ceiling"* — and if that is reversed, `--strict-budget` becomes the default and this entry is
+withdrawn.
+
+**Authority 5.**
