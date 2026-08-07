@@ -529,7 +529,8 @@ STREAM_MIN_DEG = 40.0
 def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
               goto_key=None, no_doors=False, z_m=None, bump=False,
               no_npc_collision=False, use=False, strip=None,
-              build_only=False, stream_deg=None, no_stream=False):
+              build_only=False, stream_deg=None, no_stream=False,
+              no_goto=False):
     """Assemble a deck, put a body on it, and walk it.
 
     The render mesh and the collision shell are exported separately and BOTH are
@@ -769,7 +770,23 @@ def walk_deck(sector, ring, deck, godot, timeout=1800, traverse=None,
             bumped = min(cand, key=lambda a: (a["x"] - px) ** 2
                          + (a["y"] - py) ** 2 + (a["z"] - pz) ** 2)
             tx, ty, tz = bumped["x"], bumped["y"], bumped["z"]
-    cmd += [f"--goto={tx},{ty},{tz}", f"--door-key={goto}"]
+    # -- OR STEER AT NOTHING AT ALL, WHICH IS THE CASE NOTHING EVER RAN ----
+    # `walk.gd`'s traverse has three modes and the third has never been used:
+    # tangent (`--arc-walk`), toward a target (`--goto`), and -- when neither is
+    # given -- `step(delta, Vector2(0, 1))`, which is the body walking FORWARD
+    # on its own heading. That third one is what this file's docstring has
+    # always described as the deck assertion: "distance covered walking one
+    # heading for thirty seconds". `walk_deck` appended `--goto` unconditionally,
+    # so it was unreachable, and `deck_verdict`'s no-goto branch was dead code
+    # measuring nothing.
+    #
+    # It is a strictly harder question than the goto walk. Steered at a room
+    # 6.3 m away the body arrives and mills about: 125.93 m of PATH, 0.35 m of
+    # displacement. Walking one heading, the corridor has to actually go
+    # somewhere and stay walkable the whole way.
+    cmd += [f"--door-key={goto}"]
+    if not no_goto:
+        cmd += [f"--goto={tx},{ty},{tz}"]
     if chosen is not None:
         cmd += [f"--use-group={chosen['group']}"]
     if no_stream:
@@ -1203,6 +1220,10 @@ def main():
                     help="assemble the deck and write godot/play.json, then "
                          "stop. This is what tools/play.sh runs before handing "
                          "the station to a person instead of to a test")
+    ap.add_argument("--no-goto", action="store_true",
+                    help="walk one heading for the whole traverse instead of "
+                         "steering at a room. The strong form of the distance "
+                         "bar, and the mode nothing had ever run")
     ap.add_argument("--reach", action="store_true",
                     help="how much of each declared interactable the runtime's "
                          "name test actually grabs. No engine needed")
@@ -1248,7 +1269,8 @@ def main():
     if a.deck or a.deck_only:
         sector, ring, deck = (a.deck or "blue/0/0").split("/")
         d = walk_deck(sector, int(ring), int(deck), godot,
-                      traverse=a.traverse, no_doors=a.no_doors, z_m=a.z)
+                      traverse=a.traverse, no_doors=a.no_doors, z_m=a.z,
+                      no_goto=a.no_goto)
         drum = (sector, int(ring)) in D.NOT_RING_DECKS
         if drum:
             import drum_walk as DW                              # noqa: PLC0415
@@ -1257,6 +1279,16 @@ def main():
             good, why = deck_verdict(d)
         print(f"  {'PASS' if good else 'FAIL'}  "
               f"{'drum' if drum else 'deck'} {sector}/{ring}/{deck}  {why}")
+        # A VERDICT THAT FAILS SHOULD NOT NEED A SECOND RUN TO DIAGNOSE. The
+        # deck run is six minutes; printing the tokens it already has costs
+        # nothing and is the difference between "something is snagging" and
+        # knowing which leg, how far, and whether it left the floor.
+        if a.json or not good:
+            print("        " + " ".join(
+                f"{k}={d[k]}" for k in
+                ("legs", "traverse_m", "net_m", "sweep_deg", "offfloor",
+                 "drop", "moved_1s", "on_floor", "goto_best_m")
+                if k in d))
 
         # THE NEGATIVE CONTROL, and it is the whole reason the door claim means
         # anything. A body that reaches the room proves the route is open; it
@@ -1266,7 +1298,11 @@ def main():
         # get in. If both runs pass, the doors are scenery.
         # The drum has no doors, so `--no-doors` is not a control there --
         # running it would compare a thing against itself and pass.
-        if good and not a.no_doors and not drum:
+        # `--no-goto` walks one heading and never claims to reach a named room,
+        # so there is no arrival for inert doors to withhold. Running the
+        # control here would read `goto_best_m` off a verdict that has none,
+        # default it to 0.00, and report "the body still reached it".
+        if good and not a.no_doors and not drum and not a.no_goto:
             n = walk_deck(sector, int(ring), int(deck), godot,
                           traverse=a.traverse, no_doors=True)
             blocked, _w = deck_verdict(n)
