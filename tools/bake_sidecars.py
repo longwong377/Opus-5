@@ -448,7 +448,11 @@ def run(argv=None):
                     marks.append("%s FAILED %s: %s"
                                  % (kind[:4], type(e).__name__, e))
                     failed.append((stem, kind, "%s: %s" % (type(e).__name__, e)))
-            if marks and not a.check:
+            # Printed in --check too, and deliberately: the ledger below says
+            # what IS there, and this line says what a real run would DO about
+            # it. With --force the two disagree on every row, and a check that
+            # could not show that would be a check you cannot dry-run.
+            if marks and (not a.check or any("WOULD" in m for m in marks)):
                 print("  [%2d/%2d] %-16s %4d cast   %s"
                       % (i, len(todo), stem, n_cast, "  ".join(marks)))
     finally:
