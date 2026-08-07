@@ -130,6 +130,26 @@ source tree right?*** Here it was not, for nine sessions.
   took **5**. Both numbers matter, because the reason this was never done was believed to be cost
   and it is not.
 
+- **BUILT IS NOT REACHABLE, AND THIS IS NOW THE TOP OPEN ITEM.** All 70 decks, 70 cell sets,
+  1,596 cells and 5 transit columns are **in the package** — verified by listing the staged
+  artefact, not by trusting the builder. **The game loads one of them.** `boot.json` names
+  `blue_0_0` and mentions no column and no other deck, so 113 of the register's 129 places are
+  inert data inside a 5.0 GB download: shipped, streamable, and unreachable.
+
+  This is *precisely* the defect `docs/MASTER-PLAN.md` §4n named **"built but unreachable"** and
+  claimed to have gated, arriving one level up — the gate asks whether a place is reachable
+  **within its deck**, and nothing asks whether a DECK is reachable at all. The eleven instances
+  of the signature defect in `CLAUDE.md` are all "machinery with no caller"; this is the same
+  shape at station scale, and the caller that is missing is inter-deck travel.
+
+  What is genuinely playable is `blue_0_0`: 16 named places, 408 residents, 444 walkers, and a
+  body that walks **1,507 m to Observation Dome 2 and back without leaving the floor**. That is a
+  real vertical slice and it is not the station.
+
+  **The next session's work is the transit columns**, not more geometry. `station/generated/scene/
+  station/column_{blue,green,grey,red,yellow}.glb` exist (5 columns, 24 landings, 121.6 m of rise
+  on yellow alone) and nothing in `godot/scripts/` references them.
+
 - **AND THE REASON IT WAS NOT ALREADY BUILT IS NOT WHAT IT LOOKS LIKE.** The first read was
   "nobody ran the command", and that is **wrong** — `bake_station.py`'s own docstring says
   *"`export_station.py` writes 70 deck meshes"*, and this file records completed bakes at
