@@ -243,11 +243,105 @@ def deck_arc(sector, ring, deck, z_m, max_rooms=None, must_cover=None):
     return here, lo, min(360.0, hi - lo)
 
 
+_ROOM_BOX = {}
+
+
+def room_box_m(schema, profile, place):
+    """The box the room a player SEES occupies, across the ring and upward.
+
+    THE ONE FUNCTION THAT DECIDES A ROOM'S ARC, and it exists because there
+    were two, both of them wrong the same way. `room_half_w_m` and
+    `room_shell_for` each carried their own copy of the pre-4k expression
+    `min(room_extent_m, bay_span_m) / 2` -- the width of one generic
+    representative bay. Session 4k replaced exactly that expression on the
+    AXIS, for exactly this reason, and left the width: `rooms.built_span_m`
+    became "THE ONE FUNCTION EVERYTHING THAT PLACES A ROOM MUST ASK" and
+    `bespoke.axial_plan` measures the module's own mesh -- but `axial_plan`
+    returns no `bay_w`, so `tiling()` keeps `min(w_full, bw)` for the width and
+    every composed place is collided at the size of a room nobody builds.
+    `ambassadorial_suites` had a +/-5.25 m shell around a mesh running
+    -92.28..+8.53 m. A fix applied to one axis and not to the rule.
+
+    Returns `{"x0", "x1", "ceil_m", "source", "why"}` in the room's own local
+    frame -- the frame `deck._place_local` maps onto the station, where x = 0
+    is the place's bearing.
+
+    IT IS NOT A HALF-WIDTH, AND THAT IS THE POINT. `bespoke.room_shell`
+    recentres a module on its DOORWAY, not on its bounding box, so a room's box
+    is generally not symmetric about the bearing: `arrival_concourse` runs
+    -17.37..+3.53 m and `ambassadorial_suites` -92.28..+8.53 m. Sized as a
+    symmetric half-width, either containment or the neighbouring arc has to
+    give. `collision.room_shell` takes `x_off_m` so neither has to.
+
+    TWO SOURCES, AND THE ROOM'S OWN BUILDER PICKS WHICH:
+
+      `module`   a place `bespoke.compose` draws. Measured off the module's own
+                 mesh through `bespoke.room_shell`, which is the same call
+                 `--shell-fit` scores containment against and the same one
+                 `room_geometry` composes from -- so there is no second
+                 description of the module's size to drift.
+      `builder`  a place `rooms.build` draws. `rooms.built_span_m`, unchanged:
+                 for these it IS the width, because `build` sizes the room to
+                 it, and this returns exactly the number both call sites
+                 returned before -- the 89 generic places do not move.
+
+    A module that has no composed form (`components`' six exterior structures,
+    `docking_bay`, `interior_kit`'s `standard_corridor`) raises out of
+    `bespoke.room_shell` and falls back to `builder` WITH THE REASON RECORDED
+    in `why`, which `--shell-fit` prints. A fallback nobody can see is how a
+    tool degrades quietly, and this file has paid for that twice.
+
+    MEMOISED PER PLACE KEY, and it has to be: a module build is 0.1-67 s
+    (`zocalo` and `shops_kiosks` are the two long ones) and `deck_plan` sweeps
+    24 corridor phases, each asking every room on the deck whether its door
+    fits. The memo is process-local and keyed on the place, never written to
+    disk -- a cached number that can go stale silently is a second copy of a
+    computed number, which is the defect this function was written to remove.
+    """
+    key = place["key"]
+    if key in _ROOM_BOX:
+        return _ROOM_BOX[key]
+    w = R.built_span_m(schema, profile, place)[0]
+    box = {"x0": -w / 2.0, "x1": w / 2.0, "ceil_m": R.ceiling_m(place),
+           "source": "builder", "why": ""}
+    if place.get("module") in BSP.BESPOKE_GEOMETRY:
+        try:
+            v = BSP.room_shell(schema, profile, place, 0.0)[0]
+        except Exception as e:                                  # noqa: BLE001
+            box["why"] = f"no composed form: {str(e)[:60]}"
+            v = None
+        if v:
+            xs = [q[0] for q in v]
+            ys = [q[1] for q in v]
+            box.update(x0=min(xs), x1=max(xs), source="module",
+                       # NEVER SHORTER THAN THE DECLARED CEILING. The mesh
+                       # height is what the shell must CONTAIN; `ceiling_m` is
+                       # what the place is specified at. Taking the mesh alone
+                       # would let a module that models only its lower storey
+                       # shrink the volume a body can occupy, so this raises
+                       # the ceiling and never lowers it. `council_chamber`
+                       # goes 3.60 -> 7.42 m, `downbelow_arch` 3.40 -> 23.57 m.
+                       ceil_m=max(box["ceil_m"], max(ys) if ys else 0.0))
+    _ROOM_BOX[key] = box
+    return box
+
+
 def room_half_w_m(schema, profile, place):
-    """Half a built room's width across the ring, as `rooms.build` sizes it."""
-    w_full, _l, _r = R.room_extent_m(schema, profile, place)
-    bw, _bl = R.bay_span_m(place)
-    return min(w_full, bw) / 2.0
+    """Half a built room's width across the ring, as its own builder sizes it.
+
+    Half of `room_box_m`'s span. NOT the distance from the bearing to either
+    wall -- see that function: a room's box is not centred on its bearing, and
+    `room_x_off_m` is where its centre actually is. Callers that only need a
+    size (`navgraph_export`) want this; callers that place a wall want both.
+    """
+    b = room_box_m(schema, profile, place)
+    return (b["x1"] - b["x0"]) / 2.0
+
+
+def room_x_off_m(schema, profile, place):
+    """Where a room's box is centred, in metres of arc from its own bearing."""
+    b = room_box_m(schema, profile, place)
+    return (b["x0"] + b["x1"]) / 2.0
 
 
 def deck_plan(schema, profile, sector, ring, deck, z_m=None, max_rooms=None,
@@ -290,11 +384,21 @@ def deck_plan(schema, profile, sector, ring, deck, z_m=None, max_rooms=None,
         rooms, unopened = [], []
         for q, d in zip(here, placed):
             dx = math.radians(d["angle_deg"] - q["angle_deg"]) * radius
-            hw = room_half_w_m(schema, profile, q)
-            if abs(dx) + door_w / 2.0 < hw - R.WALL_T_M:
+            # THE LEAF HAS TO LAND IN THE WALL THAT IS ACTUALLY THERE, and
+            # which wall that is is not `+/- hw` about the bearing. A composed
+            # room is centred on its own doorway, so its box is one-sided:
+            # `arrival_concourse` reaches 17.37 m one way and 3.53 m the other.
+            # Written as `abs(dx) + door_w/2 < hw - WALL_T` this test asked a
+            # symmetric question of an asymmetric room -- and it reduces to
+            # exactly that expression whenever x0 = -x1, so the 89 places
+            # `rooms.build` draws are unaffected.
+            b = room_box_m(schema, profile, q)
+            if (b["x0"] + R.WALL_T_M < dx - door_w / 2.0
+                    and dx + door_w / 2.0 < b["x1"] - R.WALL_T_M):
                 rooms.append((q, d, dx))
             else:
-                unopened.append((q["key"], round(dx, 2), round(hw, 2)))
+                unopened.append((q["key"], round(dx, 2),
+                                 round((b["x1"] - b["x0"]) / 2.0, 2)))
         return rooms, unopened
 
     # THE CORRIDOR'S PHASE IS A FREE CHOICE, AND IT DECIDES WHO GETS A DOOR.
@@ -757,14 +861,24 @@ def vestibule_render(radius_m, angle_deg, z_from, z_to, width_m, height_m,
     return v, t, g
 
 
-def room_shell_for(schema, profile, meta, place, door_angle_deg):
-    """A room's collision shell, sized the way `rooms.build` sizes the room."""
-    w_full, _l, _r = R.room_extent_m(schema, profile, place)
-    bw, _bl = R.bay_span_m(place)
-    return C.room_shell(meta, place["angle_deg"], min(w_full, bw) / 2.0,
+def room_shell_for(schema, profile, meta, place, door_angle_deg,
+                   break_factor=1.0):
+    """A room's collision shell, sized the way the room's own builder sizes it.
+
+    Every number comes from `room_box_m` and none of them is re-derived here --
+    that re-derivation, `min(room_extent_m, bay_span_m) / 2`, is what put
+    twenty rooms' geometry outside their own collision.
+
+    `break_factor` is `--shell-fit --break-shell`'s deliberate defect and
+    nothing calls it with anything but 1.0. See `shell_fit`.
+    """
+    b = room_box_m(schema, profile, place)
+    return C.room_shell(meta, place["angle_deg"],
+                        break_factor * (b["x1"] - b["x0"]) / 2.0,
                         room_interior_half_m(schema, profile, place),
-                        R.ceiling_m(place), place["z_m"],
-                        door_angle_deg=door_angle_deg)
+                        b["ceil_m"], place["z_m"],
+                        door_angle_deg=door_angle_deg,
+                        x_off_m=(b["x0"] + b["x1"]) / 2.0)
 
 
 # Whether a corridor's walkers are INSTANCED against the shared crowd library
@@ -2355,7 +2469,7 @@ def _degeneracy(out=print, keys=None):
 SHELL_FIT_TOL = 0.05
 
 
-def shell_fit(schema, profile, verbose=True, legacy=False):
+def shell_fit(schema, profile, verbose=True, legacy=False, break_shell=None):
     """Does every room's collision shell agree with the mesh a player sees?
 
     THE QUESTION NO GATE HERE HAS EVER ASKED. `walkable.py` asks whether a body
@@ -2382,21 +2496,73 @@ def shell_fit(schema, profile, verbose=True, legacy=False):
     the right width and still hang out one side: matching `w` proves nothing on
     its own, and `min(x) >= -hw and max(x) <= +hw` is the thing a player feels.
 
-    Three checks, and the third is what makes the first two safe:
+    IT SCORES THE SHELL THAT IS ACTUALLY EMITTED, NOT THE ARITHMETIC THAT
+    SIZES IT. The first version of this gate recomputed a half-width and
+    compared numbers, which cannot see a `collision.room_shell` that ignores a
+    parameter it was handed -- and the 4t fix hands it a new one. So every row
+    below builds the room's shell through `room_shell_for` and measures the
+    vertices that come back, recovering local x as `(bearing - a) * r`. That
+    recovery is exact at any radius, because the shell's own arithmetic is
+    `da = hw / r` and `mid = angle + x_off / r`, so the radius cancels; a
+    nominal one is used for the places that are not on a ring deck at all.
+
+    Five checks, and the last two are what make the first three safe:
 
       1. CONTAIN -- no vertex of the room's render mesh lies outside the arc
          its collision shell spans. This is the one a player walks into;
-      2. SPAN -- the shell's width is what `rooms.built_span_m` reports. That
-         function is declared "THE ONE FUNCTION EVERYTHING THAT PLACES A ROOM
-         MUST ASK" and a second copy of its answer is how this drifted;
-      3. FOOT -- no room claims more arc than its declared footprint.
-         `directory.collisions()` already asserts footprints do not overlap, so
-         a shell inside its footprint inherits non-overlap by construction
-         rather than needing a pairwise shell test.
+      2. HEIGHT -- nor above its ceiling. `council_chamber` was a 7.42 m room
+         inside a 3.60 m shell: not a hole to fall through, but half the room
+         is then solid to anything that casts a ray upward;
+      3. SPAN -- the shell's width is what the room's OWN BUILDER reports.
+         `rooms.built_span_m` for a place `rooms.build` draws, and the module's
+         own mesh for a place `bespoke.compose` draws. Which of the two applies
+         is `room_box_m`'s decision and this asks the same question of the
+         answer;
+      4. FOOT -- no room claims more arc than its declared footprint;
+      5. OVERLAP -- no two rooms' shells share space. FOOT used to stand in for
+         this: `directory.collisions()` asserts footprints do not overlap, so a
+         shell inside its footprint inherited non-overlap by construction. That
+         inheritance is exactly what widening the shells spends, and one place
+         (`qtr_transient`, 69.68 m of module in a 58.28 m footprint) now
+         escapes its footprint -- so the question FOOT was proxying for is
+         asked directly, pairwise, on the arcs the shells actually span. It is
+         strictly stronger than the argument it replaces and it is cheap:
+         129 places, arithmetic, no build.
 
     `legacy=True` restores the pre-4k expression and is the negative control.
+    `break_shell` is the other one -- see `--break-shell`.
     """
-    rows, contain_fail, span_fail, foot_fail = [], [], [], []
+    rows = []
+    contain_fail, height_fail, span_fail, foot_fail = [], [], [], []
+    stale, overfoot, boxes = [], [], []
+    # ANY RADIUS RECOVERS x EXACTLY -- see the docstring. Blue ring 0's is used
+    # so the numbers printed are a real deck's, not a made-up one.
+    try:
+        r_nom = _ring_cells(schema, profile, "blue", 0, 0)["radius_m"]
+    except Exception:                                           # noqa: BLE001
+        r_nom = 1000.0
+    meta = {"floor_r_m": r_nom, "door_w_m": K.PROVISIONAL["door_width_m"],
+            "door_h_m": K.PROVISIONAL["door_height_m"]}
+
+    def _shell_box(place):
+        """(x0, x1, ceil) of the shell `build_collision` would emit here."""
+        if legacy:
+            w_full, _l, _r = R.room_extent_m(schema, profile, place)
+            bw, _bl = R.bay_span_m(place)
+            sv, _st = C.room_shell(meta, place["angle_deg"],
+                                   min(w_full, bw) / 2.0,
+                                   room_interior_half_m(schema, profile, place),
+                                   R.ceiling_m(place), place["z_m"])
+        else:
+            f = break_shell.get(place["key"], 1.0) if break_shell else 1.0
+            sv, _st = room_shell_for(schema, profile, meta, place, None,
+                                     break_factor=f)
+        a0 = math.radians(place.get("angle_deg", 0.0))
+        xs = [((math.atan2(p[1], p[0]) - a0 + math.pi) % (2 * math.pi)
+               - math.pi) * r_nom for p in sv]
+        rs = [math.hypot(p[0], p[1]) for p in sv]
+        return min(xs), max(xs), r_nom - min(rs)
+
     for place in dr.PLACES:
         if place.get("deferred"):
             continue
@@ -2405,54 +2571,132 @@ def shell_fit(schema, profile, verbose=True, legacy=False):
         except Exception:      # a place no builder owns -- `--sweep` reports it
             continue
         w_full, _l, _r = R.room_extent_m(schema, profile, place)
-        if legacy:
-            bw, _bl = R.bay_span_m(place)
-            half_w = min(w_full, bw) / 2.0
-        else:
-            half_w = room_half_w_m(schema, profile, place)
+        box = room_box_m(schema, profile, place)
+        s_x0, s_x1, s_ceil = _shell_box(place)
+        shell_w = s_x1 - s_x0
+        half_w = shell_w / 2.0
 
-        if abs(2.0 * half_w - w_span) > SHELL_FIT_TOL * max(w_span, 1e-9):
-            span_fail.append((place["key"], 2.0 * half_w, w_span))
+        # THE AUTHORITY IS THE BUILDER THAT DRAWS THE ROOM. `built_span_m`'s
+        # `bay_w` is the generic representative bay for every place, including
+        # the ones `rooms.build` never draws -- `rooms.tiling` hands the
+        # composed branch to `bespoke.axial_plan`, which answers for the axis
+        # and returns no `bay_w`. Held against `built_span_m` a composed shell
+        # would have to be wrong to pass, so the module is asked instead and
+        # the disagreement is reported below as STALE rather than swallowed.
+        want_w = (box["x1"] - box["x0"]) if box["source"] == "module" else w_span
+        if legacy:
+            want_w = w_span
+        if abs(shell_w - want_w) > SHELL_FIT_TOL * max(want_w, 1e-9):
+            span_fail.append((place["key"], shell_w, want_w, box["source"]))
         if w_span > w_full * (1.0 + SHELL_FIT_TOL):
             foot_fail.append((place["key"], w_span, w_full))
+        if shell_w > w_full * (1.0 + SHELL_FIT_TOL):
+            overfoot.append((place["key"], shell_w, w_full))
+        if box["source"] == "module" and abs(
+                (box["x1"] - box["x0"]) - w_span) > SHELL_FIT_TOL * max(
+                    w_span, 1e-9):
+            stale.append((place["key"], w_span, box["x1"] - box["x0"]))
 
-        x0 = x1 = None
+        x0 = x1 = y1 = None
         if place.get("module") in BSP.BESPOKE_GEOMETRY:
             try:
                 v = BSP.room_shell(schema, profile, place,
                                    room_axial_half_m(schema, profile, place))[0]
-            except Exception:
+            except Exception:                                   # noqa: BLE001
                 v = None
             if v:
                 xs = [q[0] for q in v]
                 x0, x1 = min(xs), max(xs)
+                y1 = max(q[1] for q in v)
                 slack = SHELL_FIT_TOL * max(x1 - x0, 1e-9)
-                out_l = max(0.0, -half_w - x0)
-                out_r = max(0.0, x1 - half_w)
+                out_l = max(0.0, s_x0 - x0)
+                out_r = max(0.0, x1 - s_x1)
                 if max(out_l, out_r) > slack:
-                    contain_fail.append((place["key"], half_w, x0, x1,
+                    contain_fail.append((place["key"], s_x0, s_x1, x0, x1,
                                          out_l, out_r))
+                if y1 > s_ceil * (1.0 + SHELL_FIT_TOL):
+                    height_fail.append((place["key"], s_ceil, y1))
+        boxes.append((place, s_x0, s_x1))
         rows.append((place["key"], half_w, w_span, x0, x1, w_full))
 
+    # OVERLAP. Two shells share space when their decks, their z bands and their
+    # arcs all intersect. Arc, not metres: the same 5 m of x is a different
+    # angle on a 191 m ring than on a 250 m one, and comparing metres would
+    # both miss and invent collisions between rings.
+    over = []
+    for i in range(len(boxes)):
+        p, ax0, ax1 = boxes[i]
+        try:
+            r_i = _ring_cells(schema, profile, p["sector"], p["ring"],
+                              p["deck"])["radius_m"]
+        except Exception:                                       # noqa: BLE001
+            continue
+        hl_i = room_axial_half_m(schema, profile, p)
+        for j in range(i + 1, len(boxes)):
+            q, bx0, bx1 = boxes[j]
+            if (q.get("sector"), q.get("ring"), q.get("deck")) != (
+                    p.get("sector"), p.get("ring"), p.get("deck")):
+                continue
+            hl_j = room_axial_half_m(schema, profile, q)
+            if abs(q.get("z_m", 0.0) - p.get("z_m", 0.0)) >= hl_i + hl_j:
+                continue
+            ia = (p.get("angle_deg", 0.0) + math.degrees(ax0 / r_i),
+                  p.get("angle_deg", 0.0) + math.degrees(ax1 / r_i))
+            ja = (q.get("angle_deg", 0.0) + math.degrees(bx0 / r_i),
+                  q.get("angle_deg", 0.0) + math.degrees(bx1 / r_i))
+            lo, hi = max(ia[0], ja[0]), min(ia[1], ja[1])
+            if hi - lo > 1e-9:
+                over.append((p["key"], q["key"], hi - lo,
+                             math.radians(hi - lo) * r_i))
+
     out = print if verbose else (lambda *a, **k: None)
-    tag = "LEGACY control" if legacy else "shell fit"
+    tag = ("LEGACY control" if legacy
+           else "BROKEN control" if break_shell else "shell fit")
     out(f"{tag}: {len(rows)} places measured, tolerance "
         f"{SHELL_FIT_TOL * 100:.0f}% of the room's own extent")
-    for key, hw, x0, x1, ol, orr in sorted(contain_fail,
-                                           key=lambda r: -(r[4] + r[5])):
-        out(f"  CONTAIN {key:<24} shell +/-{hw:7.2f} m, mesh {x0:8.2f} .. "
-            f"{x1:8.2f} m -- {ol:7.2f} m outside left, {orr:7.2f} m right")
-    for key, shell_w, w_span in sorted(span_fail,
-                                       key=lambda r: r[1] / max(r[2], 1e-9)):
-        out(f"  SPAN    {key:<24} shell {shell_w:8.2f} m against "
-            f"built_span_m {w_span:8.2f} m  ({100 * shell_w / w_span:5.1f}%)")
+    for key, sx0, sx1, x0, x1, ol, orr in sorted(contain_fail,
+                                                 key=lambda r: -(r[5] + r[6])):
+        out(f"  CONTAIN {key:<24} shell {sx0:8.2f} ..{sx1:8.2f} m, mesh "
+            f"{x0:8.2f} ..{x1:8.2f} m -- {ol:7.2f} m outside left, "
+            f"{orr:7.2f} m right")
+    for key, ceil, y1 in sorted(height_fail, key=lambda r: r[1] / r[2]):
+        out(f"  HEIGHT  {key:<24} shell ceiling {ceil:6.2f} m over a "
+            f"{y1:6.2f} m room  ({100 * ceil / y1:5.1f}%)")
+    for key, sw, want, src in sorted(span_fail,
+                                     key=lambda r: r[1] / max(r[2], 1e-9)):
+        out(f"  SPAN    {key:<24} shell {sw:8.2f} m against {src} "
+            f"{want:8.2f} m  ({100 * sw / want:5.1f}%)")
     for key, w_span, w_full in foot_fail:
         out(f"  FOOT    {key:<24} claims {w_span:8.2f} m of a "
             f"{w_full:8.2f} m footprint")
-    bad = len(contain_fail) + len(span_fail) + len(foot_fail)
+    for key, a, b, m_ in sorted(over, key=lambda r: -r[3]):
+        out(f"  OVERLAP {key:<24} shares {m_:6.2f} m ({b:.3f} deg) of arc "
+            f"with {a}")
+    bad = (len(contain_fail) + len(height_fail) + len(span_fail)
+           + len(foot_fail) + len(over))
     out(f"  {len(contain_fail)} rooms have geometry outside their own collision "
-        f"shell, {len(span_fail)} shells disagree with built_span_m, "
-        f"{len(foot_fail)} rooms wider than their footprint")
+        f"shell, {len(height_fail)} taller than their shell's ceiling, "
+        f"{len(span_fail)} shells disagree with their builder, "
+        f"{len(foot_fail)} rooms wider than their footprint, "
+        f"{len(over)} pairs of shells overlapping")
+    # REPORTED, NOT COUNTED, AND SAID OUT LOUD RATHER THAN LEFT OUT. Both of
+    # these are real and neither is this file's to fix: the first needs one
+    # line in `bespoke.axial_plan`, the second a wider footprint in the
+    # gazetteer or a narrower `quarters`. Their consequences ARE gated -- a
+    # stale `built_span_m` cannot make a shell wrong, because SPAN asks the
+    # module; a shell outside its footprint cannot make two rooms interpenetrate
+    # without OVERLAP firing. The patches are in
+    # `scratchpad/PATCHES-4t-shellfit.md`.
+    for key, w_span, w_mod in sorted(stale, key=lambda r: r[1] / r[2]):
+        out(f"  note STALE    {key:<20} rooms.built_span_m says {w_span:7.2f} m; "
+            f"the module builds {w_mod:7.2f} m")
+    for key, sw, w_full in overfoot:
+        out(f"  note OVERFOOT {key:<20} shell {sw:7.2f} m in a {w_full:7.2f} m "
+            f"footprint -- OVERLAP above is what makes that safe")
+    if stale or overfoot:
+        out(f"  ({len(stale)} stale builder widths, {len(overfoot)} shells "
+            f"outside their footprint -- reported, not counted: neither is "
+            f"in this file and both are gated by SPAN/OVERLAP above)")
     return rows, bad
 
 
@@ -2478,6 +2722,14 @@ def main():
     ap.add_argument("--legacy", action="store_true",
                     help="--shell-fit's negative control: the pre-4k "
                          "min(room_extent_m, bay_span_m) expression")
+    ap.add_argument("--break-shell", default="", metavar="KEY:FACTOR[,...]",
+                    help="--shell-fit's OTHER negative control, and the one "
+                         "that does not depend on history: scale one named "
+                         "room's shell by FACTOR and watch the gate catch it. "
+                         "Under 1.0 the mesh escapes the shell (CONTAIN); "
+                         "over 1.0 the shell reaches into its neighbour "
+                         "(OVERLAP). A gate that only fires on the code it "
+                         "replaced cannot catch the next defect")
     a = ap.parse_args()
     if a.selftest:
         return _selftest()
@@ -2487,9 +2739,21 @@ def main():
         return _degeneracy()
     if a.shell_fit:
         schema, profile = it.load()
-        _rows, bad = shell_fit(schema, profile, legacy=a.legacy)
+        brk = {}
+        for item in filter(None, a.break_shell.split(",")):
+            k, _s, f = item.partition(":")
+            brk[k.strip()] = float(f or 0.5)
+        if brk and not any(q["key"] in brk for q in dr.PLACES):
+            print(f"no such place: {', '.join(sorted(brk))}")
+            return 2
+        _rows, bad = shell_fit(schema, profile, legacy=a.legacy,
+                               break_shell=brk or None)
         if a.legacy:
             print("  (negative control -- this is the expression that shipped)")
+        if brk:
+            print(f"  (negative control -- {', '.join(f'{k} x{v}' for k, v in sorted(brk.items()))} "
+                  f"broken on purpose; a run that comes back clean means the "
+                  f"gate has stopped looking)")
         return 1 if bad else 0
 
     schema, profile = it.load()

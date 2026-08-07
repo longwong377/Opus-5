@@ -432,7 +432,7 @@ def _quad(verts, tris, pts, want):
 
 
 def room_shell(meta, angle_deg, hw_m, hl_m, ceil_m, z_m, door_angle_deg=None,
-               steps=None):
+               steps=None, x_off_m=0.0):
     """A room's collision: floor, ceiling, four walls, and a hole to get in by.
 
     ROOMS GET A SHELL FOR THE SAME REASON THE CORRIDOR DOES. `articulate` runs
@@ -447,13 +447,31 @@ def room_shell(meta, angle_deg, hw_m, hl_m, ceil_m, z_m, door_angle_deg=None,
     decomposition per prop type, not trimesh per instance -- and it is its own
     task, not a line in this one.
 
-    The room's frame is the ring's: it spans `angle_deg +/- hw/r`, world z from
-    `z_m -/+ hl`, and radius from the deck floor inward by `ceil_m`.
+    The room's frame is the ring's: it spans `angle_deg + (x_off +/- hw)/r`,
+    world z from `z_m -/+ hl`, and radius from the deck floor inward by `ceil_m`.
+
+    `x_off_m` IS WHY THE BEARING IS NOT THE CENTRE, and leaving it out of the
+    signature is what let twenty rooms ship with their geometry outside their
+    own collision. `deck._place_local` maps a room's local x = 0 onto the
+    place's bearing, and `bespoke.room_shell` recentres a module's x on its
+    DOORWAY rather than on its bounding box -- its own note says local x = 0
+    "is not a centre, it is a DOORWAY, and the bounding box only coincides with
+    it when a module happens to be symmetric". `arrival_concourse` runs
+    -17.37..+3.53 m about that doorway. A single half-width symmetric about the
+    bearing cannot express that room: sized to contain it, it over-reaches
+    13.84 m into the next place's arc; sized to its footprint, a body walks out
+    through the wall. So the caller states the box's CENTRE as well as its half
+    width, and `deck.room_box_m` is the one function that measures both.
+
+    It defaults to 0.0 and the default is exactly the old behaviour -- with
+    `x_off_m = 0` every vertex this emits is bit-for-bit what it emitted before
+    the parameter existed, which is the control `_selftest` asserts.
     """
     r = meta["floor_r_m"]
     ceil_r = r - ceil_m
     da = hw_m / r
-    a0, a1 = math.radians(angle_deg) - da, math.radians(angle_deg) + da
+    mid = math.radians(angle_deg) + x_off_m / r
+    a0, a1 = mid - da, mid + da
     z0, z1 = z_m - hl_m, z_m + hl_m
     n = steps or max(2, int(math.ceil(2 * da / max(
         2.0 * math.acos(max(-1.0, 1.0 - MAX_SAG_M / max(r, 1e-9))), 1e-9))))
@@ -1066,6 +1084,64 @@ def _selftest():
     check("and with the doors omitted the same ray is stopped",
           seal_hit is not None and seal_hit < 1.5,
           f"sealed wall let the ray through at {seal_hit}")
+
+    # --- the room shell's OFF-CENTRE box ------------------------------------
+    # `room_shell` is the only thing in this module a room's walls come from,
+    # and until session 4t it could only describe a box centred on the place's
+    # bearing. It cannot be measured by `deck.py --shell-fit` alone: that gate
+    # scores the ARITHMETIC that chooses the numbers, and would still pass if
+    # this function ignored the number it was handed. So the parameter is
+    # asserted here, in the module that builds the thing.
+    rm = dict(m)
+    ROOM = dict(angle_deg=158.0, hw_m=6.0, hl_m=9.0, ceil_m=3.4,
+                z_m=7120.0, door_angle_deg=158.0)
+    base_v, base_t = room_shell(rm, **ROOM)
+    zero_v, zero_t = room_shell(rm, x_off_m=0.0, **ROOM)
+    check("x_off_m = 0 is the shell that shipped, vertex for vertex",
+          zero_v == base_v and zero_t == base_t,
+          f"{sum(1 for a, b in zip(zero_v, base_v) if a != b)} vertices moved "
+          f"with the offset set to zero")
+
+    # An offset must move the box by exactly its own arc length and not resize
+    # it -- a fractional error here is a wall in the wrong place on 20 rooms.
+    off_m = 4.25
+    sh_v, _sh_t = room_shell(rm, x_off_m=off_m, **ROOM)
+    r_f = rm["floor_r_m"]
+
+    def _arc_span(vv):
+        aa = [math.atan2(p[1], p[0]) for p in vv]
+        return min(aa), max(aa)
+
+    b0, b1 = _arc_span(base_v)
+    s0, s1 = _arc_span(sh_v)
+    check("an offset shell is the same size as the one it came from",
+          abs((s1 - s0) - (b1 - b0)) < 1e-12,
+          f"span {(s1 - s0) * r_f:.6f} m against {(b1 - b0) * r_f:.6f} m")
+    check("and it is moved by exactly the metres it was asked for",
+          abs((s0 - b0) * r_f - off_m) < 1e-6
+          and abs((s1 - b1) * r_f - off_m) < 1e-6,
+          f"moved {(s0 - b0) * r_f:.6f} m / {(s1 - b1) * r_f:.6f} m "
+          f"against {off_m} m")
+
+    # THE DOORWAY IS AN ABSOLUTE BEARING AND MUST NOT TRAVEL WITH THE BOX.
+    # `deck_plan` decides where the corridor's leaf lands; the room's box moves
+    # because its module is not symmetric about that leaf. If the aperture
+    # slid with the offset, every off-centre room would have its hole in the
+    # wrong wall segment and the vestibule would open onto a solid.
+    def _open_at(vv, tt, deg):
+        aa = math.radians(deg)
+        rr = rm["floor_r_m"] - 1.0
+        return cast((rr * math.cos(aa), rr * math.sin(aa),
+                     ROOM["z_m"] + ROOM["hl_m"] - 1.0),
+                    (0.0, 0.0, 1.0), vv, tt)
+    check("the doorway stays on its own bearing when the box moves",
+          _open_at(sh_v, _sh_t, ROOM["door_angle_deg"]) is None,
+          "the offset carried the aperture away from the corridor's leaf")
+    sealed_v, sealed_t = room_shell(rm, x_off_m=off_m,
+                                    **dict(ROOM, door_angle_deg=None))
+    check("and with no door the same ray is stopped -- the control",
+          _open_at(sealed_v, sealed_t, ROOM["door_angle_deg"]) is not None,
+          "a shell built with no doorway still let a ray out")
 
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
