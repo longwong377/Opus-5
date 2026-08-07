@@ -13249,3 +13249,122 @@ and one conversation is legible without being decisive.
 **What would overturn it.** A scene in which a single exchange visibly changes a faction's
 posture toward the player. Then the scale is wrong by an order of magnitude — and the ordering
 still is not.
+
+## INV-1190 — a garment panel has a thickness, and it is 10 mm
+
+**What.** `station/npc/costume.py::GARMENT_T_M` = 0.010 m, the distance every garment panel
+stands proud of the body surface it is sewn to, and therefore the width of the rim you see
+when you look at its edge. `GARMENT_INSET_M` = 0.003 m is how far the panel's hidden inner
+surface runs inside the part, so the rim a camera sees is 13 mm.
+
+**Why it exists at all.** Until 4t round 2 no panel here had a thickness, because no panel was
+a panel: `_band`, `_band_e` and the yoke were two rings through `body._loft`, which caps both
+ends, and a cap is a horizontal disc the full width of the thing it closes. Measured on a
+corridor-bake figure with `--panels --legacy`, those discs were **53.1% of the yoke's surface
+area, 81.7% of the hem's, 78.8% of the belt's, 59.7% of a boot top's and 45.2% of a cuff's**.
+judge-4t round 2, looking only at frames, called it "a flat octagonal tray floating across the
+shoulders" and "the single artefact that destroys the figure at the rubric's half-distance
+test". It was right.
+
+**What constrained the number.** `reference/14-characters-and-uniforms/earthforce security
+uniforms.jpg` is an orthographic three-view; its front figure is 610 px crown to sole for a
+nominal 1.80 m, so **339 px/m**, and the dark panel's edge reads as a 2 px line = **5.9 mm**.
+That is the drawn line rather than the cloth: a faced and interlined garment panel is shell
+plus facing plus interlining, so the built edge is twice it. The number also has a stated
+visual life — at 1280 px and the deck shot's horizontal field it is 1475 px/m at the rubric's
+HALF distance (0.62 m), so **14.7 px**; **7.4 px** at the NORMAL 1.245 m; and it falls under one
+pixel at **9.1 m**, past the corridor's conversational range. Authority 5.
+
+**What would overturn it.** Any authority-1 frame that resolves a garment edge against a known
+scale. A measurement between 4 and 8 mm would make the built rim twice what it should be; the
+FORM — that the edge exists at all and has an underside — does not depend on the number.
+
+## INV-1191 — the seam is a diagonal, and the closure is a wrap
+
+**What.** `YOKE_SEAM_TILT_M` = 0.071 m, the peak-to-trough drop of the yoke's lower seam across
+the figure; `PLACKET_W_TOP_M` = 0.112 m and `PLACKET_W_BOT_M` = 0.056 m, the closure strip's
+width at the collarbone and at the belt; `PLACKET_OFFSET_TOP_M` = 0.028 m, how far the strip's
+centreline sits off the body's midline at the top. Which shoulder the wrap goes over is drawn
+per resident.
+
+**What constrained them.** All four measured off `earthforce security uniforms.jpg` at the
+339 px/m derived in INV-1190, classifying by the panel's own colour (57,28,24) against the
+uniform's (126,126,126):
+
+* the panel is **FRONT-ONLY**. Over the back view (x 820..1015) it returns **zero** pixels for
+  every row from y=162 to y=300. What this file had been building — a band ringing the
+  shoulders at constant height — does not exist on the reference at all.
+* its top edge is the shoulder line, y=144; its lower boundary on the wearer's right is y=168.
+  24 px = **0.071 m**. On the wearer's left there is no panel.
+* the strip's inboard edge runs x=107 at y=168 to x=126 at y=312, outboard edge fixed at
+  x=145: **38 px (0.112 m) tapering to 19 px (0.056 m)** over 0.425 m of height.
+* torso half-width there is 72.5 px about a centre of x=135.5, so the strip's centre at the top
+  is 9.5 px = **0.028 m** to the wearer's right of the midline. It is a wrap, not a centre
+  placket.
+
+**Corroborated and deliberately not measured.** `Talia Winters in uniform.webp` is authority 1
+and shows the same asymmetric diagonal wrap running from the shoulder point across the chest. A
+gradient trace of that frame returns noise — peak |d/dx| of 2-4 on a jacket sitting at
+luminance 15-30 — so it is cited for the SHAPE and no number is taken from it.
+
+**Authority.** The plate is a fan orthographic, not a screencap: authority 4 for the numbers,
+and the shape is authority 1 from Talia. Which shoulder is authority 5 — the reference shows
+one figure — and it is drawn from the same hash as every other per-resident choice, so half the
+crowd wraps the other way. That is also the only per-resident variation this pipeline can
+express in geometry; INV-815 records why `Costume.value_jitter` still reaches nothing.
+
+**What would overturn it.** Any authority-1 frame resolving a civilian yoke seam against a
+known scale, or a screencap showing a symmetric centre-front closure on a Season 2-3 civilian.
+
+## INV-1192 — a seam is where a panel EMERGES, not where its boundary is
+
+**What.** `_sheath`'s `emerge` argument. The yoke's diagonal seam is built by keeping every ring
+of the panel LEVEL and varying, per azimuth and height, how far proud of the body the panel
+stands: tucked 43 mm inside below its own seam, 10 mm proud above it.
+
+**What constrained it — and this is a constraint from one level down, not a preference.**
+`animation._ring_partition` requires a part to decompose into equal runs of EQUAL HEIGHT and
+returns None otherwise; `animation.rig` then raises *"part 'torso' is not a ring loft; cannot
+bind"*, and `populace._posed` swallows that in a bare `except`, so the whole station falls back
+to the bind pose with nothing said. The first build of this section moved the panel's boundary
+in y per azimuth and hit exactly that: **0 of 64 figures rigged**. `--construct` caught it;
+`--panels` did **not**, because a fallback returns the same triangle count — the same
+"only running the thing tells you the caller runs" lesson CLAUDE.md already records, arriving
+through a gate written the same session.
+
+**Why it is also the better shape.** The panel is hidden inside the body below its own seam, so
+the rendered edge is the curve where the outer sheet crosses the body surface — continuous
+however coarsely the ramp between levels is sampled, and it reads as cloth going under cloth
+rather than as a free edge lying on top of it, which is what a yoke seam is.
+
+**What would overturn it.** `animation._ring_partition` learning to bind a non-level stack.
+Then the boundary could move in y directly and the seam could carry a visible rim.
+
+## INV-1193 — a fitting keeps its own segment count, and a stooped part still has rings
+
+**What.** `_subsample(rings, want)` thins the body's ring stack to the panel's own `_att_seg`
+count by a power-of-two stride, so a panel keeps the body's OWN vertices at the panel's own
+resolution. `_rings_by_period(verts)` recovers a ring stack from the period of the part's x
+coordinates when `body._y_rings` cannot.
+
+**What constrained the first.** `_att_seg` exists to say that a fitting is sized by its own
+sagitta and not by the body's; the first build of section 7c forgot it and took
+`len(rings[0])` wholesale. At the corridor bake the torso is 8 segments and nothing changed; at
+LOD0 it is 64, and clothing went from **412 to 3,840 triangles**, past this module's own budget
+assertion. The cost of thinning is stated rather than assumed: a 16-gon inscribed in the body's
+64-gon has its chord 0.24(cos(pi/64) - cos(pi/16)) = **4.3 mm** inside the body's, so a panel
+standing 10 mm proud is still **5.7 mm** proud at the worst point between two shared vertices —
+where an ellipse re-derived at 16 segments would poke through by 4.6 mm.
+
+**What constrained the second.** `body._y_rings` groups by equal height and returns None for a
+STOOPED part, because `body._bend` rotates y as a function of z. **Six of eight species arrived
+there** — minbari, narn, centauri, drazi, brakiri and pak'ma'ra — and silently kept the capped
+tube while human and vree got the shell, with every gate in the file passing. It was `--panels`
+printing per species that said so. `body._ring` places vertex i at theta = 360 i / seg and the
+stoop does not touch x, so the x sequence within a ring is `rx cos(2 pi i / seg)` whatever has
+been done to y and z; the period of that is recoverable exactly, scored by correlation with a
+floor of 0.90 so it refuses to answer on anything that is not a loft.
+
+**What would overturn either.** A body part that is not a stack of equal rings at all. Both
+return None for that and the panel falls back to the capped tube, which `--panels` then fails —
+loudly, which is the point.
