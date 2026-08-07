@@ -340,6 +340,28 @@ def _v_buy():
         except Exception as e:                                # noqa: BLE001
             both, note = False, "%s: %s" % (type(e).__name__, str(e)[:120])
         claims.append(("credits and stock move BOTH ways", both, note))
+        # A SECOND DIRECTION IS ALSO A SECOND WAY TO BREAK THE MONEY, and the
+        # first version of this verb did. `bid` was a fraction of the LOCAL
+        # shelf, so buying a line at one counter and selling it at another
+        # paid: 23 of 65 lines, worst `identicard blanks` at +171% a lap
+        # (black_market 6.88 -> ngrath 18.68) through `VENUE_MULT`. The row's
+        # CHECK is that credits and stock move both ways, and a market where
+        # the round trip is free is not a market -- so the claim belongs
+        # here, at the spec, and not only in the module's own gate. INV-1015.
+        pump = EC.cross_pump()
+        board = EC.laps()
+        claims.append(("...and no round trip anywhere on the station is free",
+                       not pump and len(board) > 0,
+                       ("%d of %d tradable line(s) pay to arbitrage; worst "
+                        "%s: buy `%s` %.2f -> sell `%s` %.2f = %+.2f cr/lap"
+                        % (len(pump), len(board), pump[0][1], pump[0][2],
+                           pump[0][3], pump[0][4], pump[0][5], pump[0][0]))
+                       if pump else
+                       ("0 of %d tradable line(s); every bid is capped by "
+                        "economy.shelf_floor, so the best lap on the board is "
+                        "%s at %+.2f cr" % (len(board), board[0][1],
+                                            board[0][0]))
+                       if board else "no tradable line has a shelf anywhere"))
         # AND THE FENCE IS A DIFFERENT ANSWER FROM THE SHOP, which is the half
         # of the row that makes the black market a mechanic rather than a
         # second shopfront: a rung the reader rejects must still be able to
