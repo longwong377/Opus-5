@@ -5195,6 +5195,7 @@ def build(args):
     os.makedirs(out_dir, exist_ok=True)
     scene = SHOTS[args.shot](args, out_dir)
     check_material_coverage(scene, strict=not args.allow_unbound)
+    check_shipped_table(strict=not args.allow_unbound)
     scene["out_png"] = args.out
     # BEFORE `apply_grade`, so an explicit `--tonemap-exposure` still wins over
     # the pair -- the same precedence `render_shot.gd::_apply_grade` states
@@ -5263,6 +5264,63 @@ def check_material_coverage(scene, strict=True):
                + ("..." if len(missing) > 8 else "")
                + ". Add a bind in station/materials.py and re-run "
                  "`python3 station/materials.py --export`.")
+        if strict:
+            raise ValueError(msg)
+        print(f"note: {msg}")
+    return missing
+
+
+# ---------------------------------------------------------------------------
+# AND THE SHOT IS NOT THE SHIPPED BUILD -- THE OTHER HALF OF THE SAME QUESTION
+# ---------------------------------------------------------------------------
+# `check_material_coverage` above asks the tightest question there is: it takes
+# the group names a shot ACTUALLY EMITTED and asserts the shot's own scene file
+# can match every one. It cannot ask that of the shipped build, because the
+# shipped build has no group list until a cell exists on disk, and building one
+# is minutes of CPU.
+#
+# THE DEFECT THAT MAKES THIS NECESSARY, session 4t. `dress_scene.gd` holds one
+# constant -- `INTERIOR_SCENE := "res://scenes/interior.tscn"` -- and dresses
+# EVERY streamed cell from that table. `stream.gd`, `walk.gd`, `main.gd` and
+# `arrival.gd` all route through it; the only reader of `drum.tscn` anywhere in
+# the project is `--shot drum`. So `interior.tscn` is the STATION'S table, and
+# cell `green_1_0` -- the habitat drum, which holds the ground, the townscape,
+# the core tube, the trusses, the trams AND the `earharts` and `fresh_air` bar
+# interiors -- carried 124 group tails that table could not match. Dressed from
+# it, 231 of the cell's 329 mesh instances got no rule, and `interior.tscn`
+# declares no `fallback_material`, so they kept the glTF default: white plastic.
+#
+# It is here, beside `check_material_coverage` and in `build()`, for that
+# function's own stated reason: every shot passes through this one place, and a
+# question asked in four shot builders is three chances to forget. The shipped
+# table is a fact about the PROJECT rather than about the shot, so it is asked
+# on every export regardless of which shot is being taken -- the same shape as
+# `apply_headroom`, which is in `build()` because a compensated pair has two
+# legs and they must move together.
+#
+# It costs no build and no artefact: `materials.hull_vocabulary()` is derived
+# from `dressing.MACHINES`, `rooms.FIXTURES`/`PLACE_FIXTURES`/`PROPS`, the
+# generator source scan and `GROUP_ALIASES`.
+def check_shipped_table(strict=True):
+    """The table the shipped build dresses from must cover the whole hull.
+
+    Returns the unmatched group names. Raises when `strict` and there are any.
+    """
+    import materials as mats                                   # noqa: PLC0415
+    scene = mats.SHIPPED_SCENE
+    vocab = mats.hull_vocabulary()
+    missing = mats.unbound_in_table(scene, vocab)
+    if missing:
+        msg = (f"the shipped material table ({scene}.tscn, the one "
+               f"godot/scripts/dress_scene.gd reads for EVERY streamed cell) "
+               f"matches {len(vocab) - len(missing)} of {len(vocab)} group "
+               f"names an in-hull generator can emit. {len(missing)} would "
+               f"keep the glTF default -- white plastic, because "
+               f"interior.tscn declares no fallback_material: "
+               f"{', '.join(missing[:8])}"
+               + ("..." if len(missing) > 8 else "")
+               + ". Widen station/materials.py's SCENE_VOLUME or add a bind, "
+                 "then re-run `python3 station/materials.py --export`.")
         if strict:
             raise ValueError(msg)
         print(f"note: {msg}")
@@ -5810,6 +5868,40 @@ def _selftest():
         check(False, "check_material_coverage RAISES in strict mode")
     except ValueError:
         check(True, "check_material_coverage RAISES in strict mode")
+
+    # -- THE SHIPPED TABLE, WHICH THE DECK VOCABULARY ABOVE CANNOT REACH ---
+    #
+    # `deck_vocab` is `dress_`/`fix_`/`prop_` -- the room and corridor families
+    # -- so it can only ever fail for something a ROOM emits. The habitat drum
+    # emits `ground_*`, `garden_*`, `core_*`, `endcap_*`, `truss_*`, `tram_*`
+    # and `spoke_*`, all of which were bound in `drum.tscn` and absent from the
+    # table the shipped build actually reads, and the check above passed
+    # throughout. Same shape as the Starfury miss recorded in materials.py: a
+    # coverage check is only as wide as its vocabulary.
+    import materials as mats                                   # noqa: PLC0415
+    _hull = mats.hull_vocabulary()
+    check(len(_hull) > len(deck_vocab) + 100,
+          f"the hull vocabulary reaches past the room families "
+          f"({len(_hull)} names against deck_vocab's {len(deck_vocab)})")
+    check(not check_shipped_table(strict=False),
+          "the shipped table covers every in-hull group name")
+    # AND IT CAN FAIL. Withdraw the drum from the shipped volume and nothing
+    # else; the vocabulary is asserted not to move in materials._selftest, so
+    # this is a one-variable control.
+    _saved_vol = mats.SCENE_VOLUME[mats.SHIPPED_SCENE]
+    try:
+        mats.SCENE_VOLUME[mats.SHIPPED_SCENE] = ("interior",)
+        _ctl = check_shipped_table(strict=False)
+        check(len(_ctl) > 100,
+              f"the shipped-table check can fail: without the drum in the "
+              f"volume {len(_ctl)} in-hull groups go unmatched")
+        try:
+            check_shipped_table(strict=True)
+            check(False, "check_shipped_table RAISES in strict mode")
+        except ValueError:
+            check(True, "check_shipped_table RAISES in strict mode")
+    finally:
+        mats.SCENE_VOLUME[mats.SHIPPED_SCENE] = _saved_vol
 
     # -- the shell and the ground are the same surface --------------------
     # `interior.drum_interior()` and `drum_ground` both draw the drum floor at

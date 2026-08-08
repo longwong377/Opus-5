@@ -4657,9 +4657,110 @@ BOUND_4E = 0 if os.environ.get("MATERIALS_NO_4E") else _bind_textures()
 
 SCENES = ("exterior", "drum", "interior")
 
+# ---------------------------------------------------------------------------
+# THE SCENE A MATERIAL IS AUTHORED IN IS NOT THE VOLUME IT CAN BE SEEN IN
+# ---------------------------------------------------------------------------
+# Session 4t, and it is session 4f's 45 unbound `dress_*` groups at DECK scale.
+#
+# `Material.scenes` was written when a scene was a SHOT: three .tscn files, one
+# camera rig each, and a material belonged to whichever rig it had been measured
+# against. Under that reading the partition is airtight -- the exterior shot
+# cannot contain a bar table, so the exterior table need not carry one.
+#
+# THE SHIPPED BUILD IS NOT A SHOT. `godot/scripts/dress_scene.gd` holds
+# `const INTERIOR_SCENE := "res://scenes/interior.tscn"` and dresses EVERY
+# streamed cell from that one table; `stream.gd`, `walk.gd`, `main.gd` and
+# `arrival.gd` all go through it and none of them ever loads `drum.tscn`. The
+# only caller of `drum.tscn` in the whole project is
+# `export_scene.py --shot drum`. So `interior.tscn` stopped being "the interior
+# shot's table" and became THE STATION'S TABLE, and nothing said so.
+#
+# MEASURED, on the cell that mixes the two. `green_1_0` -- Green ring 1 deck 0,
+# the habitat drum -- holds `the_garden`, `garden_town`, `zen_garden`,
+# `garden_terrace`, `drum_endcaps`, `drum_spokes`, `drum_tram`, AND the two bar
+# interiors `earharts` and `fresh_air`, which are `hospitality` rooms standing
+# on the drum floor. Its glTF carries 329 distinct node names over 177 distinct
+# group tails, and against the two exported tables they fall out as:
+#
+#     drum table only     124 tails   ground, garden, core, endcap, truss, tram
+#     interior table only  49 tails   bar_*, dress_*, prop_* -- the two bars
+#     BOTH                  4 tails   and all four are ACCIDENTS, see below
+#     NEITHER               0 tails
+#
+# Dressed from `interior.tscn` -- which is what actually happens -- 231 of the
+# cell's 329 mesh instances match no rule. `interior.tscn` declares no
+# `fallback_material`, so `_material_for` hands back null, `dress_scene.bind`
+# skips the mesh, and the glTF's own default survives: WHITE PLASTIC. The whole
+# drum floor, both end caps, the core tube, the trusses, the trams and the
+# entire townscape.
+#
+# THE FOUR OVERLAPS ARE NOT A DESIGN, THEY ARE SUBSTRING COLLISIONS, and they
+# resolved to the WRONG material: `garden_pilaster` hit the corridor kit's
+# "pilaster" rule and painted a garden colonnade in corridor steel;
+# `tram_in_reveal` and `tram_in_skirt` hit "reveal" and "skirt" and painted a
+# tram saloon in corridor trim. Widening fixes those four as a side effect,
+# because the drum's own fragments are longer and longest-match wins.
+#
+# So the volume is declared here, ONCE, and both the resolver and the exported
+# table are derived from it. No material is duplicated and no `scenes=` tuple is
+# edited: there is still exactly one definition of each material and one
+# statement of which rig owns it.
+#
+# ---------------------------------------------------------------------------
+# AND IT IS DELIBERATELY ASYMMETRIC. Read this before "fixing" that.
+# ---------------------------------------------------------------------------
+# The obvious tidy move is to make `drum` and `interior` mutually inclusive --
+# one pressurised volume, one table each way. It is wrong for two reasons, and
+# both are measurable rather than aesthetic:
+#
+#   1. SUBSTRING MATCHING MEANS A BIGGER TABLE IS A WEAKER GATE. Pouring the
+#      interior's 561 fragments into `drum.tscn` would let a genuinely broken
+#      drum bind pass by colliding with an interior fragment -- exactly how
+#      `garden_pilaster` "passed" for as long as it did. `--shot drum` is the
+#      only reader of that table and `check_material_coverage` already asserts
+#      it against `drum_parts`' REAL emitted group list, which is a tighter test
+#      than any vocabulary. Widening it would trade a tight gate for a loose one
+#      to protect against geometry the shot does not build.
+#   2. THE DRUM DIRECTION IS ALREADY PROTECTED AND THE INTERIOR ONE WAS NOT.
+#      If `drum_parts` ever grows the bars, `check_material_coverage` fails
+#      loudly on the real names at the next export and whoever does it widens
+#      the volume then. Nothing whatsoever protected the shipped table, because
+#      the shipped table has no group list until a cell is built -- which is why
+#      `hull_vocabulary()` below is derived from source instead.
+#
+# The two scenes are not symmetric because one is a shot and the other is the
+# station.
+SHIPPED_SCENE = "interior"
+SCENE_VOLUME = {
+    "exterior": ("exterior",),
+    # `--shot drum` reads this table and nothing else does. Its coverage is
+    # asserted against the shot's real group list, not against a vocabulary.
+    "drum": ("drum",),
+    # THE STATION'S TABLE. Everything `dress_scene.gd` will ever be handed.
+    "interior": ("interior", "drum"),
+}
+
+
+def table_scenes(scene):
+    """The scene tags whose materials reach `scene`'s exported rules table."""
+    return SCENE_VOLUME.get(scene, (scene,))
+
 
 def scene_materials(scene):
+    """Materials this scene OWNS -- its palette, and its draw-call inventory.
+
+    Deliberately NOT widened by `SCENE_VOLUME`. "How many materials does the
+    drum rig own" and "which fragments must the interior table be able to
+    match" are different questions, and conflating them is what produced the
+    defect above. `godot_rules` answers the second.
+    """
     return tuple(m for m in MATERIALS if scene in m.scenes)
+
+
+def table_materials(scene):
+    """Materials whose binds belong in `scene`'s exported rules table."""
+    vol = table_scenes(scene)
+    return tuple(m for m in MATERIALS if any(s in m.scenes for s in vol))
 
 
 # ---------------------------------------------------------------------------
@@ -4672,10 +4773,17 @@ def resolve(group, scene=None):
     Identical rule to `godot/scripts/render_shot.gd::_material_for`, on purpose:
     if this function and the engine disagreed about which material a group got,
     every render would be judging something other than what ships.
+
+    That is also why `scene` is widened through `SCENE_VOLUME` here and not only
+    in `godot_rules`: the engine matches against the TABLE, so a resolver that
+    used the narrow set would report a drum group unbound in the interior while
+    the shipped build painted it correctly, and the two would disagree in
+    exactly the way this docstring forbids.
     """
+    vol = None if scene is None else table_scenes(scene)
     best, best_len = None, -1
     for m in MATERIALS:
-        if scene is not None and scene not in m.scenes:
+        if vol is not None and not any(s in m.scenes for s in vol):
             continue
         for frag in m.binds:
             if frag in group and len(frag) > best_len:
@@ -4693,14 +4801,30 @@ def godot_rules(scene):
     The first version emitted binds only, and every `drum_*` land-use band
     would have come up unbound inside the drum.
     """
+    vol = table_scenes(scene)
     out = {}
-    for m in scene_materials(scene):
+    for m in table_materials(scene):
         for frag in m.binds:
             out[frag] = m.name
     for group, name in GROUP_ALIASES.items():
-        if scene in BY_NAME[name].scenes:
+        if any(s in BY_NAME[name].scenes for s in vol):
             out[group] = name
     return dict(sorted(out.items()))
+
+
+def table_hit(group, scene):
+    """What `scene`'s EXPORTED table gives this group -- material name or None.
+
+    `resolve_any` answers from the library; this answers from the artefact the
+    engine actually reads, which is the only answer that can be wrong in a way
+    a player sees. Same matcher as `render_shot.gd::_material_for` and
+    `dress_scene.gd::bind`: substring, longest fragment wins.
+    """
+    best, best_len = None, -1
+    for frag, name in godot_rules(scene).items():
+        if frag in group and len(frag) > best_len:
+            best, best_len = name, len(frag)
+    return best
 
 
 # Every group name the generators emit, so a group added without a material is
@@ -6787,8 +6911,23 @@ def _scan_generator_groups():
     fail the build.
     """
     import re
+    # `garden` and `spoke` joined the list in 4t. They are not decoration: of
+    # the 124 group tails the habitat drum emits that the shipped table could
+    # not match, SIXTY-TWO are `garden_*` -- the entire townscape, every tree,
+    # every hedge, every civic block -- and the scan could not see one of them,
+    # because the prefix list was written when the drum meant ground, endcaps,
+    # trusses, core and trams. A coverage check is only as wide as its
+    # vocabulary, and this is the third time that sentence has had to be
+    # written in this file.
+    #
+    # `bar` is deliberately NOT here. The bar interiors are `interior`-scene
+    # rooms and their groups are already covered by the `dress_`/`fix_`/`prop_`
+    # families the derived vocabulary builds; adding the prefix would pull in
+    # `bar_counter` and `bar_unnamed`, which are an interact token and an
+    # economy key, and buy nothing.
     pat = re.compile(
-        r'"((?:drum|endcap|truss|tram|core|ground|greeble|light)_[a-z0-9_]*)"')
+        r'"((?:drum|endcap|truss|tram|core|ground|greeble|light'
+        r'|garden|spoke)_[a-z0-9_]*)"')
     found = set()
     d = os.path.dirname(os.path.abspath(__file__))
     for fn in sorted(os.listdir(d)):
@@ -6902,7 +7041,104 @@ NOT_GROUPS = {
     # file IS a generator and one day may emit a `light_` group the scan should
     # see.
     "drum_office",
+    # -- ARRIVING WITH THE `garden` PREFIX, 4t --------------------------------
+    # A `startswith` test, not a group. `drum_dressing.py` asks
+    # `g.startswith("garden_")` to separate the townscape's groups from the
+    # ground's; the trailing underscore is the tell.
+    "garden_",
+    # A DIRECTORY PLACE KEY -- PLC "The Garden's townscape". `civic_calendar.py`
+    # schedules events IN it and `drum_dressing.py` builds it, so the string
+    # appears in a real generator, but the surfaces it emits are `garden_block`,
+    # `garden_slab`, `garden_trunk` and the rest. Same line as "drum_office"
+    # above and for the same reason.
+    "garden_town",
 }
+
+# ---------------------------------------------------------------------------
+# THE VOCABULARY THE SHIPPED TABLE HAS TO COVER
+# ---------------------------------------------------------------------------
+# `check_material_coverage` asks the right question of a SHOT: it takes the real
+# group list a shot emitted and asserts the shot's own scene file can match all
+# of it. The shipped build has no such list -- `dress_scene.gd` is handed
+# whatever cell the streamer loaded, and the only way to know what that contains
+# is to build the station, which is twenty minutes of CPU and cannot be a gate.
+#
+# So the question is asked of a DERIVED vocabulary instead, exactly as session
+# 4f's `dress_*` fix did: every name any in-hull generator can emit, worked out
+# from the tables the generators themselves iterate, so the gate fails when a
+# table grows a row rather than when somebody remembers to add a literal.
+#
+# Three sources, and each covers what the other two cannot:
+#
+#   the source scan     `drum|endcap|truss|tram|core|ground|greeble|light|
+#                       garden|spoke` literals in the sibling generators. This
+#                       is the half the shipped table was missing entirely.
+#   the derived tables  `dress_<kind>` from `dressing.MACHINES`, `fix_<name>`
+#                       from `rooms.FIXTURES` + `PLACE_FIXTURES`, `prop_<name>`
+#                       from `rooms.PROPS`, plus each family's `_Parts` suffixes
+#                       -- the names built by f-string at run time, which no
+#                       regex over source can see.
+#   the alias table     `GROUP_ALIASES`, whose keys are group names by
+#                       definition and which the engine only knows through the
+#                       exported table.
+#
+# EXTERIOR NAMES ARE EXCLUDED, and by construction rather than by a list: a
+# group is in the hull vocabulary only if some in-hull material claims it, or
+# it came from a family that is in-hull by definition. `hull_exterior`'s plated
+# sections and the Starfury's airframe are outside the pressure hull, are never
+# handed to `dress_scene.gd`, and asserting them against the interior table
+# would be asserting a thing that is not true.
+
+
+def hull_vocabulary():
+    """Every group name a generator inside the pressure hull can emit.
+
+    Derived from the generators' own tables and source; no build, no artefact,
+    seconds to compute. Returns a sorted tuple.
+    """
+    import dressing as _dress                                  # noqa: PLC0415
+    import rooms as _rooms                                     # noqa: PLC0415
+
+    vocab = {f"dress_{k}" for k in _dress.MACHINES}
+    for _table in (_rooms.FIXTURES, _rooms.PLACE_FIXTURES):
+        for _items in _table.values():
+            for _it in _items:
+                _n = _it[0] if isinstance(_it, (tuple, list)) else _it
+                vocab.add(f"fix_{_n}")
+    vocab |= {f"prop_{n}" for n in _rooms.PROPS}
+    for _pre in ("dress_", "fix_", "prop_"):
+        vocab |= set(_dress._Parts(_pre).all())
+
+    # The scanned literals and the alias keys, less anything ONLY an outside
+    # material claims. Tested against the raw `scenes` tags rather than through
+    # `resolve(g, scene)`, deliberately: `resolve` is widened by `SCENE_VOLUME`,
+    # so a vocabulary built through it would shrink when the widening is
+    # withdrawn -- and the negative control withdraws exactly that. A control
+    # that also moves the goalposts proves nothing.
+    inside = [m for m in MATERIALS
+              if "interior" in m.scenes or "drum" in m.scenes]
+
+    def in_hull(g):
+        if any(frag in g for m in inside for frag in m.binds):
+            return True
+        tgt = GROUP_ALIASES.get(g)
+        return bool(tgt) and bool({"interior", "drum"} & set(BY_NAME[tgt].scenes))
+
+    for g in set(_scan_generator_groups()) | set(GROUP_ALIASES):
+        if in_hull(g):
+            vocab.add(g)
+    return tuple(sorted(vocab))
+
+
+def unbound_in_table(scene, groups):
+    """Which of `groups` the EXPORTED `scene` table cannot match. Sorted list.
+
+    Against the table rather than against `resolve_any`, because the table is
+    what `render_shot.gd` and `dress_scene.gd` read and the library is not.
+    """
+    rules = godot_rules(scene)
+    return sorted(g for g in groups
+                  if not any(frag in g for frag in rules))
 
 
 def _selftest():
@@ -6970,23 +7206,31 @@ def _selftest():
     # symptom is a magenta patch in a render rather than an error anywhere.
     # This resolves every known group the way render_shot.gd does -- substring,
     # longest fragment wins -- against the exported table itself.
+    #
+    # AND IT ASKS THE UNION QUESTION, WHICH IS WHY IT COULD NOT SEE 4t's DEFECT.
+    # `all_rules` merges all three scenes, so a group bound in `drum` and absent
+    # from `interior` is reported COVERED -- and the shipped build reads
+    # `interior` alone. The union check stays, because "no group is unbound
+    # anywhere" is still worth asserting and is a different question; the
+    # per-scene one is below, against `hull_vocabulary()`.
     all_rules = {}
     for s in SCENES:
         all_rules.update(godot_rules(s))
 
-    def table_hit(group):
+    def table_hit_any(group):
         best, bl = None, -1
         for frag, name in all_rules.items():
             if frag in group and len(frag) > bl:
                 best, bl = name, len(frag)
         return best
 
-    uncovered = [g for g in KNOWN_GROUPS if table_hit(g) is None]
+    uncovered = [g for g in KNOWN_GROUPS if table_hit_any(g) is None]
     check("the EXPORTED rules table covers every known group",
           not uncovered, str(uncovered[:8]))
-    disagree = [(g, table_hit(g), resolve_any(g).name)
+    disagree = [(g, table_hit_any(g), resolve_any(g).name)
                 for g in KNOWN_GROUPS
-                if resolve_any(g) and table_hit(g) != resolve_any(g).name]
+                if resolve_any(g)
+                and table_hit_any(g) != resolve_any(g).name]
     check("the exported table and resolve_any agree on every group",
           not disagree, str(disagree[:5]))
 
@@ -7107,9 +7351,89 @@ def _selftest():
     check("every Starfury airframe section resolves to an exterior material",
           not _fury_unbound,
           f"{len(_fury_unbound)} unbound: {_fury_unbound[:8]}")
-    _untabled = sorted(g for g in vocab if table_hit(g) is None)
+    _untabled = sorted(g for g in vocab if table_hit_any(g) is None)
     check("and the EXPORTED interior rules table covers every one of them",
           not _untabled, f"{len(_untabled)} uncovered: {_untabled[:8]}")
+    # ...AND IT SAID "interior" WHILE ASKING THE UNION. `table_hit_any` merges
+    # all three scenes, so this line has never been able to fail for a group
+    # that is bound in `drum` and missing from `interior` -- which is 4t's whole
+    # defect. Kept, because the union answer is still worth having, and the
+    # honest per-scene form is immediately below.
+    _untabled_i = unbound_in_table(SHIPPED_SCENE, vocab)
+    check("and the interior table covers them IN THE INTERIOR TABLE",
+          not _untabled_i, f"{len(_untabled_i)} uncovered: {_untabled_i[:8]}")
+
+    # -- THE DRUM IS DRESSED FROM THE INTERIOR TABLE AND WAS NOT IN IT -----
+    #
+    # Session 4t. The full reasoning is at `SCENE_VOLUME`; the measurement is
+    # here because this is where it can fail.
+    #
+    # `dress_scene.gd` dresses every streamed cell from `interior.tscn` and
+    # never loads `drum.tscn`. Cell `green_1_0` is the habitat drum and it
+    # carries BOTH vocabularies -- the ground, the townscape, the core tube, the
+    # trusses and the trams from the drum's generators, and `earharts` and
+    # `fresh_air`, two `hospitality` bar interiors standing on the drum floor.
+    # Measured on that cell's glTF: 329 distinct node names, 177 distinct group
+    # tails, and against the exported tables 124 matched `drum` only, 49 matched
+    # `interior` only, 4 matched both by substring ACCIDENT and 0 matched
+    # neither. Dressed from `interior.tscn`, 231 of 329 mesh instances got no
+    # rule -- and `interior.tscn` declares no `fallback_material`, so they keep
+    # the glTF default, which is white plastic.
+    #
+    # THE VOCABULARY IS DERIVED AND THE GATE NEEDS NO BUILD. `hull_vocabulary()`
+    # is the three families above plus the source scan plus the alias keys, less
+    # anything only an outside material claims.
+    _hull = hull_vocabulary()
+    check("the hull vocabulary is wider than the room families alone",
+          len(_hull) > len(vocab) + 100,
+          f"{len(_hull)} names against {len(vocab)}")
+    _hull_missing = unbound_in_table(SHIPPED_SCENE, _hull)
+    check("the shipped table matches every group emitted inside the hull",
+          not _hull_missing,
+          f"{len(_hull_missing)} unmatched: {_hull_missing[:8]}")
+
+    # THE NEGATIVE CONTROL, IN PROCESS, ON EVERY RUN. Withdraw the widening and
+    # nothing else; the vocabulary must not move, or the A/B is a diff of a
+    # thing against itself -- the vacuous-A/B defect CLAUDE.md records twice.
+    _saved = SCENE_VOLUME[SHIPPED_SCENE]
+    try:
+        SCENE_VOLUME[SHIPPED_SCENE] = ("interior",)
+        _ctl_vocab = hull_vocabulary()
+        _ctl_missing = unbound_in_table(SHIPPED_SCENE, _hull)
+    finally:
+        SCENE_VOLUME[SHIPPED_SCENE] = _saved
+    check("the control does not move the vocabulary it is measured over",
+          _ctl_vocab == _hull,
+          f"{len(_ctl_vocab)} against {len(_hull)}")
+    check("and WITHOUT the drum in the volume that gate fails, loudly",
+          len(_ctl_missing) > 100,
+          f"only {len(_ctl_missing)} unmatched -- the gate has stopped biting")
+    print(f"  shipped table ({SHIPPED_SCENE}.tscn, the one dress_scene.gd "
+          f"reads): {len(godot_rules(SHIPPED_SCENE))} rules cover "
+          f"{len(_hull)}/{len(_hull)} in-hull group names; with the drum tag "
+          f"withdrawn {len(_ctl_missing)} go unmatched")
+
+    # AND THE DRUM SHOT'S OWN TABLE IS NOT WIDENED, WHICH IS THE OTHER HALF OF
+    # THE DECISION. `--shot drum` is the only reader of drum.tscn and
+    # `export_scene.check_material_coverage` asserts it against `drum_parts`'
+    # real group list, which is tighter than any vocabulary. Pouring the
+    # interior's 561 fragments in would let a broken drum bind pass by colliding
+    # with an interior one -- which is exactly how `garden_pilaster` reached the
+    # corridor kit's "pilaster" rule.
+    check("the drum table stays narrow -- its gate is the shot's real groups",
+          table_scenes("drum") == ("drum",), str(table_scenes("drum")))
+    check("the exterior table is untouched by the hull volume",
+          table_scenes("exterior") == ("exterior",),
+          str(table_scenes("exterior")))
+    # The four accidental overlaps, named, so that a later edit that reverses
+    # one is a visible decision. Each is a drum group that the corridor kit was
+    # claiming by substring before the volume widened.
+    for _g, _want in (("garden_pilaster", "garden_civic_render"),
+                      ("tram_in_reveal", "tram_saloon_wall"),
+                      ("tram_in_skirt", "tram_saloon_floor")):
+        check(f"{_g} resolves to the drum's own material, not the corridor kit",
+              table_hit(_g, SHIPPED_SCENE) == _want,
+              f"{table_hit(_g, SHIPPED_SCENE)} != {_want}")
 
     # -- the measured palette ---------------------------------------------
     # The headline finding, asserted so a later edit cannot quietly reverse it.
