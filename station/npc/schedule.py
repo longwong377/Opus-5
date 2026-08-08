@@ -690,8 +690,20 @@ STATION_MIX = {sp: c / RESIDENT_TOTAL for sp, c in STATION_COUNTS.items()}
 # failing test rather than a silent duplication.
 #
 # `other` is not a species and can never have a grammar: it is the tail bucket.
-SPECIES_WITHOUT_NAMES = ("brakiri", "vree", "abbai", "gaim", "hyach", "llort",
-                         "grome", "other")
+# EMPTY SINCE INV-1249: EVERY SPECIES ABOARD HAS A NAME GRAMMAR NOW.
+#
+# These eight were the species `npc/resident.py` could not name, so 447 of 3,957
+# residents shipped with the authority-1 identicard NAME field BLANK -- a
+# directly named item on the AAA standard's NPC checklist, and unmarked
+# invention under hard rule 1, which forbids a hole where an extrapolation
+# belongs. Seven grammars were derived and logged; `other` is not a species.
+#
+# KEPT AS AN EMPTY TUPLE RATHER THAN DELETED, because three call sites still
+# `continue` past it (agenda.py:263, agenda.py:936, navgraph_export.py:670,
+# each commented "L1 asks for a NAMED resident") and populace.py:2766 asserts
+# against it. Emptying makes all four correct and inert; deleting would break
+# four files this change does not own. Whoever removes it must remove them too.
+SPECIES_WITHOUT_NAMES = ()
 
 # The number of people aboard, which is not the same as the number the mix
 # apportions: the mix sums to 250,000 and Kosh is additional to it.

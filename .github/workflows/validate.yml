@@ -1218,6 +1218,30 @@ jobs:
         continue-on-error: true
         run: python3 tools/column_site.py --gate
 
+      # The three gates the session-4t judging panel's findings produced. Each
+      # exists because something shipped broken while every existing gate stayed
+      # green, and each was reported by its own verifier as having no CI caller
+      # -- which is the signature defect wearing a different hat.
+      #
+      # All three are seconds, need no build and no GPU. cell_identity returns 0
+      # on a missing manifest, so it is safe on a fresh checkout; crowd_material
+      # runs its --wiring half for the same reason (its --data and --engine
+      # halves need station/generated/ and say so on their own line).
+      - name: Cell indices are an identity, and cell_at picks the right deck
+        id: scell_identity
+        continue-on-error: true
+        run: python3 tools/cell_identity.py
+
+      - name: Every resident has a name, and none of them is a show character
+        id: scast_gate
+        continue-on-error: true
+        run: python3 tools/cast_gate.py
+
+      - name: The crowd is bound to its materials, not left on the fallback
+        id: scrowd_material
+        continue-on-error: true
+        run: python3 tools/crowd_material_gate.py --wiring
+
       - name: Every gate ran -- did any of them fail?
         if: always()
         run: |
@@ -1252,6 +1276,12 @@ jobs:
             echo "FAILED: slod_gate -- a walker names a crowd library that was never baked"; fail=1; fi
           if [ "${{ steps.scolumn_site.outcome }}" != "success" ]; then
             echo "FAILED: scolumn_site -- a transit column stands where the sector has no floor"; fail=1; fi
+          if [ "${{ steps.scell_identity.outcome }}" != "success" ]; then
+            echo "FAILED: scell_identity -- the streamer primes a cell the body is not standing in"; fail=1; fi
+          if [ "${{ steps.scast_gate.outcome }}" != "success" ]; then
+            echo "FAILED: scast_gate -- a resident has no name, or carries a show character's"; fail=1; fi
+          if [ "${{ steps.scrowd_material.outcome }}" != "success" ]; then
+            echo "FAILED: scrowd_material -- the crowd renders on the fallback material"; fail=1; fi
           if [ "${{ steps.scirculation.outcome }}" != "success" ]; then
             echo "FAILED: scirculation"; fail=1; fi
           if [ "${{ steps.sperformance_budgets.outcome }}" != "success" ]; then
