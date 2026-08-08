@@ -14579,3 +14579,191 @@ that should be deleted rather than left running, and the gate's `--data` layer w
 `primitive(s) carrying one` being non-zero, which is the tell. If a future `npc.gd` gives each
 walker a per-instance colour through `MultiMesh.use_colors`, `material_override` must gain
 `vertex_color_use_as_albedo`, and the wardrobe albedo becomes a tint rather than the colour.
+
+---
+
+## INV-1249 — Name grammars for the seven species that had none
+
+**Invented:** Generative naming patterns for **Brakiri, Vree, Abbai, Gaim, Hyach, Llort and
+Grome** residents (`station/npc/names.py`), plus the rule that a **Hyach name puts the lineage
+first**, which `Grammar.order` carries and `npc/resident.py` reads onto the identicard.
+
+**Why necessary:** measured on the packaged build at `dist/Babylon5`, **447 of 3,683 shipped
+residents — 12.1% — carried an EMPTY identicard NAME field**, every one of them in a species
+`schedule.SPECIES_WITHOUT_NAMES` lists. That was INV-004 applied faithfully: a grammar fitted to
+zero attested names is invention dressed as inference, so the card rendered the prop's own
+empty-red state instead. It is the wrong reading of a real rule, for two reasons.
+
+The first is that **CLAUDE.md hard rule 1 outranks it**: *"the answer to 'the show never
+establishes this' is **never** to leave a hole. It is to extrapolate in style, reason it out on
+the page, mark it authority 5, and record what would overturn it."* A twelfth of the station's
+population with no identity is a hole, and it is on the one document this project reproduces from
+an authority-1 frame.
+
+The second is that **this repository had already made exactly this call one field over.**
+`station/npc/body.py` builds all seven of these species' bodies at authority 5 from the same
+single line of `docs/gazetteer/FACTIONS.md` §9.2 — a Gaim's entire encounter-suit silhouette from
+the four words *"methane breathers in encounter suits"*, with its own overturning evidence named.
+A station that extrapolates a species' **body** and refuses to extrapolate its **name** is
+inconsistent with itself, and the inconsistency was only visible because the two live in different
+files.
+
+**Constrained by**, per grammar, and the same two inputs every time:
+
+1. **The species word itself**, which is a real on-screen word in that species' own phonology and
+   is therefore evidence about phonotactics even where it is evidence about nothing else. This is
+   not a new method — it is exactly how INV-004 built pak'ma'ra, whose grammar rests on the
+   species name carrying *"three short elements, apostrophe-separated, lowercase"*.
+2. **The one line of character FACTIONS §9.2 gives the species**, which decides the *structure*
+   the phonology is poured into.
+
+| species | species word gives | §9.2 gives | structure chosen |
+|---|---|---|---|
+| Brakiri | cluster onset `Br-`, light `-iri` tail | "traders and financiers; night dwellers" | two elements **hyphenated** — a financier is a person *and* a house on a contract, and a hyphen keeps them visibly unlike the three two-*word* grammars |
+| Vree | a **doubled vowel**, its only distinctive feature | "traders; saucer craft" | one short word carrying that doubled vowel; thin and fricative to match `body.py`'s 1.50 m large-craniumed build |
+| Abbai | **vowel-initial**, geminate consonant, open ending | "League founders; mediators; amphibian" | one word, vowel-initial — the only such grammar here — ending open rather than on a stop |
+| Gaim | `Gai-` / `-m` | "**hive-caste** insectoids" | **not a personal name**: a brood word and an ordinal, `Zhamaim-47` |
+| Hyach | palatal glide onset `Hy-`, fricative coda `-ch` | "long-lived, formal" | two elements (formality), **lineage first** (a species that outlives its institutions identifies by what persists) |
+| Llort | **doubled-consonant onset**, hard cluster coda | "scavengers and thieves" | one blunt token — a market name, not a registry one |
+| Grome | cluster onset over a round back vowel | *the table cell is literally empty* | one word, no ornament, and flagged as the thinnest grammar here |
+
+**The Gaim one is the largest departure and it is not a shortcut.** FACTIONS §9.2 calls them
+"hive-caste insectoids" at authority 4, and `npc/resident.py` had **already acted on that once**:
+`HIVE_SPECIES` refuses the SEX field for the Gaim, because *"an Earth Alliance customs form with a
+two-value sex field does not fit a hive"*. The identical argument reaches the NAME field and
+reaches a different answer than "leave it blank" — a customs officer with a hive individual in
+front of them writes down the identifier that individual answers to, which for a hive is brood and
+position within it. The card renders it whole, `ZHAMAIM-47`, so it reads visibly as a designation
+rather than as a name.
+
+**Three of the numbers are derived rather than picked, and the derivations are the standard:**
+
+- **The Gaim ordinal runs 1–99.** §9.2 puts 2,500 Gaim aboard; 48 brood words × 99 ordinals is
+  **4,752** distinct designations, so every Gaim on the station can carry one the record can tell
+  apart. 1–24 would have given 1,152 and forced collisions.
+- **Every grammar is sized against the Narn one**, whose reachable names cover 22,500 people at 1
+  per 96. All seven come in finer — Brakiri 1 per 23, Grome 1 per 4 — and `tools/cast_gate.py`
+  asserts it rather than trusting it.
+- **The Hyach is the only one of the seven with a frame behind it.** `reference/00-INDEX.md`
+  records an authority-1 Council delegation name-plate reading **"HYAC…"**, the rest occluded by
+  the delegate's robe. That is a *delegation* name, not a person's, so it is used for the
+  phonology and for nothing else — which is stated in the grammar's own note.
+
+**Authority 5 throughout.** Hyach's phonology alone touches authority 1 and is not claimed higher,
+because a species plate is not a personal name.
+
+**Overturned by:** any attested personal name for any of the seven. The workflow is INV-004's,
+unchanged — the name goes into that grammar's `attested` tuple and the tests re-run — and the
+reservation rule of INV-1250 then blocks it from being drawn for a background extra in the same
+edit. A frame showing a Hyach addressed personally would also settle the lineage-first ordering,
+which is the single most overturnable claim here: it is an inference from two words ("long-lived,
+formal") and nothing else, and if it is wrong then 1,750 identicards have their two halves
+swapped. It is deliberately isolated in one field (`Grammar.order`) so that reversing it is a
+one-word change rather than a rewrite.
+
+---
+
+## INV-1250 — The show cast is a reserved vocabulary
+
+**Invented:** the rule that no generated resident may wear a show character's exact full name
+(`names.RESERVED`, `names._pick_clear`), and its enforcement at every draw site.
+
+**Why necessary:** the packaged build shipped **43 residents wearing a show character's exact full
+name** — **29 human** across nine names (three Michael Garibaldis, four Susan Ivanovas, six Marcus
+Coles, a Jeffrey Sinclair) and **14 alien**, which no gate in this repository had ever looked for:
+a Narn called **G'Kar**, two Minbari called **Delenn**, two Centauri called **Londo Mollari**, a
+Minbari called Shakiri, a Narn called Du'Rog. A player who knows the show meets three fake
+Garibaldis and no real one.
+
+`docs/spec/PEOPLE.md` CAST-01 already forbids it — rule 4, *"a stand-in must NOT carry the surname
+of the show character whose office it holds … canon surnames otherwise remain in the generic
+pool"* — and its ACCEPT clause asks for *"a grep of the shipped cast registry finds no show-cast
+given+surname pair"*. So this is not a new policy. It is a policy that had no working enforcement.
+
+**Constrained by:**
+
+- **The reserved set is read out of the grammars, never recalled.** Every `Grammar.attested` tuple
+  already records the on-screen names its pattern was fitted to, and those are exactly the names a
+  background extra must not wear. Building `RESERVED` from them means an attested name added
+  tomorrow is reserved in the same edit. Only the human list needs anything extra, and each of its
+  eighteen entries is cited where it already appears in the repo: eleven from `names.py`'s own
+  comment (*"Which sex Jeffrey Sinclair, Susan Ivanova … are is a fact about the show"*), Lyta
+  Alexander from the authority-1 identicard transcribed in `canon/00-MASTER.md` §1.4, and five from
+  CAST-01's own rules 1 and 5. **Ombuds Wellington and Zimmerman are deliberately NOT reserved** —
+  rule 5 keeps them as named offices, so reserving them would forbid content the spec asks for.
+- **The pair is banned, not the surname.** CAST-01 rule 4 keeps canon surnames in the generic pool
+  on purpose: a background Sinclair is a person with a common surname, a background *Jeffrey*
+  Sinclair is a collision. So the surname is drawn first and the *given name* is filtered against
+  it, which costs the pool nothing; filtering surnames would have removed eleven of twenty-four
+  from a pool whose whole rationale is that Earth Alliance is multinational.
+- **Filtering, not retrying.** A redraw loop terminates only probabilistically and its bound is an
+  argument. Removing the reserved choices from the pool makes the name *unreachable*, which is a
+  property of the code rather than a claim about it.
+- **One rule, every site.** CLAUDE.md: *"a fix applied to an instance and not to the rule is a fix
+  that will be needed again."* `_pick_clear` is the only place the decision is made, and all
+  thirteen open grammars route their final element through it. `tools/cast_gate.py` proves that by
+  instrumenting the function and **calling** every grammar, because a static scan can say a caller
+  exists and only running it says the caller runs — and on the first run of that check the Gaim
+  generator came back **"12 of 13 reached `_pick_clear`; MISSING ['gaim']"**, having been written
+  with a bare pick on the reasonable-sounding grounds that no show character is called
+  `Zhamaim-47`.
+
+**Why the existing check missed it, which is the transferable part.** `station/spec_harness/cast.py`
+did draw 2,000 humans and did report 28 collisions — and it drew them as `res._split_name("human",
+str(i))`, while the shipped id space is `res:b5:<place>:<species>:<i>` (`resident.pool_id`). Its 28
+and the build's 29 were **disjoint populations that happened to have similar counts**, so the
+number looked like the finding when it was a coincidence. And it sampled humans only, which is why
+fourteen alien collisions shipped unseen. *A gate that samples a synthetic id space is measuring a
+station nobody plays.*
+
+**A defect this found on the way past:** `PAK` holds `"pak"`, `"ma"` and `"ra"`, so the pak'ma'ra
+grammar could produce **`pak'ma'ra`** — an individual whose personal name is the word for their
+entire species. It is reserved automatically, because the species word is that grammar's own
+`attested` entry. That is the argument for deriving the blocklist from the evidence rather than
+writing it out: the hand-written version would never have contained it.
+
+**Overturned by:** an owner ruling on CAST-01 rule 3. **This is the open question and it is raised,
+not decided.** The rule says the senior canon offices are *"present-but-offscreen … never as
+walking likenesses (auth 5 ruling; the repo's precedents point here, none decides it — this line is
+the decision, subject to SPEC-CHANGE if the owner overrules)"*. This entry closes the half that no
+reading permits — a *random extra* called Michael Garibaldi — and leaves the half that is a genuine
+design call: whether the real Season 2–3 command staff should exist as characters at all. If they
+should, they are authored the way Kosh is (`VORLON_SINGLETON`, `kosh_quarters`), and their names
+come out of `RESERVED` for that purpose alone.
+
+---
+
+## INV-1251 — The `other` bucket is a distribution over grammars
+
+**Invented:** naming for the `other` species row: each individual draws **one of ten alien
+grammars** by hash and is named by it (`names.OTHER_GRAMMARS`).
+
+**Why necessary:** `other` is 1,250 people aboard (FACTIONS §9.2, "Rare species and one-off
+visitors") and shipped 7 of the packaged build's residents, all with a blank NAME. It cannot have
+a grammar of its own, because it is not a species — `npc/body.py` says so outright: *"The tail:
+rare League species, unidentified traders, one-off visitors … **It is a distribution, not a
+species**."*
+
+**Constrained by:** the answer `body.py` already gave the same problem for meshes. FACTIONS §2.4
+asks for a rotating model set *"so the tail never looks like the same six aliens"*, and `body.py`
+answers it by making the row's per-individual spread roughly twice every other row's. A
+distribution over grammars is that same answer in sound: 3,980 reachable names across ten shapes,
+where there was one blank.
+
+**Four grammars are excluded and each for its own reason**, which is the part that carries the
+argument:
+
+- **human** — the row is *rare species* and one-off visitors; a human in it would be a human, and
+  humans have their own 155,000-strong row.
+- **vorlon** — a closed list of two attested names, and the only Vorlon aboard is authored.
+  Drawing "Kosh" for a background extra is the exact defect INV-1250 closes.
+- **gaim** — its designation asserts a brood and a hive-caste structure.
+- **hyach** — its lineage-first order asserts a naming culture.
+
+The last two are the reasoned ones: a grammar that encodes only **phonology** can be borrowed by
+an unidentified species, and a grammar that encodes an **institution** cannot, because the
+institution is a claim about a people this row explicitly does not identify.
+
+**Overturned by:** the tail being enumerated. The moment `schedule.STATION_COUNTS` names a
+fifteenth species instead of bucketing it, that species leaves this row and gets a grammar of its
+own under INV-1249's method. This entry is a holding pattern for a row that is a holding pattern.

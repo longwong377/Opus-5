@@ -34,14 +34,24 @@ here rather than paraphrased:
      simply EMPTY, which is what the one authority-1 example does three times
      out of nine.
 
-     It is also what lets eight species have no name at all. `names.py` has
-     grammars for seven species and `schedule.SPECIES_WITHOUT_NAMES` lists the
-     eight the reference set attests no personal name for -- INV-004's rule,
-     that a generator fitted to zero data points is invention dressed as
-     inference. Their cards carry an EMPTY NAME field, in red, exactly as the
-     prop renders a field with no entry. The station's records genuinely do not
-     hold personal names for eight of the fifteen species aboard, and that is a
-     fact about the station rather than a hole in this module.
+     It used to be what let eight species have no name at all, and THAT PART
+     IS OVER -- see INV-1249. `schedule.SPECIES_WITHOUT_NAMES` listed the eight
+     the reference set attests no personal name for, and their cards shipped
+     with an EMPTY NAME field on INV-004's rule that a generator fitted to zero
+     data points is invention dressed as inference. Measured on the packaged
+     build at `dist/Babylon5`, that came to **447 of 3,683 residents, 12.1%**,
+     which is not "a fact about the station" but a twelfth of the population
+     with no identity, on the one document this project reproduces from an
+     authority-1 frame. CLAUDE.md hard rule 1 -- "the answer to 'the show never
+     establishes this' is NEVER to leave a hole" -- decides it, and the
+     precedent was already in the repo: `npc/body.py` extrapolates all seven of
+     those species' BODIES at authority 5 from the same one-line source.
+
+     THE EMPTY STATE REMAINS AND IS STILL EXERCISED, which is what stops this
+     being a loss. `PHYS CHR`, `LICENSED PSI` and `VISAS` are empty on most
+     cards, `SEX` is empty for the Gaim hive, and the prop's two-state
+     rendering is tested on all of them. What changed is that NAME is no longer
+     one of them, because NAME is the field the prop shows FILLED.
 
 WHAT THIS WIRES VERSUS WHAT IT WRITES. Almost everything here is a *consumer*:
 
@@ -606,9 +616,21 @@ class Resident:
 
     @property
     def name(self) -> str:
-        """`FORENAME SURNAME`, or "" for a species with no attested name."""
+        """The name as this species says it aloud, which is not one order.
+
+        `card_name` is always `FAMILY, GIVEN` because that is the prop's
+        format; a SPOKEN name is the species' own order, and Hyach put the
+        lineage first (INV-1249). Reassembling `forename surname` universally
+        would have printed 1,750 Hyach backwards everywhere a line of dialogue
+        or a PA call uses this.
+        """
         if not self.surname and not self.forename:
             return ""
+        if not self.forename:
+            return self.surname
+        g = npc_names.GRAMMARS.get(self.species)
+        if g is not None and g.order == "family-given":
+            return f"{self.surname} {self.forename}"
         return f"{self.forename} {self.surname}".strip()
 
     @property
@@ -628,11 +650,30 @@ class Resident:
         return sched.activity_at(self.npc_id, self.species, hour)
 
 
-# A name is a species grammar or nothing. `names.name_for` raises for the eight
-# species in `schedule.SPECIES_WITHOUT_NAMES`, and that raise is the point --
-# INV-004's rule is that a grammar fitted to zero attested names is invention
-# dressed as inference, so those cards are rendered with an EMPTY name field,
-# which is a state the prop itself shows three times.
+# EVERY SPECIES ABOARD HAS A NAME. It did not until INV-1249, and the state
+# this comment used to describe was measured on the PACKAGED build: 447 of
+# 3,683 shipped residents -- 12.1% -- carried the empty red NAME field, all of
+# them in `schedule.SPECIES_WITHOUT_NAMES`. That was INV-004's rule (a grammar
+# fitted to zero attested names is invention dressed as inference) applied
+# faithfully, and it lost to CLAUDE.md hard rule 1, which says the answer to
+# "the show never establishes this" is NEVER to leave a hole. INV-1249 gives
+# the seven species a reasoned authority-5 grammar each; INV-1251 gives the
+# `other` bucket a distribution over ten of them.
+#
+# THE `except KeyError` THAT USED TO BE HERE IS GONE, and its removal is worth
+# more than the names. It turned EVERY unknown species string into an empty
+# name with no error -- so `resident("7", "hooman")` was indistinguishable
+# from a species the show never named, and both shipped as a blank card. Now a
+# typo raises and a real species cannot. `tools/cast_gate.py` asserts that
+# every key in `schedule.STATION_COUNTS` and `body.SPECIES` has a grammar, so
+# nothing shipped can reach the raise.
+#
+# THE ORDER IS THE GRAMMAR'S, NOT THIS FUNCTION'S. `names.split_name` knows
+# which element of a two-word name is the lineage, because Hyach put it first
+# (INV-1249: a long-lived species identifies by the thing that outlives the
+# person). This function used to assume given-then-family universally, which
+# would have printed 1,750 Hyach cards with the two halves swapped.
+#
 # `sex` IS PASSED THROUGH, and it comes off the body so the card, the mesh and
 # the name are one individual. Without it the name and the SEX field were
 # independent draws: measured over 400 humans, ALL 22 given names appeared
@@ -641,14 +682,8 @@ class Resident:
 # because the show attests them; `name_for` ignores `sex` elsewhere rather
 # than inventing a gender system per species.
 def _split_name(species: str, npc_id: str, sex=None):
-    try:
-        full = npc_names.name_for(species, npc_id, sex=sex)
-    except KeyError:
-        return "", ""
-    if " " in full:                       # human, centauri: given + family
-        given, family = full.split(" ", 1)
-        return family, given
-    return full, ""                       # narn, minbari, pakmara, vorlon
+    return npc_names.split_name(species,
+                                npc_names.name_for(species, npc_id, sex=sex))
 
 
 # SEX comes off the body, so the card and the mesh cannot disagree.
@@ -1113,18 +1148,71 @@ def _selftest():                                                # noqa: C901
           all(r.surname in npc_names.CENT_HOUSE for r in cent),
           cent[0].name)
 
-    # INV-004's rule, and it is the one this module could most easily have
-    # broken: eight species have no attested personal name and must not be
-    # given a generated one.
-    unnamed = [resident(f"g{i}", sp)
-               for sp in sched.SPECIES_WITHOUT_NAMES for i in range(4)]
-    check("the eight species with no attested name are not given one",
-          all(r.name == "" for r in unnamed),
-          f"{len(unnamed)} records across "
-          f"{len(sched.SPECIES_WITHOUT_NAMES)} species")
-    check("...and their NAME field renders as the prop's empty state",
-          all(dict((l, s) for l, _v, s in identicard(r))["NAME"] == EMPTY
-              for r in unnamed))
+    # INV-1249 REVERSES THE ASSERTION THAT USED TO BE HERE. It read "the eight
+    # species with no attested name are not given one" and it passed for as
+    # long as it existed, on 447 of the packaged build's 3,683 residents. The
+    # test was not wrong about the code; it was the wrong test, and it is the
+    # exact shape CLAUDE.md warns about -- an exit criterion a defect passes.
+    # THE LIST IS LITERAL AND NOT READ FROM `sched.SPECIES_WITHOUT_NAMES`, and
+    # that is deliberate. That constant is now stale and `test_schedule.py`
+    # says in its own failure text what is owed -- "adding a grammar must
+    # delete its entry here" -- so it is about to become the empty tuple. Every
+    # check below driven off it would then iterate nothing and PASS, which is
+    # this project's signature defect: a check whose subject has quietly
+    # emptied is a green that means nothing.
+    FORMERLY_UNNAMED = ("brakiri", "vree", "abbai", "gaim", "hyach", "llort",
+                        "grome", "other")
+    was_unnamed = [resident(f"g{i}", sp)
+                   for sp in FORMERLY_UNNAMED for i in range(4)]
+    blank = [r for r in was_unnamed if not r.name]
+    check("every species aboard now has a name, including the eight that had none",
+          not blank,
+          f"{len(was_unnamed) - len(blank)} of {len(was_unnamed)} named across "
+          f"{len(FORMERLY_UNNAMED)} species -- e.g. "
+          + ", ".join(sorted({r.name for r in was_unnamed})[:3]))
+    check("...and their NAME field renders FILLED rather than the empty state",
+          all(dict((l, s) for l, _v, s in identicard(r))["NAME"] == FILLED
+              for r in was_unnamed))
+    # AND THE EMPTY STATE IS STILL REACHABLE, or the check above has quietly
+    # deleted a feature of the prop rather than filled one field of it.
+    st = [dict((l, s) for l, _v, s in identicard(r)) for r in was_unnamed]
+    still_empty = sorted({k for c in st for k, v in c.items() if v == EMPTY})
+    check("...while the prop's empty state is still exercised elsewhere",
+          len(still_empty) >= 2, "still empty on these cards: " + ", ".join(still_empty))
+
+    # A SPECIES STRING NOBODY DEFINED MUST RAISE, NOT BLANK. The old
+    # `except KeyError` in `_split_name` turned every typo into an empty NAME
+    # field indistinguishable from the eight species above, so the defect and
+    # the policy looked identical on a card.
+    try:
+        resident("t0", "hooman")
+        raised = False
+    except KeyError:
+        raised = True
+    check("an unknown species raises rather than shipping a blank card", raised)
+
+    # THE HYACH CARD INVERTS, and it is the only one that does. `names.py` puts
+    # the lineage first for a long-lived species (INV-1249); a card that split
+    # on position alone would print 1,750 people with the halves swapped.
+    hy = resident("hy0", "hyach")
+    hu = resident("hu0", "human")
+    check("a Hyach card's SURNAME half is the LINEAGE, which comes FIRST in the name",
+          hy.card_name.split(",")[0] == hy.name.split()[0].upper(),
+          f"{hy.name!r} -> {hy.card_name!r}")
+    check("...and the same test FAILS on a human, whose family name comes second",
+          hu.card_name.split(",")[0] != hu.name.split()[0].upper(),
+          f"{hu.name!r} -> {hu.card_name!r}")
+
+    # NO BACKGROUND EXTRA WEARS A SHOW CHARACTER'S NAME. The shipped build
+    # carried 43 who did -- 29 human, 14 alien. `tools/cast_gate.py` is the
+    # gate; this is the module-local tripwire over the real id space.
+    wearing = [(sp, i, resident(npc_names_id, sp).name)
+               for sp in sched.STATION_COUNTS
+               for i in range(60)
+               for npc_names_id in (pool_id("zocalo", sp, i, "b5"),)
+               if resident(npc_names_id, sp).name in npc_names.RESERVED]
+    check("no resident drawn from the shipped id space wears a reserved name",
+          not wearing, f"{len(wearing)} wearing, e.g. {wearing[:2]}")
 
     # --- addresses -------------------------------------------------------
     keys = {p["key"] for p in _dir.PLACES}
