@@ -1991,8 +1991,10 @@ def ground_viaduct(s0, s1):
         if i % 2:
             continue
         for sgn in (-1.0, 1.0):
-            _prism8(v, t, s, sgn * (hw - 0.34), 0.085,
-                    deck_y + 1.10, deck_y + 4.10)
+            # CLOSED: the top of a lamp column is in plain view from the
+            # terrace above it, and a bare `_prism8` leaves it open.
+            _prism8_closed(v, t, s, sgn * (hw - 0.34), 0.085,
+                           deck_y + 1.10, deck_y + 4.10)
             _slab(v, t, s - 0.26, s + 0.26, deck_y + 4.02, deck_y + 4.22,
                   sgn * (hw - 1.30), sgn * (hw - 0.20))
     out.append(("fix_service_riser", v, t))
@@ -2164,7 +2166,8 @@ def ground_platform():
     out.append(("prop_manifest_terminal", v, t))
 
     v, t = [], []                                            # the bell
-    _prism8(v, t, L / 2.0 - 1.4, x_in + 0.55, 0.22, top + 2.30, top + 2.62)
+    _prism8_closed(v, t, L / 2.0 - 1.4, x_in + 0.55, 0.22,
+                   top + 2.30, top + 2.62)
     out.append(("prop_info_board", v, t))
     return out
 
@@ -2993,6 +2996,31 @@ def _selftest():
 # controls below do exactly that and their numbers are printed, because a
 # control that is not shown firing is a comment.
 
+def _open_welded(verts, tris):
+    """Open edges, WELDED BY POSITION. -> int
+
+    `interior.boundary_edges` is the right tool on one built surface and the
+    wrong one on a merged scene: every piece below is emitted into its own list
+    and appended, so two pieces that meet exactly still carry two vertex indices
+    per shared corner and an index-keyed test calls a perfect joint a hole.
+    Rounded to a micrometre, which is four orders below anything this station
+    builds.
+    """
+    import collections                                          # noqa: PLC0415
+    key, c = {}, collections.Counter()
+
+    def k(i):
+        q = (round(verts[i][0], 6), round(verts[i][1], 6),
+             round(verts[i][2], 6))
+        return key.setdefault(q, len(key))
+
+    for a, b, d in tris:
+        ia, ib, ic = k(a), k(b), k(d)
+        for e in ((ia, ib), (ib, ic), (ic, ia)):
+            c[tuple(sorted(e))] += 1
+    return sum(1 for v in c.values() if v % 2 == 1)
+
+
 def _ground_gate(schema, profile, check):
     """PLC-073, measured. Returns the number of failures it added."""
     import directory as dr                                      # noqa: PLC0415
@@ -3081,6 +3109,26 @@ def _ground_gate(schema, profile, check):
     chk("and the control fires -- a bare _prism8 is an open tube",
         len(it.boundary_edges(cv2, ct2)[0]) == 16,
         f"{len(it.boundary_edges(cv2, ct2)[0])} open edges on one prism")
+
+    #    AND THE WHOLE STOP, welded by position rather than by vertex index,
+    #    because every piece here is merged from a separately built list and an
+    #    index test would call two coincident vertices two holes.
+    #    ONE EXCEPTION, NAMED: the saloon stanchions are `_prism8` tubes running
+    #    floor to ceiling with both ends buried in surfaces the same mesh
+    #    carries -- exactly as the guideway car's are, and invisible for the
+    #    same reason. Everything whose end a player can see is closed, and this
+    #    check found two that were not: the lamp columns (160 open edges) and
+    #    the platform bell (16).
+    struct = [tri for name, a, b in SP if not name.startswith("tram_in_")
+              for tri in T[a:b]]
+    ow = _open_welded(V, struct)
+    chk("the whole stop is closed once its saloons are set aside",
+        ow == 0, f"{ow} open edges over {len(struct):,} triangles")
+    saloon = [tri for name, a, b in SP if name == "tram_in_post"
+              for tri in T[a:b]]
+    chk("and the control fires -- the stanchions ARE open, as they always were",
+        _open_welded(V, saloon) > 0,
+        f"{_open_welded(V, saloon)} open edges, both ends buried")
 
     # 5. ARTICULATION. `density.py --machinery`'s own question -- is the machine
     #    as built as the wall behind it -- asked here because that gate iterates
