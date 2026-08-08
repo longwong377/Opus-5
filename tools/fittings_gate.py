@@ -2,7 +2,8 @@
 """Is a light fitting a FITTING -- and does a sign SAY anything?
 
 Two questions no gate in this repository could ask, both found by a judging
-panel on the packaged build rather than by anything here.
+panel on the packaged build rather than by anything here -- plus a third that
+guards the fix.
 
   1. **THE LENS MUST NOT BE THE WHOLE LAMP.** `docs/AAA-STANDARD.md` defines
      CRAFT 1 as "a box primitive standing in for a named object". Every
@@ -21,7 +22,16 @@ panel on the packaged build rather than by anything here.
      written, and `deck.py` calls it at doorways; the 77% of a ring deck
      BETWEEN the doorways called none of it.
 
-WHY THESE TWO ARE ONE GATE. They are the same failure: a part that passes every
+  3. **AND NONE OF IT MAY NARROW THE CORRIDOR.** A regression guard rather than
+     a finding. `station/collision.py::corridor_profile` measures the clear
+     half width by casting sideways between floor_y + 0.05 and floor_y + 1.8
+     and keeping the NARROWEST reading, and `station/lift.py` sizes its car
+     from the same number -- so a bezel that projected further than the lens it
+     wraps would shrink the station's corridors AND its lifts silently.
+     `interior_kit._selftest` asks this of `wall_station` and `service_run` and
+     NOT of `wall_assembly`, which is where the downlights are.
+
+WHY THE FIRST TWO ARE ONE GATE. They are the same failure: a part that passes every
 existing check while not being the thing it is named after. Every gate in this
 project scores a part against a standard -- articulation against a line density,
 materials against a bind, lighting against a histogram -- and a lit rectangle
@@ -42,6 +52,20 @@ and re-runs the same assertions. If it does not fail, this file is measuring
 nothing. CLAUDE.md records two assertions in this project that could only fail
 if somebody FIXED the defect; the way not to write a third is to show the gate
 failing on the content it was written against.
+
+    question                        --legacy        now
+    lens containment          0/116 housed   116/116
+    sign legibility          0/3 lettered       3/3
+    walking envelope                 4/4        8/8   (a guard: passes either
+                                                       way, and says so)
+
+AND THE CONTROL REPRODUCES THE OLD SECTION EXACTLY -- 8,120 triangles with a
+wall door and a bulkhead, 7,472 plain, which are the counts the pre-change kit
+built. That is checked because a control that removes MORE than the change it
+controls attributes the extra to the change, and the first version of this one
+did: it ignored `luminaire`'s `segments` argument and collapsed `pilaster`'s
+seven-cell strip into one box, 1,008 triangles a section the housing pass had
+never touched.
 """
 import argparse
 import os
