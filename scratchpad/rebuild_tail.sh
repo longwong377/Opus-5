@@ -21,9 +21,9 @@ step() {  # step <name> <cmd...>
   if "$@"; then echo "OK: $n"; else echo "FAILED($?): $n"; FAIL=1; fi
 }
 
-step "1/10 export the 70 ring decks and 5 columns"  python3 tools/export_station.py
-step "2/10 export the habitat drum"                 python3 tools/export_drum.py
-step "3/10 bake every deck into streaming cells"    python3 tools/bake_station.py
+# SKIPPED (already on disk): tools/export_station.py
+# SKIPPED (already on disk): tools/export_drum.py
+# SKIPPED (already on disk): tools/bake_station.py
 # THE DRUM IS NOT CUT BY bake_station AND THE REASON IS A ROW I WROTE.
 # `stream.gd::bake()` takes its axial band from
 # cell_manifest.json deck_table[<deck>].cell_length_m, and the drum's row --
