@@ -134,7 +134,7 @@ So the rule is stated once and has nothing to tune: **the band that minimises
 worst-case resident triangles, subject to no cell exceeding `cell_tris` and no
 resident set exceeding `DRAW["max_per_frame"]` instances.** On the shipped drum
 that is **33 m, 85 cells**. `--curve` prints the whole search so the choice is
-visible, and `--band` overrides it for an experiment. -- INV-1249
+visible, and `--band` overrides it for an experiment. -- INV-1252
 
 ===========================================================================
 3. THE RESIDENCY BLOCK HAS TO BE WRITTEN, BECAUSE THE DECK ROW CANNOT
@@ -165,7 +165,7 @@ derivation in the artefact:
 
 `merge_cells.py` still takes the MAX, so these numbers do not lower the shipped
 global radius; they make the drum's own manifest loadable and they state what
-the drum would ask for. -- INV-1250
+the drum would ask for. -- INV-1253
 
 ===========================================================================
 4. WHAT THIS DOES NOT REACH, MEASURED RATHER THAN ROUNDED AWAY
@@ -226,7 +226,7 @@ both are in files this file may not touch:
   * or `station/interior.py` -- give the drum row a real `cell_deg`.
 
 Stated here, with its numbers, because a lever that is measured and named is
-worth more than a lever that is guessed at later. -- INV-1251
+worth more than a lever that is guessed at later. -- INV-1254
 """
 
 import argparse
@@ -725,7 +725,7 @@ def patch_residency(man_path, band, radius, out=print):
         "tools/bake_drum.py -- the band (%.0f m). The deck row's sight_line_m "
         "is 0 because curvature does not occlude on the concave side of a "
         "barrel, and configure() REFUSES a manifest whose radius is not "
-        "positive. INV-1250" % band)
+        "positive. INV-1253" % band)
     res["free_from"] = (
         "2 x the band -- one whole cell of deadband, so a body that turns "
         "round on a threshold cannot outrun the reload. %.1f m = %.2f s at "
@@ -739,7 +739,7 @@ def patch_residency(man_path, band, radius, out=print):
     man["band_from"] = (
         "tools/bake_drum.py -- the band minimising worst-case resident "
         "triangles inside budget.CELLS['cell_tris'] and budget.DRAW"
-        "['max_per_frame']. INV-1249")
+        "['max_per_frame']. INV-1252")
     with open(man_path, "w") as f:
         json.dump(man, f, indent=2)
     out("  residency radius %.1f -> %.1f m (free %.1f m) in %s"

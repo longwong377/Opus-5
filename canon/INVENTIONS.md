@@ -14767,3 +14767,132 @@ institution is a claim about a people this row explicitly does not identify.
 **Overturned by:** the tail being enumerated. The moment `schedule.STATION_COUNTS` names a
 fifteenth species instead of bucketing it, that species leaves this row and gets a grammar of its
 own under INV-1249's method. This entry is a holding pattern for a row that is a holding pattern.
+
+## INV-1252 — The habitat drum's streaming band is 33 m, and it is the only number the budgets leave free
+
+**Invented:** the axial cell length for `green_1_0`, the habitat drum: **33 m**, giving 85 cells
+across the barrel's 2,682.9 m.
+
+**Why an invention at all.** Every other deck's cell length is `interior.ring_cells`' own
+`cell_length_m`, derived from the ring's circumference and its sight line. The drum has neither: it
+is an open barrel with no ring corridor, so `ring_cells` returns `cells: 0, cell_deg: 360.0,
+cell_length_m: 0.0, sight_line_m: 0.0`, and `stream.gd::bake()` reads a zero band as its stated
+one-dimensional control — *"Every cell runs the deck's whole axial extent"*. The drum therefore
+shipped as **one cell of 1,585,762 triangles**, 26.43× `budget.CELLS["cell_tris"]` and 8.81× the
+whole `resident_tris` allowance, in a unit `stream.gd` can neither split nor partially page.
+
+**What constrained it.** Three budget numbers and one measurement, and between them they leave
+exactly one degree of freedom:
+
+- `CELLS["cell_tris"] = 60,000` — no cell may exceed it.
+- `CELLS["resident_tris"] = 180,000` — nor may the set resident at once.
+- `DRAW["max_per_frame"] = 1,041` — `budget.py` derives it from 4.17 ms of render thread at 4.0 µs
+  a call. Every cell re-instances each of the drum's 403 groups it holds any triangle of, so this
+  is the constraint that stops the band shrinking.
+- the residency radius the **merged manifest actually carries**, 98.9 m, read off the artefact
+  rather than chosen. `merge_cells.py` takes it as the max over 76 decks and `stream.gd::configure`
+  keeps ONE global radius, so it is not the drum's to set.
+
+That radius makes it a two-sided optimum rather than "smaller is better": resident triangles fall
+towards a 2 × 98.9 m slab of drum however finely it is cut, while resident draw calls rise without
+bound. The rule is therefore stated once and has nothing to tune — **the band minimising worst-case
+resident triangles, subject to no cell over `cell_tris` and no resident set over `max_per_frame`
+instances**. Over 15–100 m, 11 of 86 candidates are feasible and 33 m is the minimum. The search is
+shown able to reject on both constraints, which is why the range extends past both.
+
+| band | cells | worst cell | worst resident | resident instances |
+|---|---|---|---|---|
+| 11 m | 253 | 36,193 | 221,049 | 1,488 — over draw |
+| 20 m | 139 | 45,878 | 230,345 | 1,043 — over draw |
+| **33 m** | **85** | **58,297** | **232,586** | **795** |
+| 40 m | 70 | 58,634 | 240,622 | 751 |
+| 50 m | 56 | 85,498 | 259,119 | 621 — over cell |
+| 99 m | 29 | 111,582 | 285,033 | 483 — over cell |
+
+**What the bake produced**, from the engine's own log rather than the plan: `85 cells (0 arc x 85
+band), 1585762 triangles total (source had 1585762)` — lossless — and `biggest cell
+green_1_0_c00z29 at 58300 tri = 0.97x cell_tris; 0 of 85 cells over cell_tris`. 129.2 MB against
+the one cell's 133.5 MB, in 13 s. The three-triangle gap between the predicted 58,297 and the
+engine's 58,300 is `_split` binning float32 vertices where `bake_drum` bins their float64
+centroids.
+
+**What would overturn it.** Any change to the drum's contents re-derives it — `bake_drum.py --plan`
+is the derivation and prints the whole curve. It is also fragile in one specific way worth naming:
+the optimum is non-monotonic in the band, because the worst cell depends on where a boundary falls
+relative to Earhart's and Fresh Air, whose two bespoke interiors put 26,748 triangles of clutter
+into one 50 m slice. A drum whose hot spots moved would move the answer by more than the change in
+content suggests. And if `stream.gd` ever gains a per-cell or per-deck residency radius, the whole
+derivation changes shape: the global 98.9 m is what forbids a large band.
+
+## INV-1253 — The drum's residency radius is its own band, because a barrel has no sight line
+
+**Invented:** `radius_m = 33 m`, `free_radius_m = 66 m`, `cell_length_m = 33 m` for `green_1_0`.
+
+**Why it had to be invented rather than derived like every other deck's.** `bake()` copies
+`radius_m` straight from the deck row's `sight_line_m`, which is `interior.sight_line(r,
+corridor_width)` — *the chord past which the ring's own curvature occludes*. On the **concave**
+side of a barrel curvature never occludes: a body on the drum floor sees the whole 1,748.6 m
+circumference and 556 m of clear air straight up. There is no chord to compute, which is exactly
+why `ring_cells` wrote 0.
+
+**And a zero there is not merely uninformative, it is fatal.** `stream.gd::configure` refuses a
+manifest whose radius is not positive — *"manifest carries no residency radius or budget"* — and
+returns `false`, at which point the game loads nothing at all. So `green_1_0_cells.json` as shipped
+is **not loadable on its own**; the packaged build only works because `merge_cells.py` takes the
+max across 76 decks and some other deck supplies a positive number. Point `boot.json` at the drum's
+own cell set and the build is black. That is a live latent defect and this entry closes it.
+
+**What constrained the value.** The radius is one band, 33 m: the next cell is asked for a whole
+cell-length before a body can stand in it, which at `player.gd`'s 8.0 m/s sprint is **4.12 s** of
+load lead. The free radius is two bands, so the deadband is one whole cell — the same shape as
+`bake()`'s own `max(sight, cell_length)` rule and for the same stated reason, that a body which
+turns round on a threshold must not outrun the reload.
+
+**What would overturn it.** A measured cell activation time longer than 4.12 s makes 33 m too
+small, and the honest response would be a larger band with a worse resident total rather than a
+larger radius with the same one. Note also that these numbers do **not** govern the packaged build:
+`merge_cells.py` takes the max, so the shipped radius stays 98.9 m. They are recorded in the
+manifest as `radius_m` with `shipped_radius_m` beside them, so a reader can tell which number is in
+force.
+
+## INV-1254 — A second axis is what clears the drum's budget, and it is measured rather than left to be rediscovered
+
+**Invented:** nothing shipped. This entry records a **negative result with its numbers**, so the
+next session does not re-derive it.
+
+**The claim.** Cutting the drum along its axis alone cannot bring it inside `resident_tris`, and no
+band can. At the shipped 98.9 m residency radius the resident set is always at least a 197.8 m slab
+of drum, and the 197.8 m slab around Earhart's and Fresh Air holds roughly 215,000 triangles
+however the boundaries fall. Every band from 15 m to 100 m was searched; the best worst-resident is
+221,049 at 11 m, which breaks the draw-call budget instead. The 33 m cut lands at **232,586,
+1.29×** — down from 8.81×, and not green.
+
+**What does clear it, simulated on the same mesh with the same residency metric:**
+
+| cell_deg | band | cells | worst cell | worst resident |
+|---|---|---|---|---|
+| 360 | 33 m | 85 | 58,297 | 232,586 — what ships |
+| 45 | 100 m | 224 | 69,148 | 184,432 |
+| **20** | **100 m** | **504** | **49,659** | **165,516** — clears both |
+| 20 | 50 m | 1,008 | 44,692 | 146,187 |
+
+`cell_deg = 20, band = 100 m` puts the drum at 0.83× per cell and 0.92× resident.
+
+**Why it was not built.** `stream.gd::bake()` reads `cell_deg` from `cell_manifest.json`'s deck row
+and offers no `--cell-deg` override beside the `--z-band` it already accepts; the drum's row says
+360 because `interior.ring_cells` returns 360 for anything that is not a ring. Two one-line changes
+reach it — an override in `bake()`, or a real `cell_deg` for the drum row in `station/interior.py`
+— and both files were outside this session's edit list.
+
+**One caveat that should be weighed before taking it.** An arc cut on a barrel is not free the way
+it is on a ring deck. A ring cell may be an arc because the station's own curvature occludes at
+`interior.sight_line`; on the concave side of a drum nothing occludes, so an arc cut unloads
+geometry a player is looking straight at across 556 m of clear air, where a z cut unloads geometry
+that is 100 m or more up a barrel whose own townscape, foliage and end cap already stand in the
+way. The arc cut therefore buys the budget and spends visible far-field, and it should land with
+an impostor or LOD rung for the unloaded arcs rather than alone.
+
+**What would overturn it.** A per-cell LOD ladder, which the cells do not have — every cell is
+level 0 today because `export_drum` bakes the drum at a uniform LOD (INV-1227). With rungs, the
+far half of the barrel could stay resident at a fraction of its triangles and neither cut would be
+needed.
