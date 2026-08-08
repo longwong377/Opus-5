@@ -6849,7 +6849,18 @@ NOT_GENERATORS = {"materials.py", "directory.py", "rooms.py",
                   # answer: a specification names things, a generator names
                   # surfaces. The cars themselves are built by `tram.py` and
                   # `core_tube.py`, both of which ARE scanned.
-                  "transit.py"}
+                  "transit.py",
+                  # THE VERB SPECIFICATION. `interact.py` names register TOKENS
+                  # -- "tram_door", "lift_door", "ground_tram" -- and, in its
+                  # negative controls, group names it asserts must NOT resolve.
+                  # Exactly the line already drawn for `rooms.py`, whose own
+                  # entry above cites "tram_door" as the example: a
+                  # SPECIFICATION names places and props, a GENERATOR names
+                  # surfaces. It emits no geometry at all, so it cannot be
+                  # missing a material for any of them. Added when the `tread`
+                  # synonym pass' controls put "tram_gangway" in the source and
+                  # the scan reported a surface nothing draws.
+                  "interact.py"}
 
 # Literals that match the group prefixes but are not group names: manifest
 # statistics, and prefixes used in a `startswith` test. Kept explicit rather
