@@ -55,6 +55,7 @@ The windscreen members' standoff is INV-051.
 No pseudo-randomness anywhere, so regeneration is byte-identical by
 construction rather than by seeding discipline.
 """
+import hashlib
 import math
 import os
 import sys
@@ -1366,6 +1367,910 @@ def braking_distance(schema, profile, sector=None):
 
 
 # ---------------------------------------------------------------------------
+# THE SECOND TRAM -- the ground-level ring line, PLC-073 `ground_tram`
+# ---------------------------------------------------------------------------
+# `directory.PLACES` has carried `ground_tram` since session 3c with no module
+# and no builder, and `tools/export_drum.py`'s header says so in as many words:
+# *"the register carries it (210 deg, 20 x 200 m) and nothing in this repository
+# builds a ground-level tram"*. A crowd is placed in it. People stand in a
+# field.
+#
+# IT IS A DIFFERENT VEHICLE FROM THE ONE ABOVE, AND THE GAZETTEER IS EMPHATIC:
+# *"a green-and-yellow streamlined car on an elevated track at garden ground
+# level, with its own station canopy -- sharing nothing with the white/maroon
+# guideway tram. Two transit systems in the drum, not one."*
+# (`docs/gazetteer/LOCATIONS.md` section 9, authority 1,
+#  `reference/03-sector-blue/Babylon_5_2-22_29a.jpg`.)
+#
+# So this reuses the MODULE and its primitives -- `_box`, `_slab`, `_quad`,
+# `_loft`, `_cap`, `_prism8`, `_facing_fraction` -- and not the design. A third
+# file would have been a third description of "a tram"; giving the ground car
+# `levels()` would have made the two systems one.
+#
+# WHAT THE FRAME ESTABLISHES, measured off 29a rather than remembered:
+#   * an ELEVATED way at terrace level, behind a slatted parapet
+#   * a cream/ivory upper body carrying a continuous dark window band
+#   * a GREEN flank band below the sill -- median sRGB (54, 76, 72) over a
+#     165 x 14 px patch of the flank, i.e. G/R 1.41 and B/R 1.33, so it is
+#     green-dominant and desaturated: a teal, not a leaf green
+#   * a long, low, streamlined STATION CANOPY on a plinth, tapered at both
+#     ends, carrying three vertical illuminated slots on its flank
+#
+# WHAT IT DOES NOT ESTABLISH is any dimension at all. Nothing of known size sits
+# in the car's depth plane, and the terrace furniture that IS measurable (a
+# bench, a planter) is four times nearer the lens, so the projective
+# rectification that gave the guideway car its length off 34b has nothing to
+# work on here. Every length below is therefore DERIVED from something already
+# in this repository and says from what. INV-461..466.
+
+# ONE TRUSS BAY. `transit.ground_line`'s own docstring fixes the stop count --
+# *"there is one stop under each guideway, so the two drum systems meet"* -- so
+# a ground stop stands under a guideway truss, and the structure it stands under
+# is bayed at `interior.TRUSS_BAY_M`. A car that must berth in one bay of the
+# thing above it is one bay long. That it lands at exactly a quarter of the
+# guideway car (CAR_BAYS = 4.0) is a consequence, not a coincidence.
+GROUND_CAR_BAYS = 1.0
+
+# The section, built outward from a seated body rather than picked. Two
+# LONGITUDINAL benches -- which is what a continuous window band at seated eye
+# height means -- plus the aisle between two rows of knees, plus the same skin
+# thickness the guideway car has.
+GROUND_BENCH_D_M = 0.45       # thigh: a seated person's depth on a bench
+GROUND_AISLE_M = 1.30         # knee to knee across, with a stander between
+GROUND_CAR_W_M = 2.0 * GROUND_BENCH_D_M + GROUND_AISLE_M + 2.0 * WALL_T
+
+# HEADROOM IS NOT RE-DECIDED. The two systems carry the same species and there
+# is no argument for giving one of them a lower ceiling, so the ground car's
+# clear height is the guideway car's, taken off `levels()` rather than
+# re-measured -- a constant that depended on a build would be a constant that
+# changes when the build does.
+GROUND_CLEAR_M = level_y("cant") - level_y("floor")
+
+GROUND_FLOOR_H_M = 0.95       # saloon floor over rail head. A LOW-FLOOR street
+                              # car: one 0.20 m step down from a 0.75 m
+                              # platform, which is the level-boarding gap a
+                              # stop with no lift has to have.
+GROUND_UNDERFRAME_M = 0.62    # bogie, motor and skirt below the saloon floor
+GROUND_ROOF_M = 0.34          # roof structure over the clear height
+
+GROUND_RAIL_H_M = 4.60        # rail head over the drum's ground. DERIVED: the
+                              # way crosses the Garden's roads, and
+                              # `drum_dressing` stands town blocks, gantries and
+                              # lamp columns on that ground. 4.60 m is one
+                              # storey plus the 0.60 m structural depth under
+                              # the deck -- the least lift that clears a road
+                              # vehicle and still reads as "elevated" in 29a,
+                              # where the way sits about a storey over the
+                              # terrace.
+GROUND_PIER_PITCH_M = it.TRUSS_BAY_M / 2.0     # 12 m: half the drum's own
+                                               # module, so a pier lands under
+                                               # every second truss bay
+GROUND_WAY_W_M = GROUND_CAR_W_M + 2.0 * 1.10   # car plus a walkway either side
+GROUND_PLATFORM_W_M = 4.00
+GROUND_PLATFORM_L_M = GROUND_CAR_BAYS * it.TRUSS_BAY_M + 6.0
+GROUND_CANOPY_L_M = GROUND_PLATFORM_L_M - 4.0
+GROUND_CANOPY_H_M = 3.60
+GROUND_CANOPY_SLOTS = 3       # measured off 29a: three vertical lit slots
+
+# Livery breaks, as fractions of the clear height above the saloon floor.
+GROUND_SILL_FRAC = 0.46       # top of the green flank band = the window sill
+GROUND_HEAD_FRAC = 0.80       # top of the window band
+
+
+def _prism8_closed(verts, tris, x, z, r, y0, y1):
+    """`_prism8` with both ends closed.
+
+    `_prism8` emits the side quads only, which is right where it is used on the
+    guideway car -- a stanchion runs floor to ceiling and both its ends are
+    buried. A wheel and a roof cowl do not: their ends are in plain view, and an
+    open end shows the background, which on this station is black.
+    `dressing._cyl` shipped exactly this defect for four sessions
+    (CLAUDE.md, session 3x), so it is closed here rather than inherited.
+    """
+    b = len(verts)
+    _prism8(verts, tris, x, z, r, y0, y1)
+    for k in range(1, 7):
+        tris.append((b, b + k + 1, b + k))                 # bottom, facing -y
+        tris.append((b + 8, b + 8 + k, b + 8 + k + 1))     # top, facing +y
+
+
+def ground_car_length():
+    return GROUND_CAR_BAYS * it.TRUSS_BAY_M
+
+
+def ground_levels():
+    """The ground car's section as (name, half_width, y), skirt to roof.
+
+    y is measured from the RAIL HEAD and increases UPWARD, which is the opposite
+    convention to `levels()` -- that car hangs from a chord and every y in it is
+    negative; this one stands on a deck. Stated here rather than left to be
+    inferred, and asserted in the self-test the same way.
+    """
+    w = GROUND_CAR_W_M / 2.0
+    y_skirt = GROUND_FLOOR_H_M - GROUND_UNDERFRAME_M
+    y_floor = GROUND_FLOOR_H_M
+    y_sill = y_floor + GROUND_SILL_FRAC * GROUND_CLEAR_M
+    y_head = y_floor + GROUND_HEAD_FRAC * GROUND_CLEAR_M
+    y_cant = y_floor + GROUND_CLEAR_M
+    y_roof = y_cant + GROUND_ROOF_M
+    return (
+        ("skirt", w * 0.74, y_skirt),
+        ("solebar", w * 0.97, y_floor - 0.18),
+        ("floor", w * 1.00, y_floor),
+        ("sill", w * 1.00, y_sill),
+        ("head", w * 0.99, y_head),
+        ("cant", w * 0.93, y_cant),
+        ("roof", w * 0.62, y_roof),
+    )
+
+
+def ground_level_y(name):
+    for n, _w, y in ground_levels():
+        if n == name:
+            return y
+    raise KeyError(name)
+
+
+def ground_level_w(name):
+    for n, w, _y in ground_levels():
+        if n == name:
+            return w
+    raise KeyError(name)
+
+
+def _g_stations():
+    """(z, width_scale, drop, tuck, rake) along the ground car, aft to fore.
+
+    Streamlined at BOTH ends -- 29a shows a rounded nose and no cab break, which
+    is what a shuttle on a ring line with nowhere to turn round has to be.
+    """
+    L = ground_car_length()
+    z0, z1 = -L / 2.0, L / 2.0
+    n = 2.60                                    # nose length
+    return [
+        (z0,            0.60, 0.42, 0.62, 0.46),
+        (z0 + 0.55,     0.78, 0.24, 0.36, 0.26),
+        (z0 + 1.35,     0.92, 0.09, 0.14, 0.10),
+        (z0 + n,        1.00, 0.00, 0.00, 0.00),
+        (z1 - n,        1.00, 0.00, 0.00, 0.00),
+        (z1 - 1.35,     0.92, 0.09, 0.14, 0.10),
+        (z1 - 0.55,     0.78, 0.24, 0.36, 0.26),
+        (z1,            0.60, 0.42, 0.62, 0.46),
+    ]
+
+
+def _g_weights():
+    """Per-level weights, derived from the y levels so they cannot go stale."""
+    y_roof, y_head = ground_level_y("roof"), ground_level_y("head")
+    y_floor = ground_level_y("floor")
+    y_skirt, y_sill = ground_level_y("skirt"), ground_level_y("sill")
+    out = []
+    for name, w, y in ground_levels():
+        top = min(1.0, max(0.0, (y - y_head) / (y_roof - y_head)))
+        bot = min(1.0, max(0.0, (y_floor - y) / (y_floor - y_skirt)))
+        rake = min(1.0, max(0.0, (y - y_sill) / (y_roof - y_sill)))
+        out.append((name, w, y, top, bot, rake))
+    return out
+
+
+def _g_ring(z, scale, drop, tuck, rake, only=None):
+    """One ground-car cross-section, counter-clockwise in xy. Local (x, y, z).
+
+    The rake leans BOTH screens back, because both ends of this car lead.
+    """
+    right, left = [], []
+    for name, w, y, wtop, wbot, wrake in _g_weights():
+        if only and name not in only:
+            continue
+        yy = y - drop * wtop + tuck * wbot
+        ww = max(0.04, w * scale)
+        zz = z - rake * wrake if z > 0.0 else z + rake * wrake
+        right.append((ww, yy, zz))
+        left.append((-ww, yy, zz))
+    return right + left[::-1]
+
+
+def _g_edge_groups():
+    """Longitudinal strip materials, right side then left, in ring order.
+
+    The livery break in 29a runs ALONG the section: cream over the cant, a dark
+    window band, a green flank band below the sill, a dark valance under the
+    solebar. So the body cannot be one group -- the rule `_loft`'s own note
+    states for the other car.
+
+    THE GREEN IS NOT GREEN YET, and that is stated rather than hidden.
+    `materials.py` carries no green paint: `green_section` resolves to
+    `habitat_windows`, an emissive. So the flank band is bound to `tram_band`,
+    which is the OTHER tram's maroon stripe. Every name here already resolves,
+    so `materials._selftest`'s source scan stays green and no other agent's
+    build breaks; the COLOUR is wrong and the fix is one material. The measured
+    target is in the block header.
+    """
+    # One name per LONGITUDINAL STRIP, and `_ring` returns right (skirt->roof)
+    # then left (roof->skirt), so the strip list is the right side, the crossing
+    # over the roof, the left side descending, and the crossing under the
+    # solebar: 2n, not n.
+    right = ["tram_valance",        # skirt -> solebar, the dark underskirt
+             "tram_band",           # solebar -> floor
+             "tram_band",           # floor -> sill, THE GREEN FLANK BAND
+             "tram_glass",          # sill -> head, the window band
+             "tram_body",           # head -> cant, cream above the windows
+             "tram_cap"]            # cant -> roof
+    return tuple(right + ["tram_roof"] + right[::-1] + ["tram_valance"])
+
+
+def ground_car_shell(glazed=True):
+    """The exterior body: skirt, green flank, window band, roof, running gear.
+
+    Returns (verts, tris, groups) -- groups PER TRIANGLE, the convention this
+    module already uses -- in the car's own frame: +x starboard, +y up from the
+    rail head, +z along the car.
+    """
+    verts, tris, groups = [], [], []
+    rings = [_g_ring(*s) for s in _g_stations()]
+    eg = _g_edge_groups()
+    groups.extend(_loft(verts, tris, rings, edge_groups=eg))
+
+    # Both ends are caps. `_cap` ladders a ring's halves together level by
+    # level, so the window rung IS the screen rather than a second surface in
+    # the same plane -- the rule it states for the other car.
+    rung = list(eg[:len(ground_levels()) - 1])
+    for ring, front in ((rings[0], False), (rings[-1], True)):
+        groups.extend(_cap(verts, tris, ring, front, rung_groups=rung))
+
+    L = ground_car_length()
+    w = ground_level_w("sill")
+    y_sill, y_head = ground_level_y("sill"), ground_level_y("head")
+    y_floor = ground_level_y("floor")
+
+    # WINDOW PILLARS. The band in 29a is divided, not continuous glass. The
+    # pitch is the seat pitch doubled: one body-side pillar per pair of seat
+    # bays, which is where a real one goes.
+    pitch = SEAT_PITCH_M * 2.0
+    t0 = len(tris)
+    npil = int((L - 2.0 * 2.60) / pitch)
+    for i in range(1, npil):
+        z = -L / 2.0 + 2.60 + i * pitch
+        for sgn in (-1.0, 1.0):
+            _slab(verts, tris, sgn * (w - 0.015), sgn * (w + 0.045),
+                  y_sill - 0.02, y_head + 0.02, z - 0.055, z + 0.055)
+    # `tram_pillar`, not `tram_body`, and the reason is a TEST rather than a
+    # material: both resolve to the same paint, but a pillar is an appliqué box
+    # whose inboard faces legitimately point at the car's axis, so mixing it
+    # into the lofted strip would take `_facing_fraction` off 1.0 for a shell
+    # that is correctly wound. Keeping the loft's own names pure is what lets
+    # the self-test assert 1.0 instead of a threshold nobody can defend.
+    groups.extend(["tram_pillar"] * (len(tris) - t0))
+
+    # DOORS: two per side, recessed into the flank, each a pair of leaves. They
+    # are the `tram_door` this place declares, and the caller re-tags them as
+    # `prop_tram_door` so `interact.py` can find them.
+    t0 = len(tris)
+    for dz in (-L * 0.26, L * 0.26):
+        for sgn in (-1.0, 1.0):
+            for leaf in (-1, 1):
+                _slab(verts, tris, sgn * (w - 0.075), sgn * (w - 0.020),
+                      y_floor + 0.02, y_head,
+                      dz + leaf * 0.02, dz + leaf * 0.62)
+    groups.extend(["tram_recess"] * (len(tris) - t0))
+
+    # SKIRT STRAKES: what makes the flank read as a vehicle rather than a slab
+    # at the distance a player stands from one on a platform.
+    t0 = len(tris)
+    ys, ws = ground_level_y("skirt"), ground_level_w("skirt")
+    nstr = int(L / 1.6)
+    for i in range(nstr):
+        z = -L / 2.0 + 1.2 + i * 1.6
+        if z > L / 2.0 - 1.2:
+            break
+        for sgn in (-1.0, 1.0):
+            _slab(verts, tris, sgn * (ws - 0.02), sgn * (ws + 0.06),
+                  ys + 0.06, ys + 0.30, z - 0.30, z + 0.30)
+    groups.extend(["tram_duct"] * (len(tris) - t0))
+
+    # BOGIES: two, at the quarter points, each a frame on four wheels. Running
+    # gear is how a rail vehicle is recognised from the platform it stands at.
+    t0 = len(tris)
+    for bz in (-L * 0.28, L * 0.28):
+        _slab(verts, tris, -GROUND_CAR_W_M * 0.34, GROUND_CAR_W_M * 0.34,
+              0.08, ys + 0.02, bz - 1.35, bz + 1.35)
+        for wz in (bz - 0.92, bz + 0.92):
+            for sgn in (-1.0, 1.0):
+                _prism8_closed(verts, tris, sgn * GROUND_CAR_W_M * 0.36, wz,
+                               0.36, 0.00, 0.16)
+    groups.extend(["tram_shoe"] * (len(tris) - t0))
+
+    # ROOF EQUIPMENT: a centre duct run and two cowls. A bare roof reads as a
+    # box lid from above, and in this drum there IS an above -- the far side of
+    # the Garden is 556 m overhead and looking down.
+    t0 = len(tris)
+    yr = ground_level_y("roof")
+    _slab(verts, tris, -0.34, 0.34, yr - 0.04, yr + 0.15,
+          -L * 0.34, L * 0.34)
+    for cz in (-L * 0.30, L * 0.30):
+        _prism8_closed(verts, tris, 0.0, cz, 0.42, yr - 0.02, yr + 0.26)
+    groups.extend(["tram_port"] * (len(tris) - t0))
+
+    # NOSE LIGHTS at both ends, because both ends lead.
+    t0 = len(tris)
+    for sgn in (-1.0, 1.0):
+        for sx in (-1.0, 1.0):
+            _slab(verts, tris, sx * 0.30, sx * 0.72,
+                  y_floor + 0.10, y_floor + 0.38,
+                  sgn * (L / 2.0 - 0.28), sgn * (L / 2.0 - 0.12))
+    groups.extend(["tram_headlight"] * (len(tris) - t0))
+
+    if not glazed:
+        keep = [i for i, g in enumerate(groups) if g != "tram_glass"]
+        tris = [tris[i] for i in keep]
+        groups = [groups[i] for i in keep]
+    return verts, tris, groups
+
+
+def ground_car_saloon():
+    """The inside, seen from inside: longitudinal benches under the windows.
+
+    Wound INWARD. `_facing_fraction(inward=True)` is what asserts it, because a
+    saloon turned inside out renders black rather than raising.
+    """
+    verts, tris, groups = [], [], []
+    L = ground_car_length()
+    z0, z1 = -L / 2.0 + 2.20, L / 2.0 - 2.20
+    w = ground_level_w("sill") - WALL_T
+    y_f = ground_level_y("floor")
+    y_c = y_f + GROUND_CLEAR_M
+    y_s, y_h = ground_level_y("sill"), ground_level_y("head")
+
+    inner = [
+        [(w, y_f, z), (w, y_s, z), (w, y_h, z), (w, y_c, z),
+         (-w, y_c, z), (-w, y_h, z), (-w, y_s, z), (-w, y_f, z)]
+        for z in (z0, (z0 + z1) / 2.0, z1)
+    ]
+    groups.extend(_loft(verts, tris, inner, inward=True,
+                        edge_groups=("tram_in_wall", "tram_in_window",
+                                     "tram_in_wall", "tram_in_ceiling",
+                                     "tram_in_wall", "tram_in_window",
+                                     "tram_in_wall", "tram_in_skirt")))
+
+    # Floor and both bulkheads, so the saloon is a closed volume a passenger
+    # cannot fall out of -- the rule `car_collision` states for the other car.
+    t0 = len(tris)
+    # WOUND UP, not down. `_quad`'s normal follows p0->p1->p2, and the
+    # obvious vertex order gives -y here: a floor a passenger falls through and
+    # sees the drum through. Measured by `_facing_fraction(inward=True)`.
+    _quad(verts, tris, (-w, y_f, z1), (w, y_f, z1), (w, y_f, z0), (-w, y_f, z0))
+    for z, fwd in ((z0, False), (z1, True)):
+        p = [(-w, y_f, z), (w, y_f, z), (w, y_c, z), (-w, y_c, z)]
+        if fwd:
+            _quad(verts, tris, p[3], p[2], p[1], p[0])
+        else:
+            _quad(verts, tris, *p)
+    groups.extend(["tram_in_floor"] * (len(tris) - t0))
+
+    # BENCHES: plinth, cushion, and the amber lit strip in the plinth face that
+    # 35a shows and that this station's saloons are recognised by.
+    seat_h = 0.44
+    for sgn in (-1.0, 1.0):
+        t0 = len(tris)
+        _slab(verts, tris, sgn * (w - GROUND_BENCH_D_M), sgn * w,
+              y_f, y_f + seat_h - 0.09, z0 + 0.30, z1 - 0.30)
+        groups.extend(["tram_in_plinth"] * (len(tris) - t0))
+        t0 = len(tris)
+        _slab(verts, tris, sgn * (w - GROUND_BENCH_D_M - 0.03), sgn * w,
+              y_f + seat_h - 0.09, y_f + seat_h, z0 + 0.30, z1 - 0.30)
+        groups.extend(["tram_in_seat"] * (len(tris) - t0))
+        t0 = len(tris)
+        _slab(verts, tris, sgn * (w - GROUND_BENCH_D_M - 0.035),
+              sgn * (w - GROUND_BENCH_D_M - 0.005),
+              y_f + 0.10, y_f + 0.20, z0 + 0.35, z1 - 0.35)
+        groups.extend(["tram_in_strip"] * (len(tris) - t0))
+        # Cushion divisions at the seat pitch. A 20 m unbroken cushion is a
+        # slab, and `SEAT_PITCH_M` is what says where the divisions go.
+        t0 = len(tris)
+        nseat = int((z1 - z0 - 0.6) / SEAT_PITCH_M)
+        for i in range(1, nseat):
+            z = z0 + 0.30 + i * SEAT_PITCH_M
+            _slab(verts, tris, sgn * (w - GROUND_BENCH_D_M), sgn * (w - 0.01),
+                  y_f + seat_h - 0.10, y_f + seat_h + 0.04, z - 0.02, z + 0.02)
+        groups.extend(["tram_in_bezel"] * (len(tris) - t0))
+
+    # STANCHIONS floor to ceiling, and a grab rail down the aisle.
+    t0 = len(tris)
+    nst = int((z1 - z0) / 2.4) + 1
+    for i in range(nst):
+        z = z0 + 1.2 + i * 2.4
+        if z > z1 - 0.6:
+            break
+        for sgn in (-1.0, 1.0):
+            _prism8(verts, tris, sgn * (w - GROUND_BENCH_D_M - 0.14), z,
+                    0.032, y_f, y_c)
+    _slab(verts, tris, -0.035, 0.035, y_c - 0.30, y_c - 0.24,
+          z0 + 0.6, z1 - 0.6)
+    groups.extend(["tram_in_post"] * (len(tris) - t0))
+
+    # The saloon's own light: a cove either side of the ceiling.
+    t0 = len(tris)
+    for sgn in (-1.0, 1.0):
+        _slab(verts, tris, sgn * (w - 0.26), sgn * (w - 0.10),
+              y_c - 0.14, y_c - 0.06, z0 + 0.4, z1 - 0.4)
+    groups.extend(["tram_in_strip"] * (len(tris) - t0))
+
+    # A readout over every door pocket.
+    t0 = len(tris)
+    for dz in (-L * 0.26, L * 0.26):
+        for sgn in (-1.0, 1.0):
+            _slab(verts, tris, sgn * (w - 0.05), sgn * (w - 0.01),
+                  y_h + 0.06, y_h + 0.24, dz - 0.34, dz + 0.34)
+    groups.extend(["tram_in_readout"] * (len(tris) - t0))
+    return verts, tris, groups
+
+
+def ground_car(interior=True, glazed=True):
+    """The whole ground car -> (verts, tris, meta). Local frame, +z along."""
+    verts, tris, groups = ground_car_shell(glazed=glazed)
+    if interior:
+        iv, it_, ig = ground_car_saloon()
+        o = len(verts)
+        verts.extend(iv)
+        tris.extend((a + o, b + o, c + o) for a, b, c in it_)
+        groups.extend(ig)
+    return verts, tris, {"groups": groups, "triangles": len(tris),
+                         "length_m": ground_car_length(),
+                         "width_m": GROUND_CAR_W_M,
+                         "height_m": ground_level_y("roof")}
+
+
+# ---------------------------------------------------------------------------
+# The way, the stop and its canopy -- built ON the drum, in the drum's own arc
+# ---------------------------------------------------------------------------
+# LOCAL FRAME FOR EVERYTHING BELOW: (s, y, x), where s runs ALONG THE RING at
+# the drum's floor radius, y is up -- inboard, so the RADIUS DECREASES as y
+# rises -- and x runs along the station axis. `_on_drum` maps it.
+#
+# THE WAY IS AN ARC AND THE CAR IS A CHORD, and that is not pedantry. Twenty
+# degrees of arc at r = 278.3 m has a sagitta of 4.23 m, so a viaduct emitted as
+# one straight box would leave the drum floor by four metres at its ends and
+# fail this place's own footprint. Every long member is therefore emitted BAY BY
+# BAY and each bay's own sagitta is 0.065 m. The car is rigid and is placed by
+# one transform, so it stands as a 24 m chord at up to 0.26 m of throw-over from
+# the arc it runs on -- which is why the platform edge below is a GAP and not a
+# fit, and why `ground_throw_over_m` reports it.
+
+
+def _on_drum(r0, angle0_deg, z0, p):
+    """(s, y, x) in the stop's local frame -> world (X, Y, Z)."""
+    s, y, x = p
+    a = math.radians(angle0_deg + math.degrees(s / r0))
+    r = r0 - y
+    return (r * math.cos(a), r * math.sin(a), z0 + x)
+
+
+def ground_throw_over_m():
+    """How far a rigid car's middle stands off the arc it runs on."""
+    return ground_car_length() ** 2 / (8.0 * 278.3)
+
+
+def ground_frame(schema, profile, sector=None, place=None):
+    """Where this stop is, resolved once, FROM THE REGISTER. -> dict.
+
+    Not from an argument with a default: the register is the thing
+    `directory.overlaps` and `ground_footprint_fit` both read, so taking the
+    address from anywhere else would let the geometry and the gate disagree.
+    """
+    import directory as dr                                      # noqa: PLC0415
+    sector = sector or it.drum_sector(schema, profile)
+    q = place or dr.by_key("ground_tram")
+    return {
+        "place": q,
+        "sector": sector,
+        "r0": it.sector_radius(schema, profile, sector),
+        "angle_deg": float(q["angle_deg"]),
+        "z_m": float(q["z_m"]),
+        "half_deg": float(q["footprint"][0]) / 2.0,
+        "half_z_m": float(q["footprint"][1]) / 2.0,
+    }
+
+
+def _taper_leg(v, t, s, x, y0, y1, r0, r1, sides=8):
+    """A tapered octagonal column -- a leg, not a post. Local (s, y, x)."""
+    rings = []
+    for frac in (0.0, 0.42, 0.78, 1.0):
+        y = y0 + (y1 - y0) * frac
+        r = r0 + (r1 - r0) * frac
+        rings.append([(s + r * math.cos(2 * math.pi * k / sides), y,
+                       x + r * math.sin(2 * math.pi * k / sides))
+                      for k in range(sides)])
+    for a, b in zip(rings, rings[1:]):
+        base = len(v)
+        v.extend(a)
+        v.extend(b)
+        for k in range(sides):
+            k2 = (k + 1) % sides
+            t.append((base + k, base + k2, base + sides + k2))
+            t.append((base + k, base + sides + k2, base + sides + k))
+    for ring, up in ((rings[0], False), (rings[-1], True)):
+        base = len(v)
+        v.extend(ring)
+        for k in range(1, sides - 1):
+            t.append((base, base + k, base + k + 1) if up
+                     else (base, base + k + 1, base + k))
+
+
+def ground_viaduct(s0, s1):
+    """The elevated way between two arc positions. -> [(group, verts, tris)]
+
+    Local (s, y, x) and UNMAPPED, so the caller decides where it lands and the
+    footprint gate sees vertices rather than a promise.
+    """
+    out = []
+    deck_y = GROUND_RAIL_H_M - 0.60
+    hw = GROUND_WAY_W_M / 2.0
+    nbay = max(1, int(round((s1 - s0) / GROUND_PIER_PITCH_M)))
+    pitch = (s1 - s0) / nbay
+
+    v, t = [], []                                            # PIERS
+    for i in range(nbay + 1):
+        s = s0 + i * pitch
+        for sgn in (-1.0, 1.0):
+            x = sgn * (hw - 1.30)
+            _taper_leg(v, t, s, x, 0.0, deck_y - 0.62, 0.62, 0.42)
+            _slab(v, t, s - 0.95, s + 0.95, 0.0, 0.34, x - 0.95, x + 0.95)
+            _slab(v, t, s - 0.72, s + 0.72, deck_y - 0.62, deck_y - 0.34,
+                  x - 0.72, x + 0.72)
+        _slab(v, t, s - 0.55, s + 0.55, deck_y - 0.34, deck_y - 0.06,
+              -hw + 0.35, hw - 0.35)                         # cross head
+    out.append(("wall_panel", v, t))
+
+    v, t = [], []                                            # DECK + SOFFIT
+    for i in range(nbay):
+        a, b = s0 + i * pitch, s0 + (i + 1) * pitch
+        _slab(v, t, a, b, deck_y - 0.06, deck_y, -hw, hw)
+        for sgn in (-1.0, 1.0):
+            _slab(v, t, a, b, deck_y - 0.60, deck_y - 0.06,
+                  sgn * (hw - 0.28), sgn * hw)               # edge beams
+        for j in range(3):
+            c = a + (b - a) * (j + 0.5) / 3.0
+            _slab(v, t, c - 0.16, c + 0.16, deck_y - 0.44, deck_y - 0.06,
+                  -hw + 0.28, hw - 0.28)                     # soffit ribs
+    out.append(("deck_panel", v, t))
+
+    v, t = [], []                                            # PARAPET, 29a
+    for i in range(nbay):
+        a, b = s0 + i * pitch, s0 + (i + 1) * pitch
+        npost = max(2, int(round((b - a) / 3.0)))
+        for j in range(npost + 1):
+            s = a + (b - a) * j / npost
+            for sgn in (-1.0, 1.0):
+                _slab(v, t, s - 0.07, s + 0.07, deck_y, deck_y + 1.10,
+                      sgn * (hw - 0.16), sgn * (hw - 0.02))
+        for k in range(4):                                   # four slats
+            y = deck_y + 0.22 + k * 0.28
+            for sgn in (-1.0, 1.0):
+                _slab(v, t, a, b, y, y + 0.19,
+                      sgn * (hw - 0.13), sgn * (hw - 0.05))
+    out.append(("fix_gantry_rail", v, t))
+
+    v, t = [], []                                            # RAILS + CHAIRS
+    for i in range(nbay):
+        a, b = s0 + i * pitch, s0 + (i + 1) * pitch
+        for sgn in (-1.0, 1.0):
+            _slab(v, t, a, b, deck_y, deck_y + 0.16,
+                  sgn * 0.72 - 0.05, sgn * 0.72 + 0.05)
+        _slab(v, t, a, b, deck_y, deck_y + 0.26, -0.11, 0.11)    # guide beam
+        nch = max(2, int((b - a) / 1.5))
+        for j in range(nch):
+            s = a + (b - a) * (j + 0.5) / nch
+            for sgn in (-1.0, 1.0):
+                _slab(v, t, s - 0.13, s + 0.13, deck_y, deck_y + 0.07,
+                      sgn * 0.72 - 0.17, sgn * 0.72 + 0.17)
+    out.append(("fix_catenary_run", v, t))
+
+    v, t = [], []                                            # CABLE TROUGH
+    for i in range(nbay):
+        a, b = s0 + i * pitch, s0 + (i + 1) * pitch
+        for sgn in (-1.0, 1.0):
+            _slab(v, t, a, b, deck_y - 0.30, deck_y - 0.10,
+                  sgn * (hw - 0.62), sgn * (hw - 0.30))
+    out.append(("greeble_conduit", v, t))
+
+    v, t = [], []                                            # LAMP COLUMNS
+    for i in range(nbay + 1):
+        s = s0 + i * pitch
+        if i % 2:
+            continue
+        for sgn in (-1.0, 1.0):
+            _prism8(v, t, s, sgn * (hw - 0.34), 0.085,
+                    deck_y + 1.10, deck_y + 4.10)
+            _slab(v, t, s - 0.26, s + 0.26, deck_y + 4.02, deck_y + 4.22,
+                  sgn * (hw - 1.30), sgn * (hw - 0.20))
+    out.append(("fix_service_riser", v, t))
+    return out
+
+
+def ground_canopy():
+    """The stop canopy: 29a's long, low, tapered shell with its three slots.
+
+    Lofted through half-elliptical rings rather than boxed, because 29a's shell
+    is a continuous curved surface with rounded ends -- and because a box
+    canopy is the failure this project has a name for.
+    """
+    out = []
+    L = GROUND_CANOPY_L_M
+    deck_y = GROUND_RAIL_H_M - 0.60
+    y0 = deck_y + 0.75                       # springing, over the platform slab
+    hw = GROUND_PLATFORM_W_M / 2.0 + 0.55
+    cx = -(GROUND_WAY_W_M / 2.0 + GROUND_PLATFORM_W_M / 2.0)
+    n = 15
+
+    def ring(s, scale, grow=0.0):
+        return [(s, y0 + (GROUND_CANOPY_H_M * scale + grow)
+                 * math.sin(math.pi * k / (n - 1)),
+                 cx + (hw * scale + grow) * math.cos(math.pi * k / (n - 1)))
+                for k in range(n)]
+
+    st = [(-L / 2.0, 0.30), (-L / 2.0 + 1.1, 0.62), (-L / 2.0 + 2.6, 0.88),
+          (-L / 2.0 + 4.4, 1.00), (L / 2.0 - 4.4, 1.00),
+          (L / 2.0 - 2.6, 0.88), (L / 2.0 - 1.1, 0.62), (L / 2.0, 0.30)]
+    rings = [ring(*p) for p in st]
+
+    v, t = [], []
+    for a, b in zip(rings, rings[1:]):
+        base = len(v)
+        v.extend(a)
+        v.extend(b)
+        for k in range(n - 1):
+            t.append((base + k, base + n + k + 1, base + k + 1))
+            t.append((base + k, base + n + k, base + n + k + 1))
+    for r_, front in ((rings[0], False), (rings[-1], True)):
+        base = len(v)
+        v.extend(r_)
+        for k in range(1, n - 1):
+            t.append((base, base + k + 1, base + k) if front
+                     else (base, base + k, base + k + 1))
+    # A soffit, so the canopy is a closed shell rather than a half pipe with the
+    # drum's black showing through it -- the failure CLAUDE.md records twice.
+    for a, b in zip(rings, rings[1:]):
+        sa, sb = a[0][0], b[0][0]
+        _quad(v, t, (sa, a[-1][1], a[-1][2]), (sa, a[0][1], a[0][2]),
+              (sb, b[0][1], b[0][2]), (sb, b[-1][1], b[-1][2]))
+    out.append(("wall_panel", v, t))
+
+    v, t = [], []                                            # RIBS
+    for i in range(7):
+        s = -L / 2.0 + 4.4 + (L - 8.8) * i / 6.0
+        r1, r2 = ring(s, 1.0), ring(s, 1.0, grow=0.11)
+        for k in range(n - 1):
+            base = len(v)
+            v.extend([(s - 0.09, r1[k][1], r1[k][2]),
+                      (s + 0.09, r1[k][1], r1[k][2]),
+                      (s + 0.09, r2[k][1], r2[k][2]),
+                      (s - 0.09, r2[k][1], r2[k][2]),
+                      (s - 0.09, r1[k + 1][1], r1[k + 1][2]),
+                      (s + 0.09, r1[k + 1][1], r1[k + 1][2]),
+                      (s + 0.09, r2[k + 1][1], r2[k + 1][2]),
+                      (s - 0.09, r2[k + 1][1], r2[k + 1][2])])
+            for a, c, d, e in ((0, 1, 2, 3), (7, 6, 5, 4), (0, 4, 5, 1),
+                               (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)):
+                t.append((base + a, base + d, base + c))
+                t.append((base + a, base + e, base + d))
+    out.append(("greeble_panel", v, t))
+
+    v, t = [], []                                # THE THREE LIT SLOTS, 29a
+    for i in range(GROUND_CANOPY_SLOTS):
+        s = -1.9 + i * 1.9
+        _slab(v, t, s - 0.16, s + 0.16, y0 + 0.35,
+              y0 + GROUND_CANOPY_H_M * 0.80,
+              cx + hw * 0.84, cx + hw * 1.04)
+    out.append(("light_pilaster_strip", v, t))
+
+    v, t = [], []                                            # PLINTH
+    _slab(v, t, -L / 2.0 - 0.3, L / 2.0 + 0.3, y0 - 0.80, y0,
+          cx - hw * 0.55, cx + hw * 0.55)
+    out.append(("fix_dais", v, t))
+    return out
+
+
+def ground_platform():
+    """The platform slab, its tactile edge, the stair down and the fittings."""
+    out = []
+    deck_y = GROUND_RAIL_H_M - 0.60
+    L = GROUND_PLATFORM_L_M
+    hw = GROUND_WAY_W_M / 2.0
+    x_in = -(hw + GROUND_PLATFORM_W_M)
+    top = deck_y + 0.75
+
+    v, t = [], []                                            # SLAB, bay by bay
+    nb = max(1, int(round(L / 6.0)))
+    for i in range(nb):
+        a, b = -L / 2.0 + L * i / nb, -L / 2.0 + L * (i + 1) / nb
+        _slab(v, t, a, b, top - 0.22, top, x_in, -hw + 0.05)
+        _slab(v, t, a, b, deck_y - 0.60, top - 0.22, x_in, x_in + 0.45)
+    out.append(("deck_panel", v, t))
+
+    v, t = [], []                                            # TACTILE EDGE
+    for i in range(int(L / 0.9)):
+        a = -L / 2.0 + i * 0.9
+        _slab(v, t, a + 0.06, a + 0.84, top, top + 0.025,
+              -hw - 0.35, -hw + 0.05)
+    out.append(("fix_platform_edge", v, t))
+
+    v, t = [], []                                            # STAIR
+    sz = L / 2.0 - 4.2
+    nstep = 18
+    for i in range(nstep):
+        y = top - (top - 0.10) * (i + 1) / nstep
+        _slab(v, t, sz + 0.30 * i, sz + 0.30 * (i + 1), y, y + 0.16,
+              x_in + 0.2, x_in + 1.7)
+    out.append(("deck_panel", v, t))
+
+    v, t = [], []                                            # BALUSTRADE
+    for i in range(nstep + 1):
+        y = top - (top - 0.10) * i / nstep
+        for xx in (x_in + 0.24, x_in + 1.66):
+            _slab(v, t, sz + 0.30 * i - 0.04, sz + 0.30 * i + 0.04,
+                  y + 0.16, y + 1.12, xx - 0.04, xx + 0.04)
+    out.append(("prop_gallery_rail", v, t))
+
+    v, t = [], []                                            # BENCHES
+    for i in range(3):
+        s = -L / 2.0 + 5.0 + i * 6.5
+        _slab(v, t, s - 1.10, s + 1.10, top + 0.36, top + 0.44,
+              x_in + 0.95, x_in + 1.50)
+        for zz in (s - 0.95, s + 0.95):
+            _slab(v, t, zz - 0.06, zz + 0.06, top, top + 0.36,
+                  x_in + 1.02, x_in + 1.44)
+    out.append(("prop_seat", v, t))
+
+    # THE DECLARED INTERACTABLES. Three stop plaques, because PLC-073's own
+    # acceptance check names three: township, fields, Garden gate.
+    v, t = [], []
+    for i in range(3):
+        s = -L / 2.0 + 3.4 + i * 7.6
+        _slab(v, t, s - 0.42, s + 0.42, top + 1.55, top + 2.05,
+              x_in + 0.30, x_in + 0.38)
+        _slab(v, t, s - 0.05, s + 0.05, top, top + 1.55,
+              x_in + 0.30, x_in + 0.40)
+    out.append(("prop_level_plaque", v, t))
+
+    v, t = [], []                                            # call buttons x3
+    for i in range(3):
+        s = -L / 2.0 + 2.2 + i * 8.4
+        _slab(v, t, s - 0.14, s + 0.14, top + 1.05, top + 1.35,
+              x_in + 0.36, x_in + 0.46)
+    out.append(("prop_intercom", v, t))
+
+    v, t = [], []                                            # emergency stop
+    _slab(v, t, -0.24, 0.24, top + 1.05, top + 1.45, x_in + 0.36, x_in + 0.50)
+    out.append(("prop_breaker_lever", v, t))
+
+    v, t = [], []                                            # line map
+    _slab(v, t, -2.9, -0.9, top + 1.10, top + 2.20, x_in + 0.30, x_in + 0.40)
+    out.append(("prop_station_schematic_screen", v, t))
+
+    v, t = [], []                                            # freight booking
+    _slab(v, t, 1.2, 2.2, top, top + 1.35, x_in + 0.40, x_in + 0.95)
+    out.append(("prop_manifest_terminal", v, t))
+
+    v, t = [], []                                            # the bell
+    _prism8(v, t, L / 2.0 - 1.4, x_in + 0.55, 0.22, top + 2.30, top + 2.62)
+    out.append(("prop_info_board", v, t))
+    return out
+
+
+def ground_stop(schema, profile, sector=None, place=None, cars=2):
+    """PLC-073 BUILT: the way across its wedge, the stop, the canopy, the cars.
+
+    -> (verts, tris, spans, meta). `spans` are (name, tri_lo, tri_hi), which is
+    the convention `density.machinery_split` and `export_scene.per_triangle`
+    read. The guideway car above returns a per-triangle list instead; both
+    conventions already exist in this repository and inventing a third one here
+    would be worse than living with two.
+    """
+    fr = ground_frame(schema, profile, sector, place)
+    # The wedge, in metres of arc, with a margin so a chorded bay end cannot
+    # cross the boundary: the bay's own sagitta plus the widest thing that hangs
+    # off the end of one.
+    half_s = math.radians(fr["half_deg"]) * fr["r0"] - 1.5
+    verts, tris, spans = [], [], []
+
+    def emit(name, lv, lt):
+        o, t0 = len(verts), len(tris)
+        verts.extend(_on_drum(fr["r0"], fr["angle_deg"], fr["z_m"], p)
+                     for p in lv)
+        tris.extend((a + o, b + o, c + o) for a, b, c in lt)
+        spans.append((name, t0, len(tris)))
+
+    for name, lv, lt in ground_viaduct(-half_s, half_s):
+        emit(name, lv, lt)
+    for name, lv, lt in ground_canopy():
+        emit(name, lv, lt)
+    for name, lv, lt in ground_platform():
+        emit(name, lv, lt)
+    structure_tris = len(tris)
+
+    # THE CARS ARE CHORDS: each is built once and placed by ONE rigid transform
+    # at its own arc position, so it does not bend round the drum. That is the
+    # physical truth and it is also what makes the platform gap real.
+    cv, ct, cm = ground_car(interior=True)
+    deck_y = GROUND_RAIL_H_M - 0.60
+    at = [0.0]
+    if cars > 1:
+        step = (2.0 * half_s - ground_car_length()) / (cars - 1)
+        at = [-half_s + ground_car_length() / 2.0 + i * step
+              for i in range(cars)]
+        at[len(at) // 2] = 0.0                      # one of them IS at the stop
+    door_spans = []
+    for s_at in at:
+        a = math.radians(fr["angle_deg"] + math.degrees(s_at / fr["r0"]))
+        r_rail = fr["r0"] - deck_y
+        o = (r_rail * math.cos(a), r_rail * math.sin(a), fr["z_m"])
+        fwd = (-math.sin(a), math.cos(a), 0.0)      # along the ring
+        up = (-math.cos(a), -math.sin(a), 0.0)      # inboard
+        side = (0.0, 0.0, 1.0)                      # along the station axis
+        base, t0 = len(verts), len(tris)
+        for (x, y, z) in cv:
+            verts.append((o[0] + x * side[0] + y * up[0] + z * fwd[0],
+                          o[1] + x * side[1] + y * up[1] + z * fwd[1],
+                          o[2] + x * side[2] + y * up[2] + z * fwd[2]))
+        tris.extend((p + base, q + base, r + base) for p, q, r in ct)
+        run = None
+        for i, g in enumerate(cm["groups"]):
+            nm = "prop_tram_door" if g == "tram_recess" else g
+            if run and run[0] == nm:
+                run[2] = t0 + i + 1
+            else:
+                if run:
+                    (door_spans if run[0] == "prop_tram_door"
+                     else spans).append(tuple(run))
+                run = [nm, t0 + i, t0 + i + 1]
+        if run:
+            (door_spans if run[0] == "prop_tram_door"
+             else spans).append(tuple(run))
+    spans.extend(door_spans)
+
+    return verts, tris, spans, {
+        "place": fr["place"]["key"], "angle_deg": fr["angle_deg"],
+        "z_m": fr["z_m"], "r0": fr["r0"],
+        "arc_built_m": 2.0 * half_s,
+        "arc_footprint_m": math.radians(2.0 * fr["half_deg"]) * fr["r0"],
+        "cars": len(at), "car_triangles": len(ct),
+        "structure_triangles": structure_tris,
+        "throw_over_m": ground_throw_over_m(),
+        "triangles": len(tris), "groups": spans,
+    }
+
+
+def ground_footprint_fit(schema, profile, verts, place=None):
+    """Every vertex against the register's own wedge. -> dict.
+
+    Layer 2a's criterion is "inside its own footprint", and a footprint on a
+    ring deck is an ANGULAR wedge and an axial span -- `directory.py`'s own
+    words, and the arithmetic `directory.overlaps` uses. Radius is not in it:
+    the address already names the deck. So this measures the two things the
+    footprint constrains, and the radius SEPARATELY against the drum floor,
+    because a stop that pokes down through the ground is a different fault and
+    deserves its own number rather than passing inside a combined one.
+    """
+    import directory as dr                                      # noqa: PLC0415
+    q = place or dr.by_key("ground_tram")
+    ha, hz = float(q["footprint"][0]) / 2.0, float(q["footprint"][1]) / 2.0
+    a0, z0 = float(q["angle_deg"]), float(q["z_m"])
+    r_floor = it.sector_radius(schema, profile,
+                               it.drum_sector(schema, profile))
+    da = dz = out_r = 0.0
+    for x, y, z in verts:
+        a = (math.degrees(math.atan2(y, x)) - a0 + 180.0) % 360.0 - 180.0
+        da = max(da, abs(a))
+        dz = max(dz, abs(z - z0))
+        out_r = max(out_r, math.hypot(x, y) - r_floor)
+    return {"max_dangle_deg": da, "half_deg": ha,
+            "max_dz_m": dz, "half_z_m": hz,
+            "max_outside_floor_m": out_r,
+            "inside": da <= ha and dz <= hz and out_r <= 1e-6,
+            "angle_use": da / ha, "z_use": dz / hz}
+
+
+# ---------------------------------------------------------------------------
 # Self-test. The properties a render cannot be trusted to show.
 # ---------------------------------------------------------------------------
 
@@ -2057,8 +2962,166 @@ def _selftest():
           f"{(q['floor_y']-q['floor_ring_y'])*1000:.0f} mm of plinth the ring "
           f"does not know about")
 
+    fail += _ground_gate(schema, profile, check)
+
     print(f"{ok}/{ok + fail} passed")
     return 1 if fail else 0
+
+
+# ---------------------------------------------------------------------------
+# THE GROUND LINE'S GATE -- in the module that builds the thing, on the hard
+# case, and every check with a control that fires
+# ---------------------------------------------------------------------------
+# CLAUDE.md, session 3x: *"a gate belongs in the module that builds the thing,
+# and it must build the hard case"*. The hard case for a ring-line stop is the
+# one that made the footprint arithmetic necessary -- a 94 m structure on a
+# 278 m radius, where a straight member leaves the drum by four metres.
+#
+# AND EVERY CHECK HERE HAS TO BE ABLE TO FAIL ON THE CONTENT THAT EXISTS. Four
+# controls below do exactly that and their numbers are printed, because a
+# control that is not shown firing is a comment.
+
+def _ground_gate(schema, profile, check):
+    """PLC-073, measured. Returns the number of failures it added."""
+    import directory as dr                                      # noqa: PLC0415
+    import density as D                                         # noqa: PLC0415
+    before = [0]
+
+    def chk(name, cond, note=""):
+        if not cond:
+            before[0] += 1
+        check(name, cond, note)
+
+    q = dr.by_key("ground_tram")
+    V, T, SP, M = ground_stop(schema, profile)
+    print(f"\n  GROUND LINE (PLC-073) -- {len(T):,} tri: "
+          f"{M['structure_triangles']:,} of stop and way over "
+          f"{M['arc_built_m']:.1f} m of its {M['arc_footprint_m']:.1f} m arc, "
+          f"{M['cars']} cars of {M['car_triangles']:,}")
+
+    # 1. LAYER 2a: INSIDE ITS OWN FOOTPRINT. A footprint on a ring deck is an
+    #    angular wedge and an axial span -- `directory.py`'s own definition.
+    fit = ground_footprint_fit(schema, profile, V)
+    chk("the ground line lands inside PLC-073's own wedge",
+        fit["inside"],
+        f"{fit['max_dangle_deg']:.3f} deg of {fit['half_deg']:.1f}, "
+        f"{fit['max_dz_m']:.1f} m of {fit['half_z_m']:.1f}, "
+        f"{fit['max_outside_floor_m']:.3f} m outside the floor")
+    chk("and it USES the wedge rather than sitting in the middle of it",
+        fit["angle_use"] > 0.90, f"{fit['angle_use'] * 100:.1f}% of the arc")
+
+    #    CONTROL: the same way, straight instead of arced, is the failure the
+    #    bay-by-bay emission exists to prevent. Measured, not asserted.
+    hs = math.radians(fit["half_deg"]) * M["r0"] - 1.5
+    sag = M["r0"] * (1.0 - math.cos(hs / M["r0"]))
+    chk("and the control fires -- one straight member would leave the floor",
+        sag > 1.0, f"a chord across the wedge sags {sag:.2f} m off the arc")
+
+    #    CONTROL 2: a wedge a quarter as wide must REJECT this geometry, or the
+    #    fit function is measuring nothing.
+    narrow = dict(q, footprint=(q["footprint"][0] / 4.0, q["footprint"][1]))
+    bad = ground_footprint_fit(schema, profile, V, place=narrow)
+    chk("and the control fires -- a quarter-width wedge rejects it",
+        not bad["inside"], f"{bad['max_dangle_deg']:.2f} deg of "
+                           f"{bad['half_deg']:.2f}")
+
+    # 2. THE TWO TRAMS ARE TWO TRAMS. The gazetteer says they share nothing;
+    #    `deck.py --degeneracy` asks identity rather than similarity, and this
+    #    is that question asked between two vehicles instead of two places.
+    gv, gt, gm = ground_car(interior=True)
+    lv, lt, _lm = tram_car(interior=True)
+    h1 = hashlib.blake2b(repr((gv, gt)).encode(), digest_size=8).hexdigest()
+    h2 = hashlib.blake2b(repr((lv, lt)).encode(), digest_size=8).hexdigest()
+    chk("the ground car and the guideway car are not one vehicle",
+        h1 != h2 and abs(gm["length_m"] - car_length()) > 1.0
+        and abs(gm["width_m"] - CAR_WIDTH_M) > 1.0,
+        f"{gm['length_m']:.0f} x {gm['width_m']:.2f} m against "
+        f"{car_length():.0f} x {CAR_WIDTH_M:.2f} m")
+
+    # 3. WINDING. Measured on the LOFTED surfaces alone: an appliqué box's
+    #    inboard faces point at the car's axis and are right to, so mixing them
+    #    in would turn a correct shell into a threshold nobody can defend.
+    mid = (ground_level_y("skirt") + ground_level_y("roof")) / 2.0
+    sv, st_, sg = ground_car_shell()
+    loft = ("tram_valance", "tram_band", "tram_glass", "tram_body",
+            "tram_cap", "tram_roof")
+    body = [t for t, g in zip(st_, sg) if g in loft]
+    chk("the ground car's body faces outward, all of it",
+        _facing_fraction(sv, body, mid=mid) > 0.9999,
+        f"{_facing_fraction(sv, body, mid=mid) * 100:.2f}% of "
+        f"{len(body)} lofted triangles")
+    iv, it_, ig = ground_car_saloon()
+    encl = ("tram_in_wall", "tram_in_window", "tram_in_ceiling",
+            "tram_in_skirt", "tram_in_floor")
+    ins = [t for t, g in zip(it_, ig) if g in encl]
+    imid = (ground_level_y("floor") + ground_level_y("cant")) / 2.0
+    chk("and the saloon faces inward, all of it",
+        _facing_fraction(iv, ins, inward=True, mid=imid) > 0.9999,
+        f"{_facing_fraction(iv, ins, inward=True, mid=imid) * 100:.2f}%")
+
+    # 4. CLOSED. A hole shows the background and the background is black.
+    open_e = len(it.boundary_edges(sv, st_)[0])
+    chk("the ground car's shell is closed", open_e == 0, f"{open_e} open edges")
+    #    CONTROL: the bare `_prism8` this module already had leaves both ends
+    #    of every wheel and cowl open, which is the `dressing._cyl` defect.
+    cv2, ct2 = [], []
+    _prism8(cv2, ct2, 0.0, 0.0, 0.36, 0.0, 0.16)
+    chk("and the control fires -- a bare _prism8 is an open tube",
+        len(it.boundary_edges(cv2, ct2)[0]) == 16,
+        f"{len(it.boundary_edges(cv2, ct2)[0])} open edges on one prism")
+
+    # 5. ARTICULATION. `density.py --machinery`'s own question -- is the machine
+    #    as built as the wall behind it -- asked here because that gate iterates
+    #    `rooms.unbuilt`, which this place is not in and cannot be: it has no
+    #    `rooms.py` archetype. Same functions, same split rule.
+    mach, shell = D.machinery_split(V, T, SP)
+    am = D.analyse(V, mach, min_facet_m=0.0)
+    ash = D.analyse(V, shell, min_facet_m=0.0)
+    ratio = am["lam"] / ash["lam"] if ash["lam"] > 0 else 0.0
+    print(f"    machinery {len(mach):,} tri lam {am['lam']:.3f} over "
+          f"{am['area']:,.0f} m2 | shell {len(shell):,} tri lam "
+          f"{ash['lam']:.3f} over {ash['area']:,.0f} m2 | x{ratio:.2f}")
+    chk("the stop's fittings are at least as built as the structure behind",
+        ratio >= 1.0, f"x{ratio:.2f}")
+
+    #    CONTROL: the canopy as the box this project has a name for. Its own
+    #    AABB, six faces, in place of 29a's lofted shell.
+    box_v, box_t = [], []
+    lo = [min(V[i][k] for tri in shell for i in tri) for k in range(3)]
+    hi = [max(V[i][k] for tri in shell for i in tri) for k in range(3)]
+    _slab(box_v, box_t, lo[0], hi[0], lo[1], hi[1], lo[2], hi[2])
+    bx = D.analyse(box_v, box_t, min_facet_m=0.0)
+    chk("and the control fires -- a box shell would be far coarser",
+        bx["lam"] < ash["lam"] / 2.0,
+        f"one box reads lam {bx['lam']:.3f} against the built "
+        f"{ash['lam']:.3f}")
+
+    # 6. THE DECLARED INTERACTABLES EXIST, resolved against the REGISTER rather
+    #    than a list written here, so adding one to `directory.py` fails this.
+    have = {n for n, _a, _b in SP}
+    want = {"prop_" + k for k in q["interacts"]}
+    chk("every interactable PLC-073 declares is built",
+        want <= have, f"missing {sorted(want - have)}")
+    #    PLC-073's acceptance check names three stop plaques; the spec also asks
+    #    for a line map, an emergency stop and freight booking.
+    spec = {"prop_level_plaque", "prop_station_schematic_screen",
+            "prop_breaker_lever", "prop_manifest_terminal", "prop_intercom"}
+    chk("and the fittings PLC-073's acceptance check names are there",
+        spec <= have, f"missing {sorted(spec - have)}")
+
+    # 7. THE LINE'S OWN DATA AGREES WITH THE THING BUILT. `transit.ground_line`
+    #    has been the authority since INV-096 and nothing had ever read it.
+    import transit as tr                                        # noqa: PLC0415
+    gl = tr.ground_line(schema, profile)
+    chk("the car fits the platform the line's stop count implies",
+        gm["length_m"] <= GROUND_PLATFORM_L_M
+        and gl["stops"] == it.SPOKE_COUNT,
+        f"{gm['length_m']:.0f} m car, {GROUND_PLATFORM_L_M:.0f} m platform, "
+        f"{gl['stops']} stops")
+    chk("and the way is built on the drum's own floor radius",
+        abs(M["r0"] - gl["radius_m"]) < 1e-9,
+        f"{M['r0']:.3f} against the line's {gl['radius_m']:.3f}")
+    return before[0]
 
 
 if __name__ == "__main__":
