@@ -1278,6 +1278,17 @@ func configure(manifest_path: String, dress: Node, fixture_energy: float,
 ## `merge_cells.selftest`'s own docstring makes that argument about the four
 ## conditions `configure` does refuse on. A wrong cell is a fall; no cells is a
 ## black screen. So it shouts and continues.
+##
+## AND IT WAS RUN, NOT JUST WRITTEN, because a call site in source is not evidence
+## that the call happens. Two-cell probe manifests through the SHIPPED scene
+## (`walk.tscn` -> `_load_streamed` -> `configure`), symlinked .scn so the launch
+## costs one 721-triangle cell:
+##
+##   two cells forced onto index 30  ->  ERROR ... "index 30 is claimed by 2
+##                                       cells (e.g. grey_0_5_c07z00)", printed
+##                                       one line before configure's own banner
+##   the same two at index 0 and 1   ->  SILENT; "walk: STREAMED level -- start
+##                                       cell 0, primed in 7 ms"
 func _assert_index_is_an_identity(manifest_path: String) -> void:
 	var seen := {}
 	var dup := 0
@@ -1327,6 +1338,26 @@ func set_wiring(node: Node) -> void:
 			node.wire_cell(id, r["vis"], r["col"])
 
 
+## THE INTEGER IS AN ENGINE HANDLE AND SHOULD NOT BE A COMMAND-LINE ARGUMENT.
+##
+## Since session 4t a merged manifest's `index` is POSITION IN THE MERGED ARRAY,
+## which is unique -- and therefore correct for what this function is for, which
+## is `cell_at` handing a cell back to `prime`. It is exactly wrong as a name a
+## human types, because it is not stable: adding one cell to `blue_0_0` shifts
+## every index after it, and `docs/streaming-4g.md`'s `--start-cell=4 ... cell 4
+## is bare corridor` is a claim about CONTENT pinned to an ordinal. Under the old
+## numbering the same argument against the merged manifest picked an arbitrary
+## one of 28 cells; under the new one it picks a stable-until-the-next-bake one.
+## Neither is a name.
+##
+## `cell_by_id` IS THE NAME AND IT ALREADY EXISTS. `blue_0_0_c04z08` is an arc and
+## a band of a deck's own grid -- `bake()`'s comment above says why that survives
+## a partial rebuild -- and `merge_cells` has asserted ids unique since it was
+## written. So `walk.gd`'s `--start-cell` should take an id and fall back to an
+## integer when the argument parses as one, which keeps the axial gate's
+## `_g_idx` enumeration working unchanged (that use is enumeration, not naming,
+## and the two are separable). NOT DONE HERE: the argument is parsed in
+## `walk.gd::_load_streamed`, which this session did not own.
 func cell_by_index(i: int) -> Dictionary:
 	for c in cells:
 		if int(c["index"]) == i:
