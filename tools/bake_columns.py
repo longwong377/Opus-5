@@ -165,24 +165,43 @@ def _work_list():
     return decks, rings, ang
 
 
-def columns():
-    """-> [{sector, rings, angle_deg, z_m, glb}] for every exported column."""
-    decks, rings, ang = _work_list()
+def columns(legacy=False):
+    """-> [{sector, rings, angle_deg, z_m, glb}] for every exported column.
+
+    THE PLACEMENT COMES FROM `tools/column_site.py`, WHICH IS ALSO WHERE
+    `export_station.py` GETS IT, and that shared call is not a convenience.
+    `bake_one` REBUILDS the shaft with `spoke_way(..., angle_deg, z_m)` to
+    recover the collision half the export drops, and refuses if the rebuilt
+    render half does not match the shipped GLB triangle for triangle. So a
+    second opinion about z here does not merely mislabel the manifest -- it
+    makes every bake refuse, because it is rebuilding a different shaft.
+
+    This used to be `min(z for ... )`, a verbatim copy of the expression
+    `export_station.py` used, with a comment saying it was not the same thing
+    as "a z where this sector has floor at the transit angle". It was right,
+    and copying the defect is how the two files stayed consistent while both
+    were wrong. `legacy=True` restores it for the negative control.
+    """
+    import column_site as CS                                     # noqa: PLC0415
+    import interior as it                                        # noqa: PLC0415
+    import routes as RT                                          # noqa: PLC0415
+    _decks, rings, _ang = _work_list()
+    nodes = RT.clusters()
+    schema, profile = it.load()
     by_sector = collections.defaultdict(set)
     for s, r in rings:
         by_sector[s].add(r)
     out = []
     for sec, rs in sorted(by_sector.items()):
         glb = os.path.join(SRC, "column_%s.glb" % sec)
+        site = CS.site(schema, profile, nodes, sec, rings=sorted(rs),
+                       rule="legacy" if legacy else "floor")
         out.append({
             "sector": sec,
             "rings": sorted(rs),
-            "angle_deg": ang[sec],
-            # EXACTLY `export_station.py`'s expression. It is the sector's
-            # smallest z-cluster over every deck, which is not the same thing
-            # as "a z where this sector has floor at the transit angle" -- see
-            # the header, and see `--verify`.
-            "z_m": min(z for k, v in decks.items() if k[0] == sec for z in v),
+            "angle_deg": site["angle_deg"],
+            "z_m": site["z_m"],
+            "site": site,
             "glb": glb,
             "have_glb": os.path.exists(glb),
         })
@@ -674,11 +693,13 @@ def print_verify(rows, bad, near_m=NEAR_M, decks=0):
         print("\n  %d of %d COLUMNS JOIN NOTHING: %s" % (len(bad), len(rows),
                                                          ", ".join(bad)))
         print("    Not a bake failure -- those cells are correct and they "
-              "stream. `tools/export_station.py` places a column at")
-        print("    (transit_angle(sector), min z-cluster), two independently "
-              "computed numbers with nothing asserting the")
-        print("    sector has floor at that PAIR. Fixing it means moving the "
-              "column, which is that file's decision.")
+              "stream. It is where the column was PLACED.")
+        print("    Session 4t moved that decision into tools/column_site.py "
+              "and `--gate-placement` scores it without")
+        print("    a bake. If that gate passes and this one does not, THE "
+              "BAKED CELLS ARE STALE: they were baked from")
+        print("    column_*.glb built at the old z. Re-run "
+              "tools/export_station.py then this file with --force.")
     else:
         print("\n  every column has a landing on a deck")
 
@@ -805,6 +826,12 @@ def main(argv=None):
     ap.add_argument("--verify", action="store_true",
                     help="measure the baked columns against the baked decks "
                          "and bake nothing. Exits 1 if a column joins nothing")
+    ap.add_argument("--gate-placement", action="store_true",
+                    help="score where the columns WILL be built, without a "
+                         "bake or a mesh. Exits 1 if a column joins nothing")
+    ap.add_argument("--legacy", action="store_true",
+                    help="with --gate-placement, score the pre-4t rule "
+                         "(min z-cluster). The negative control; it FAILS")
     ap.add_argument("--near", type=float, default=NEAR_M,
                     help="how near a landing must be to a deck cell to count "
                          "as joined (default %.1f m)" % NEAR_M)
@@ -819,6 +846,19 @@ def main(argv=None):
     if a.selftest:
         return _selftest()
 
+    if a.gate_placement:
+        # THE OTHER HALF OF `--verify`, AND THEY ARE NOT THE SAME QUESTION.
+        # `--verify` scores the cells that were BAKED, so it cannot answer
+        # until an hours-long export and a bake have run, and it goes on
+        # reporting the old placement until they do. This scores the placement
+        # `export_station.py` WILL use, in seconds, off the same deck cells --
+        # so a bad column is caught before the build rather than after it.
+        import column_site as CS                                # noqa: PLC0415
+        return CS.main(["--gate", "--report"]
+                       + (["--legacy"] if a.legacy else [])
+                       + (["--sector", a.sector] if a.sector else [])
+                       + ["--near", str(a.near)])
+
     if a.verify:
         rows, bad = verify(near_m=a.near, sector=a.sector or None)
         if not rows:
@@ -828,7 +868,7 @@ def main(argv=None):
         print_verify(rows, bad, a.near, len(deck_cell_rows()))
         return 1 if bad else 0
 
-    work = list(columns())
+    work = list(columns(legacy=a.legacy))
     if a.sector:
         work = [c for c in work if c["sector"] == a.sector]
     if not work:

@@ -165,9 +165,14 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--max-decks", type=int, default=0)
     ap.add_argument("--skip-existing", action="store_true")
+    ap.add_argument("--legacy-column-z", action="store_true",
+                    help="place each column at min(z_cluster), the rule "
+                         "replaced in session 4t. The negative control for "
+                         "tools/column_site.py --gate; it puts blue's column "
+                         "80 m from any blue floor")
     a = ap.parse_args(argv)
 
-    decks, rings, ang, _nodes = work_list()
+    decks, rings, ang, nodes = work_list()
     if a.sector:
         decks = {k: v for k, v in decks.items() if k[0] == a.sector}
         rings = [r for r in rings if r[0] == a.sector]
@@ -184,6 +189,21 @@ def main(argv=None):
         for k in order:
             print(f"     {k[0]}/{k[1]}/{k[2]}  {len(decks[k])} cluster(s) at "
                   + ", ".join(f"{z:.0f}" for z in decks[k]))
+        # AND WHERE THE COLUMNS WOULD GO, which is the one decision in this
+        # file that used to be invisible until hours of build had been paid
+        # for. It costs a schema load and no geometry.
+        import column_site as CS                                # noqa: PLC0415
+        schema, profile = it.load()
+        by_sector = collections.defaultdict(set)
+        for s, r in rings:
+            by_sector[s].add(r)
+        print("")
+        for sec, rs in sorted(by_sector.items()):
+            st = CS.site(schema, profile, nodes, sec, rings=sorted(rs),
+                         rule="legacy" if a.legacy_column_z else "floor")
+            print(f"     column_{sec:<7} {st['angle_deg']:7.2f} deg, "
+                  f"z={st['z_m']:7.0f}, {st['joined']} of {st['landings']} "
+                  f"landings on a deck  ({st['source']})")
         print(f"\n  dry run -- nothing built. A cluster is about a minute, so "
               f"this is roughly {sum(len(v) for v in decks.values())} minutes.")
         return 0
@@ -290,14 +310,36 @@ def main(argv=None):
         flush()
 
     # --- the transit columns -------------------------------------------------
+    # WHERE A COLUMN STANDS IS NO LONGER DECIDED HERE, and that is the whole
+    # of session 4t's fix. This file used to write
+    #
+    #     z = min(z for k, v in decks.items() if k[0] == sec for z in v)
+    #
+    # and hand `(ang[sec], z)` to `spoke_way` -- an angle derived from the
+    # cluster arcs and a z that is the sector's lowest cluster, TWO
+    # INDEPENDENTLY COMPUTED NUMBERS with nothing asserting the sector has any
+    # floor at that PAIR. Measured against the 817 baked deck cells, blue's
+    # column stood 80.1 m in z from the nearest blue geometry and joined 0 of
+    # its 18 landings; yellow joined 0 of 24. Both halves were right about
+    # their own question and nobody owned the conjunction.
+    #
+    # `tools/column_site.py` owns it now: the angle is still
+    # `routes.transit_angle` (canon -- every deck spine is built to reach it,
+    # which is what `must_cover=` above does), and only the z moves, chosen as
+    # the candidate that puts the most landings on a deck a player can stand
+    # on. `--legacy-column-z` restores the old expression so the gate has a
+    # control that fires.
     import spoke_way as SW                                      # noqa: PLC0415
+    import column_site as CS                                    # noqa: PLC0415
     by_sector = collections.defaultdict(set)
     for s, r in rings:
         by_sector[s].add(r)
     for sec, rs in sorted(by_sector.items()):
         stem = f"column_{sec}"
         t0 = time.time()
-        z = min(z for k, v in decks.items() if k[0] == sec for z in v)
+        site = CS.site(schema, profile, nodes, sec, rings=sorted(rs),
+                       rule="legacy" if a.legacy_column_z else "floor")
+        z = site["z_m"]
         try:
             V, T, G, st = SW.spoke_way(schema, profile, sec, sorted(rs),
                                        ang[sec], z)
@@ -306,10 +348,21 @@ def main(argv=None):
                    "landings": st["landings"], "rise_m": st["rise_m"],
                    "tris": len(T), "collision_tris": st["collision_tris"],
                    "glb_mb": round(gb / 1e6, 2),
+                   # THE PLACEMENT AND ITS EVIDENCE, in the manifest, because a
+                   # column that joins nothing is invisible in a triangle count
+                   # and this is the only record of why it stands where it does.
+                   "angle_deg": site["angle_deg"], "z_m": z,
+                   "z_source": site["source"], "z_why": site["why"],
+                   "landings_on_a_deck": site["joined"],
+                   "dead_doors_unbuilt": site["dead_unbuilt"],
+                   "dead_doors_built": site["dead_built"],
                    "seconds": round(time.time() - t0, 1), "ok": True}
             print(f"  column {sec}: rings {st['rings_served']}, "
                   f"{st['landings']} landings over {st['rise_m']:.1f} m, "
                   f"{len(T):,} tri, {row['seconds']:.0f} s")
+            print(f"     at {site['angle_deg']:.2f} deg, z={z:.0f} -- "
+                  f"{site['joined']} of {site['landings']} landings meet a "
+                  f"baked deck cell ({site['source']})")
         except Exception as e:                                  # noqa: BLE001
             tb = traceback.format_exc()
             where = [l.strip() for l in tb.splitlines()

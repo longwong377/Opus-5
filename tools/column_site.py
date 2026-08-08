@@ -276,14 +276,22 @@ def site(schema, profile, nodes, sector, rings=None, boxes=None,
             "candidates_tried": list(tried),
         }
 
+    # THE FLOOR TABLE IS LOADED BEFORE THE RULE BRANCHES, and that ordering is
+    # load-bearing rather than tidy. It was under the `legacy` early return
+    # once, so a caller that asked for the control without passing `boxes`
+    # scored every landing against an EMPTY table and got "0 of 18 joined" on
+    # all five columns -- the failing verdict this gate wants, arrived at by
+    # measuring nothing. A control that fails for the wrong reason is worse
+    # than no control: it cannot distinguish the defect from itself.
+    if boxes is None:
+        boxes = floor_boxes(cells_dir).get(sector, [])
+
     if rule == "legacy":
         z = legacy_z(nodes, sector)
         return _pack(z, "legacy min(z) — the expression being replaced",
                      "the sector's lowest cluster z, which knows nothing "
                      "about the transit angle")
 
-    if boxes is None:
-        boxes = floor_boxes(cells_dir).get(sector, [])
     cands = candidates(nodes, sector)
     if not boxes or not cands:
         # NAMED, NOT SILENT. See the header: no cells means no measurement, so
@@ -488,6 +496,20 @@ def _selftest():
               for k in new))
     check("every derived z is a z the register places a cluster at",
           all(new[k]["z_m"] in set(candidates(nodes, k)) for k in new))
+    # THE CONTROL MUST FAIL FOR THE RIGHT REASON. `site(rule="legacy")` called
+    # without a floor table once scored every landing against nothing and
+    # reported five columns joining nothing -- the verdict the gate wants, and
+    # a lie. A caller that supplies no `boxes` must get the same answer as one
+    # that does, or the control is measuring its own emptiness.
+    solo = {k: site(schema, profile, nodes, k, rule="legacy")
+            for k in sorted(old)}
+    check("the legacy control loads its own floor table",
+          all(solo[k]["joined"] == old[k]["joined"] for k in solo),
+          ", ".join("%s %d/%d" % (k, solo[k]["joined"], old[k]["joined"])
+                    for k in sorted(solo)))
+    check("...and it is not uniformly zero, which is what an empty table gives",
+          any(solo[k]["joined"] > 0 for k in solo),
+          "grey %d, red %d" % (solo["grey"]["joined"], solo["red"]["joined"]))
     # AND THE MEASUREMENT MUST BE ABLE TO SAY NO. A gate scored against an
     # empty floor table has to fail every column, or it is not measuring.
     empty = sites(schema, profile, nodes, cells_dir=os.devnull + "_nope")
