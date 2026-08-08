@@ -242,10 +242,32 @@ def _legacy():
     records eleven of fourteen lighting 'failures' turning out to be stale
     committed frames, and a control that cannot be rebuilt is the same defect.
     """
-    def slab_only(x0, x1, y0, y1, z0, z1, lens_group, face="+x", **_kw):
+    def slab_only(x0, x1, y0, y1, z0, z1, lens_group, face="+x",
+                  segments=1, seg_fill=0.68, **_kw):
         v, t = [], []
-        with K.tag(lens_group):
-            K._slab(v, t, x0, x1, y0, y1, z0, z1)
+        # `segments` IS HONOURED, and the first version of this control did not
+        # honour it. `pilaster`'s strip was always seven cells -- its docstring
+        # says why, "a continuous tube reads as a fluorescent batten" -- so a
+        # control that collapsed them into one box removed 1,008 triangles a
+        # section that the housing pass never touched, and attributed them to
+        # it. CLAUDE.md states the rule from session 4f's own plaque control:
+        # a control that removes MORE than the change it controls attributes
+        # the extra to the change. With this in, the control reproduces the
+        # pre-housing section's triangle count EXACTLY -- 8,120 with a wall
+        # door and a bulkhead, 7,472 plain -- and `--legacy --cost` prints it.
+        ext = [[x0, x1], [y0, y1], [z0, z1]]
+        ax = {"x": 0, "y": 1, "z": 2}[face[-1]]
+        others = [j for j in (0, 1, 2) if j != ax]
+        lg = max(others, key=lambda j: ext[j][1] - ext[j][0])
+        pitch = (ext[lg][1] - ext[lg][0]) / max(1, segments)
+        for s in range(max(1, segments)):
+            b = [list(e) for e in ext]
+            if segments > 1:
+                c0 = ext[lg][0] + pitch * s
+                b[lg] = [c0, c0 + pitch * seg_fill]
+            with K.tag(lens_group):
+                K._slab(v, t, b[0][0], b[0][1], b[1][0], b[1][1],
+                        b[2][0], b[2][1])
         return v, t
 
     K.luminaire = slab_only

@@ -14947,7 +14947,10 @@ bulkhead goes 7,112 → 10,794 triangles, of which 1,920 are lamp bodies and 754
 `dist/Babylon5/station/generated/scene/deck/blue_0_0_z7440.obj` — 247 portal heads, 489
 downlights and 494 pilasters — that is roughly **+74,000 triangles a ring deck on 484,440,
 about +15%.** Gated by `python3 tools/fittings_gate.py`, whose `--legacy` control rebuilds the
-bare slabs and reports **0 of 32 lens bodies housed** against 116 of 116 after.
+bare slabs and reports **0 of 116 lens bodies housed** against 116 of 116 after. The
+control reproduces the pre-housing section's triangle count exactly — 8,120 with a wall
+door and a bulkhead, against 10,794 now — which is the check that it removes the change
+and nothing else.
 
 ## INV-1256 — What a corridor sign says when the corridor has no address
 
