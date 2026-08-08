@@ -4732,6 +4732,28 @@ SCENES = ("exterior", "drum", "interior")
 # station.
 #
 # ---------------------------------------------------------------------------
+# A WARNING FOR THE FIX STATE.md ALREADY PROPOSES, WHICH WOULD UNDO THIS
+# ---------------------------------------------------------------------------
+# STATE.md's 3x agent report already knows half of this. Under "Not verified":
+#
+#   "the drum has its own environment in `drum.tscn` that `dress_scene.gd` does
+#    NOT read, and mounting the *interior* environment ... inside a 556 m cavity
+#    with a sun-tube is almost certainly wrong. The right shape is for
+#    `dress_scene` to take the scene name to harvest from, `walk.gd` to pass
+#    `drum.tscn` when `gravity-mode=drum`."
+#
+# That is correct about the ENVIRONMENT and it must not be applied to the TABLE.
+# Harvesting the whole of `drum.tscn` for a drum cell would put the 49 group
+# tails belonging to `earharts` and `fresh_air` -- every `bar_*`, `dress_*` and
+# `prop_*` in the two bars, which stand ON the drum floor -- onto `drum.tscn`'s
+# `m_unbound`, a deliberately impossible magenta. It trades 231 white surfaces
+# for 49 magenta ones.
+#
+# The safe form is to swap the ENVIRONMENT and keep the interior TABLE, which is
+# exactly what the widening above makes correct rather than lucky: after it, the
+# interior table is a superset that covers both halves of the drum cell.
+#
+# ---------------------------------------------------------------------------
 # THE COST, STATED RATHER THAN LEFT TO BE FOUND
 # ---------------------------------------------------------------------------
 # A material is a draw-call floor, and 231 instances that were all sharing one
