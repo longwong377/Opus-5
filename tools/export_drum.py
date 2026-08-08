@@ -144,7 +144,32 @@ PART_PLACE = {
     "spokes": "drum_spokes",
     "guideways": "drum_tram",
     "trams": "drum_tram",
+    # PLC-073 AND PLC-114, FIXED-ADDRESS FOR THE SAME REASON AS THE GUIDEWAY:
+    # each is one named run at one address, so containment attribution would
+    # scatter its triangles across whatever it happens to pass over.
+    "ground_tram": "ground_tram",
+    "radial_tubes": "radial_tubes",
 }
+
+
+def _spans_to_names(spans, n_tris, fallback="solid"):
+    """[(name, tri_lo, tri_hi)] -> one group name per triangle.
+
+    `tram.ground_stop` and `spoke_way.radial_tube` return SPANS, which is what
+    `density.machinery_split` and `export_scene.per_triangle` read; the drum's
+    parts list carries a name PER TRIANGLE. Both conventions already exist in
+    this repository and the builders' own docstrings say so, so this converts
+    rather than adding a third.
+
+    A triangle covered by no span keeps `fallback` instead of being dropped:
+    losing it would make the merged mesh disagree with its own triangle count,
+    and a silent shortfall is how a part comes to be half-attributed.
+    """
+    out = [fallback] * n_tris
+    for name, lo, hi in spans:
+        for i in range(max(0, lo), min(n_tris, hi)):
+            out[i] = name
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -681,6 +706,38 @@ def main(argv=None):
         tv, tt, tm = _tram.drum_trams(schema, profile, sector, per_guideway=2,
                                       interior=True, glazed=True)
         parts[by_name["trams"]] = ("trams", tv, tt, tm["groups"])
+
+        # -- THE TWO PLACES THAT HAD A BUILDER AND NO CALLER ------------------
+        # INSTANCE TWELVE OF THIS PROJECT'S SIGNATURE DEFECT, caught by an
+        # adversarial verifier rather than by a gate. `ground_tram` (PLC-073)
+        # and `radial_tubes` (PLC-114) were built this session -- real geometry,
+        # their own gates, reasoned extrapolations -- and NOTHING CALLED EITHER,
+        # so in the shipped build those two places still had a crowd standing in
+        # an empty field. The verifier's words: "the claim under verification is
+        # that two register places have a builder, and in the shipped build they
+        # still have nothing."
+        #
+        # A builder with no caller is not a built place. This is the caller.
+        import spoke_way as _sw                                   # noqa: PLC0415
+        for nm, fn in (("ground_tram",
+                        lambda: _tram.ground_stop(schema, profile, sector)),
+                       ("radial_tubes",
+                        lambda: _sw.radial_tube(schema, profile, sector))):
+            try:
+                bv, bt, bspans, _bm = fn()
+            except Exception as exc:                              # noqa: BLE001
+                # NAMED, NOT SWALLOWED. A place that fails to build must say so
+                # on the build's own output; `reach_gate` counts cells and would
+                # still pass, because the ground under it is attributed either
+                # way. Silence here is how the crowd-in-a-field state persisted.
+                print(f"  {nm}: BUILD FAILED -- {exc}")
+                continue
+            if not bt:
+                print(f"  {nm}: builder returned no triangles")
+                continue
+            parts.append((nm, bv, bt, _spans_to_names(bspans, len(bt))))
+            print(f"  {nm}: {len(bt):,} tri from its own builder")
+
         t0 = time.time()
         gv, gt, gg = full_ground(stride)
         parts[by_name["ground"]] = ("ground", gv, gt, gg)
