@@ -171,17 +171,42 @@ the drum would ask for. -- INV-1250
 4. WHAT THIS DOES NOT REACH, MEASURED RATHER THAN ROUNDED AWAY
 ===========================================================================
 
-**The cut takes the drum from 8.81x the resident budget to 1.29x. It does not
-clear it, and no band can.** The floor is arithmetic: at the shipped 98.9 m
+**The cut takes the drum's worst cell from 26.43x the per-cell budget to 0.97x
+-- that one CLEARS -- and its worst resident set from 8.81x to 1.29x, which does
+not, and no band can.** The floor is arithmetic: at the shipped 98.9 m
 radius the resident set is always at least a 198 m slab of drum, and the 198 m
 slab around Earhart's and Fresh Air (z 4789-4839, where two bespoke interiors
 put 26,748 triangles of clutter into one 50 m band) holds ~215,000 triangles
 however the boundaries fall. Every band from 15 m to 100 m was searched; the
 best is 221,049 at 11 m, which then breaks the draw-call budget instead.
 
-**What DOES clear it is a second axis, and it is measured here so the next
-session does not have to re-derive it.** Simulating the same bake on an arc x z
-grid with the same residency metric:
+WHAT THE BAKE ACTUALLY PRODUCED, from the engine's own log rather than from the
+plan above -- `85 cells (0 arc x 85 band), 1585762 triangles total (source had
+1585762)`, so the cut is lossless, and `biggest cell green_1_0_c00z29 at 58300
+tri = 0.97x cell_tris; 0 of 85 cells over cell_tris`. 129.2 MB against the one
+cell's 133.5 MB, in 13 s. The predicted worst cell was 58,297 against the
+engine's 58,300: three triangles, from `_split` binning float32 vertices where
+this file bins their float64 centroids.
+
+    the drum                        as shipped        cut at 33 m
+    cells                                    1                 85
+    worst cell                       1,585,762             58,300
+                                    26.43x cell        0.97x cell
+    drum-only resident, worst        1,585,762            232,586
+                                     8.81x res          1.29x res
+    drum-only resident, median       1,585,762            131,557
+    a body in the Garden, whole      1,799,343    worst 1,355,026
+      station, at the shipped                    median   173,013
+      98.9 m radius                                    INSIDE budget
+
+and on the merged 76-deck manifest the station's worst co-resident set falls
+from **4,477,402 (24.87x) to 2,895,463 (16.09x)** -- see
+`tools/merge_cells.py --budget`, whose docstring records why the Garden was
+resident from a Grey corridor 171 m away and what is left once it is not.
+
+**What DOES clear the drum's own 1.29x is a second axis, and it is measured
+here so the next session does not have to re-derive it.** Simulating the same
+bake on an arc x z grid with the same residency metric:
 
     cell_deg  band     cells   worst cell   worst resident
       360      33 m       85       58,297          232,586   <- what this ships

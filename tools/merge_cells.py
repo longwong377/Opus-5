@@ -142,11 +142,69 @@ cross-references would break silently and this project has paid for that twice:
 
 `--legacy-index` is the control: it concatenates without renumbering, exactly as
 before, and `--selftest` then FAILS on the file it just wrote.
+
+===========================================================================
+AND THE WORST-CASE NUMBER THIS FILE PRINTED WAS NOT THE WORST CASE
+===========================================================================
+
+`report()` used to say *"heaviest 3 cells: A, B, C = N tri against a 180,000
+budget"*, with the comment *"the cheap proxy for it is the heaviest few"*. That
+proxy is not a bound in either direction and it is worth being exact about why,
+because it read like a measurement for four sessions.
+
+The heaviest three cells on this station are on three different decks thousands
+of metres apart and **can never be resident together**, so the number was an
+overestimate of a thing that cannot happen. At the same time eleven ordinary
+cells inside one residency radius comfortably beat all three, so it was an
+underestimate of the thing that does. `worst_resident()` asks the question
+`stream.gd::update` actually asks -- every cell within `radius_m` of where the
+body is standing -- by porting `distance_to` and evaluating it at every cell's
+own recorded spawn.
+
+**MEASURED ON THE SHIPPED MANIFEST, THE ANSWER IS 24.87x AND ITS BIGGEST SINGLE
+CAUSE IS NOT ON THE DECK THE BODY IS STANDING ON.** Standing at
+`grey_0_22_c08z01`, r=449.4, z=3694.8:
+
+    58 cells resident, from 20 decks, 4,477,402 tri
+      green_1_0    1 cell   1,585,762 tri   floor r=278.3   95.7 m away
+      grey_0_8     3 cells    293,402 tri   floor r=464.1
+      grey_0_0     5 cells    210,830 tri   floor r=471.2
+      ... 17 more grey decks at r 406-471
+
+The Garden is 35% of it, and it is resident **from a Grey corridor 171 m away
+radially and outside the drum entirely**, because `distance_to`'s arc branch has
+**no radial term at all** -- `da` is 0 for any angle inside `[a0, a1)`, the drum
+cell's arc is `[0, 360)`, so the only distance left is the z overhang and the
+drum's aft end is 95.7 m up the axis. That is exactly the hazard
+`tools/bake_columns.py` names for a lift shaft (*"would call a body on Blue 4 at
+r=44 zero metres from a shaft that stops at r=130"*), arriving at station scale
+because this file merged 76 decks into one metric space.
+
+TWO THINGS FOLLOW AND THE SECOND IS THE SURPRISE.
+
+  * `tools/bake_drum.py` cuts the drum into 85 cells and the worst co-resident
+    set falls to **2,895,463 (16.09x)** -- the whole 1,585,762 comes out.
+  * A RADIAL TERM WOULD NOW BUY ALMOST NOTHING. Re-measured with
+    `sqrt(along^2 + dz^2 + dr^2)`, `dr` being the body's radius against the
+    cell's floor radius less a 5 m deck slab: **before** the drum cut it takes
+    4,477,402 to 2,891,640, and every one of those 1,585,762 triangles is the
+    Garden; **after** the cut it takes 2,895,463 to 2,891,640, which is 0.13%.
+    The residual is nineteen Grey decks genuinely stacked 3.5 m apart in radius
+    at r 406-471, all inside one 98.9 m residency sphere and all at the same
+    angle and z. That is a deck-spacing and residency-radius question, not a
+    metric bug, and it is the next thing to look at -- named here with its
+    number so the next session does not spend the session I nearly spent
+    building a radial term worth 0.13%.
+
+`--budget` is the gate. It is deliberately NOT part of `--selftest`: that
+asserts the manifest is LOADABLE and has to stay able to pass on a build whose
+budget is honestly red, which this one is.
 """
 
 import argparse
 import glob
 import json
+import math
 import os
 import sys
 
@@ -180,6 +238,81 @@ def duplicate_indices(cells):
     for c in cells:
         seen.setdefault(int(c.get("index", -1)), []).append(str(c.get("id", "")))
     return {i: ids for i, ids in seen.items() if len(ids) > 1}
+
+
+def distance_to(c, p):
+    """`stream.gd::distance_to`, in Python. Zero inside.
+
+    A SECOND COPY OF A RUNTIME FUNCTION IS A LIABILITY AND IT IS TAKEN
+    DELIBERATELY, because the alternative is worse: the only other way to ask
+    what the streamer would hold resident is to launch the engine, and a budget
+    number nobody can compute without a GPU-less Godot run is a budget number
+    nobody computes. It is kept to twelve lines that mirror the GDScript
+    branch for branch -- `arc` when the cell has one, the world AABB otherwise,
+    which is the rule `stream.gd` states in its own comment ("Both forms are in
+    the manifest and this picks whichever the cell has") and which
+    `station/boot.py::start_cell` already duplicates for the same reason.
+    """
+    if "arc" in c:
+        arc = c["arc"]
+        a = math.degrees(math.atan2(p[1], p[0])) % 360.0
+        a0, a1 = float(arc["a0_deg"]), float(arc["a1_deg"])
+        da = 0.0
+        if not (a0 <= a < a1):
+            d0 = math.fmod(abs(a - a0) + 360.0, 360.0)
+            d0 = min(d0, 360.0 - d0)
+            d1 = math.fmod(abs(a - a1) + 360.0, 360.0)
+            d1 = min(d1, 360.0 - d1)
+            da = min(d0, d1)
+        along = math.radians(da) * float(arc["r_m"])
+        dz = max(0.0, float(arc["z0"]) - p[2], p[2] - float(arc["z1"]))
+        return math.hypot(along, dz)
+    ab = c["aabb"]
+    lo = ab["pos"]
+    hi = [lo[i] + ab["size"][i] for i in range(3)]
+    q = [min(max(p[i], lo[i]), hi[i]) for i in range(3)]
+    return math.dist(p, q)
+
+
+def worst_resident(cells, radius):
+    """The heaviest set of cells that can be resident AT ONCE. -> (tris, id, n).
+
+    THE PROXY THIS REPLACES WAS THE HEAVIEST THREE CELLS, AND IT IS NOT AN
+    UPPER OR A LOWER BOUND -- it is unrelated. The heaviest three cells on this
+    station are on three different decks, thousands of metres apart, and can
+    never be resident together; meanwhile eleven ordinary cells inside one
+    residency radius can beat all three. The number the budget is about is what
+    `stream.gd::update` will actually hold, which is every cell within
+    `radius_m` of where the body is standing.
+
+    THE SAMPLE IS THE CELLS' OWN SPAWN POINTS, so it is a measurement and not a
+    grid: `bake()` derives each spawn from that cell's own collision floor
+    ("A spawn is a CLAIM -- see walk.gd"), so the set of spawns is the set of
+    places the build itself says a body can stand. It is therefore a LOWER
+    BOUND on the true worst case -- a player standing between two spawns could
+    be worse -- and that is said here rather than left to be assumed, because a
+    bound quoted in the wrong direction is how a red number reads as green.
+    """
+    pts = [(c["spawn"], c) for c in cells if c.get("spawn")]
+    tris = [int(c.get("tris", 0) or 0) for c in cells]
+    worst, at, n_at = 0, "", 0
+    for p, home in pts:
+        s = n = 0
+        for c, t in zip(cells, tris):
+            if distance_to(c, p) <= radius:
+                s += t
+                n += 1
+        if s > worst:
+            worst, at, n_at = s, str(home.get("id", "")), n
+    return worst, at, n_at
+
+
+def over_budget(cells, cell_tris):
+    """Every cell that on its own exceeds the per-cell allowance."""
+    out = [(int(c.get("tris", 0) or 0), str(c.get("id", "")),
+            str(c.get("deck", "")))
+           for c in cells if int(c.get("tris", 0) or 0) > cell_tris]
+    return sorted(out, reverse=True)
 
 
 def merge(cells_dir=CELLS, out_path=OUT, renumber=True):
@@ -339,22 +472,44 @@ def report(man):
     print("  index: %d distinct value(s) over %d cells -- %s"
           % (len({int(c.get("index", -1)) for c in man["cells"]}),
              len(man["cells"]), man.get("index_from", "?")))
-    print("  budget %s tri resident, %s per cell"
-          % (r.get("resident_tris"), r.get("cell_tris")))
-    # THE WORST CASE THIS MANIFEST CAN PRODUCE, stated rather than discovered
-    # by a player. Cells whose arcs overlap within the load radius all become
-    # resident together; the honest bound is the heaviest cells that can be
-    # co-resident, and the cheap proxy for it is the heaviest few.
-    tris = sorted((int(c.get("tris", 0) or 0) for c in man["cells"]),
-                  reverse=True)
-    n = int(r.get("cells_resident_nominal", 3))
-    if tris and tris[0]:
-        print("  heaviest %d cells: %s = %s tri against a %s budget"
-              % (n, ", ".join("{:,}".format(t) for t in tris[:n]),
-                 "{:,}".format(sum(tris[:n])), r.get("resident_tris")))
+    budget_report(man)
     print("  decks, largest first:")
     for stem, k in sorted(m["by_deck"].items(), key=lambda kv: -kv[1])[:6]:
         print("    %-16s %3d cells" % (stem, k))
+
+
+def budget_report(man, out=print):
+    """THE WORST CASE THIS MANIFEST CAN PRODUCE, measured rather than proxied.
+
+    Printed on every merge, because `main()` calls `report()` and `report()`
+    calls this: the shipped path is the only place a budget number is worth
+    having. `--budget` runs it alone and exits nonzero, so it can also be a
+    gate; it is NOT part of `--selftest`, which asserts loadability and must
+    stay able to pass on a build whose budget is honestly red.
+    """
+    r = man["residency"]
+    cells = man["cells"]
+    cell_tris = int(r.get("cell_tris", 60000))
+    res_tris = int(r.get("resident_tris", 180000))
+    radius = float(r.get("radius_m", 0.0))
+    worst, at, n_at = worst_resident(cells, radius)
+    over = over_budget(cells, cell_tris)
+    out("  budget %s tri resident, %s per cell" % (res_tris, cell_tris))
+    out("  WORST CO-RESIDENT SET: %s tri in %d cells, standing at %s "
+        "-- %.2fx the %s allowance%s"
+        % ("{:,}".format(worst), n_at, at or "?", worst / max(res_tris, 1),
+           "{:,}".format(res_tris), "" if worst <= res_tris else "   OVER"))
+    out("  %d of %d cells exceed %s tri on their own%s"
+        % (len(over), len(cells), "{:,}".format(cell_tris),
+           ":" if over else " -- none"))
+    for t, cid, deck in over[:12]:
+        out("      %11s  %-28s %.2fx  %s"
+            % ("{:,}".format(t), cid, t / cell_tris, deck))
+    if len(over) > 12:
+        out("      ... %d more" % (len(over) - 12))
+    return {"worst_resident": worst, "worst_at": at, "resident_cells": n_at,
+            "over_cell": len(over), "cell_tris": cell_tris,
+            "resident_tris": res_tris}
 
 
 def selftest(cells_dir=CELLS, manifest=None):
@@ -433,11 +588,28 @@ def main():
     ap.add_argument("--out", default=OUT)
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--budget", action="store_true",
+                    help="THE GATE: measure the worst set of cells that can be "
+                         "resident at once and exit nonzero if it is over "
+                         "budget.CELLS. Merges nothing; reads the manifest on "
+                         "disk.")
     ap.add_argument("--legacy-index", action="store_true",
                     help="THE CONTROL: concatenate the per-deck numbering "
                          "without renumbering, as this tool did before session "
                          "4t. --selftest then FAILS on the manifest it wrote.")
     a = ap.parse_args()
+    if a.budget:
+        p = a.out
+        if not os.path.exists(p):
+            print("  NO MERGED MANIFEST at %s -- run: python3 "
+                  "tools/merge_cells.py" % p)
+            return 1
+        with open(p) as f:
+            man = json.load(f)
+        b = budget_report(man)
+        bad = (b["worst_resident"] > b["resident_tris"]) or b["over_cell"]
+        print("\n  CELL BUDGET %s" % ("RED" if bad else "GREEN"))
+        return 1 if bad else 0
     if a.selftest:
         return selftest(a.cells, a.out if a.out != OUT else None)
     man = merge(a.cells, a.out, renumber=not a.legacy_index)
