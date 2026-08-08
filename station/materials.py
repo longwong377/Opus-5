@@ -7441,15 +7441,68 @@ def _selftest():
     check("the exterior table is untouched by the hull volume",
           table_scenes("exterior") == ("exterior",),
           str(table_scenes("exterior")))
-    # The four accidental overlaps, named, so that a later edit that reverses
-    # one is a visible decision. Each is a drum group that the corridor kit was
-    # claiming by substring before the volume widened.
+    # The four groups the two tables both claimed, named with their WINNER, so
+    # that a later edit which flips one is a visible decision rather than a
+    # rename nobody noticed. Three are drum groups the corridor kit had been
+    # claiming by substring; the fourth is the other way round and is discussed
+    # below.
     for _g, _want in (("garden_pilaster", "garden_civic_render"),
                       ("tram_in_reveal", "tram_saloon_wall"),
-                      ("tram_in_skirt", "tram_saloon_floor")):
-        check(f"{_g} resolves to the drum's own material, not the corridor kit",
+                      ("tram_in_skirt", "tram_saloon_floor"),
+                      ("spoke_portal_frame", "kit_pilaster")):
+        check(f"the shipped table gives {_g} to {_want}",
               table_hit(_g, SHIPPED_SCENE) == _want,
               f"{table_hit(_g, SHIPPED_SCENE)} != {_want}")
+
+    # -- A WIDER TABLE IS A TABLE WITH MORE WAYS TO COLLIDE ----------------
+    #
+    # `test_materials_layer3.ambiguous` is the project's gate on this and it
+    # CANNOT SEE THIS ONE: it filters candidate materials with
+    # `if scene not in m.scenes`, on the raw tag, so it still measures the
+    # narrow interior set while the engine matches against the widened table.
+    # The gate therefore belongs here, in the module that builds the table --
+    # the same rule 3x wrote down for `boundary_edges`.
+    #
+    # The defect it looks for is that file's own definition and it is the right
+    # one: two fragments claim one group and NEITHER CONTAINS THE OTHER, so the
+    # winner is decided by incidental length. Rename either and it flips.
+    # Containment is not a defect -- `garden_water`/`garden_waterfall` is a
+    # deliberate specialisation.
+    def _competing(groups, scene):
+        out = []
+        mats = table_materials(scene)
+        for g in sorted(groups):
+            frags = sorted({f for m in mats for f in m.binds if f in g},
+                           key=len)
+            if len(frags) < 2:
+                continue
+            if not all(frags[i] in frags[i + 1] for i in range(len(frags) - 1)):
+                out.append(g)
+        return out
+
+    # ONE, AND IT IS DECLARED. `spoke_portal_frame` is claimed by
+    # `drum_structure` through "spoke" (5 chars) and by `kit_pilaster` through
+    # "portal_frame" (12), and neither string contains the other.
+    #
+    # IT IS NOT NEW. Before the widening the two tables simply disagreed in
+    # silence: `--shot drum` painted it `drum_structure` and the shipped build
+    # painted it `kit_pilaster`, and no gate anywhere compared them. Widening
+    # does not change either answer -- 12 > 5, so the shipped build still gets
+    # `kit_pilaster`, asserted above -- it makes the disagreement VISIBLE in one
+    # table instead of invisible across two. A spoke portal is a door surround,
+    # which is what `kit_pilaster` is for, so the winner is also the right one.
+    #
+    # Allowlisted by exact set rather than by count, so a second one cannot
+    # arrive under cover of the first.
+    _COMPETING_BY_DESIGN = {"spoke_portal_frame"}
+    _comp = set(_competing(_hull, SHIPPED_SCENE))
+    check("the widened table adds no undeclared non-deterministic claim",
+          _comp == _COMPETING_BY_DESIGN,
+          f"unexpected {sorted(_comp - _COMPETING_BY_DESIGN)} "
+          f"gone {sorted(_COMPETING_BY_DESIGN - _comp)}")
+    # And the probe, because a competition test that cannot fire is decoration.
+    check("the competition test can fire",
+          _competing({"spoke_portal_frame_and_a_deck_grid"}, SHIPPED_SCENE))
 
     # -- the measured palette ---------------------------------------------
     # The headline finding, asserted so a later edit cannot quietly reverse it.
