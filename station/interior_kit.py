@@ -1199,12 +1199,12 @@ def luminaire(x0, x1, y0, y1, z0, z1, lens_group, face="+x",
     others = [i for i in (0, 1, 2) if i != ax]
     u, w = others
 
-    # THE BEZEL MAY NEVER EAT THE LENS. A 26 mm rim on a 70 mm fitting leaves
-    # nothing lit, and a luminaire with no luminous surface is a worse defect
-    # than the one it replaces -- it would pass every closure and material gate
-    # while the corridor went dark. Clamped to a quarter of the smaller
-    # cross-span, and `--fittings` asserts the lens keeps at least a third of
-    # the envelope's lit area on the smallest fitting the kit builds.
+    # THE RIM IS CLAMPED TO A QUARTER OF THE LENS'S SMALLER CROSS-SPAN. It is
+    # added outside the lens rather than taken out of it (see below), so it
+    # cannot leave a fitting with nothing lit -- but an unclamped 26 mm rim on
+    # a 75 mm strip cell would be a fitting that is mostly bezel, which reads
+    # as a badge rather than as a lamp. `tools/fittings_gate.py` reports the
+    # worst rim per group, so the clamp is visible rather than assumed.
     span = min(ext[i][1] - ext[i][0] for i in others)
     bz = max(0.0, min(bezel, span / 4.0))
     rc = max(0.0, min(recess, depth * 0.40))
@@ -1217,10 +1217,15 @@ def luminaire(x0, x1, y0, y1, z0, z1, lens_group, face="+x",
     # energies SOLVED against an engine frame (0.51 and 0.23, chosen because
     # 5.0 and 6.0 blew 4.64% of the frame where the show's corridor blows
     # 0.000%). Changing the emitting area silently invalidates both, and this
-    # container cannot run that render while other agents are working. Growing
-    # the cross-section instead keeps the lens footprint EXACTLY -- measured
-    # byte-for-byte at 20.00 m2 either way -- and the fitting reads larger,
-    # which is what a lamp with a bezel on it actually is.
+    # container cannot run that render while other agents are working.
+    #
+    # Growing the cross-section instead keeps the LIT FACE exactly: measured
+    # over one section, downlight 0.580800 m2 either way, portal head 6.800600,
+    # pilaster strip 0.045900 a column over the same seven cells at the same
+    # 0.68 fill. Total emissive surface still falls, 20.00 -> 16.38 m2, and all
+    # of that is the lens's SIDE faces -- 70 mm of box edge becomes 18 mm, and
+    # what is left is inside the bezel where nothing can see it. The fitting
+    # reads larger, which is what a lamp with a bezel on it actually is.
     #
     # It grows ACROSS the face only. The outward plane is untouched, because
     # `collision.corridor_profile` measures the walkable lane off this geometry
