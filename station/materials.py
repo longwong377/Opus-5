@@ -4730,6 +4730,22 @@ SCENES = ("exterior", "drum", "interior")
 #
 # The two scenes are not symmetric because one is a shot and the other is the
 # station.
+#
+# ---------------------------------------------------------------------------
+# THE COST, STATED RATHER THAN LEFT TO BE FOUND
+# ---------------------------------------------------------------------------
+# A material is a draw-call floor, and 231 instances that were all sharing one
+# glTF default now carry the materials they should have had. Over the whole
+# `green_1_0` cell the distinct-material count goes 23 -> 71.
+#
+# That is a CELL count over 1.1 km of drum axis and it is NOT the number the
+# budget is about: `DRAW_CALL_BUDGET` is asserted against the worst single VIEW
+# (see the block above it, which records the session where counting the library
+# instead of a view was the defect), and no view sees a kilometre of drum. It is
+# recorded here because it is the one figure this change moves in the wrong
+# direction, and because NOTHING IN THIS PROJECT MEASURES A DRUM VIEW'S MATERIAL
+# COUNT -- the per-view gate iterates `rooms.unbuilt()`, which is ring-deck
+# rooms only. That gap is older than this change and is not closed by it.
 SHIPPED_SCENE = "interior"
 SCENE_VOLUME = {
     "exterior": ("exterior",),
@@ -6913,7 +6929,7 @@ def _scan_generator_groups():
     import re
     # `garden` and `spoke` joined the list in 4t. They are not decoration: of
     # the 124 group tails the habitat drum emits that the shipped table could
-    # not match, SIXTY-TWO are `garden_*` -- the entire townscape, every tree,
+    # not match, FORTY-SIX are `garden_*` -- the whole townscape, every tree,
     # every hedge, every civic block -- and the scan could not see one of them,
     # because the prefix list was written when the drum meant ground, endcaps,
     # trusses, core and trams. A coverage check is only as wide as its
