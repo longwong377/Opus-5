@@ -151,7 +151,61 @@ source tree right?*** Here it was not, for nine sessions.
   `build_cell_manifest` emits no `deck_table` row for a ring whose kind is not `deck_stack`, so
   `stream.gd::bake()` refused the drum outright.
 
-- **RING-TO-RING TRAVEL WORKS IN 3 SECTORS OF 5, AND THAT IS THE TOP OPEN ITEM.**
+### THE FIX ROUND — six gaps closed, six adversarial verifiers, and what they caught
+
+**2 CONFIRMED, 4 PARTIAL, and every verifier proved the gate could fail.** The PARTIALs are the
+valuable half: in each case the fix was real and a *claim about it* was false.
+
+| # | gap | verdict | what the verifier caught |
+|---|---|---|---|
+| columns | blue/yellow joined nothing | **PARTIAL** | the guard compares triangle count only — see below |
+| crowd_lod | 7 of 10 LOD answers named an unbaked library | **CONFIRMED** | — (no CI caller) |
+| drum_interact | 22 of 31 interactables unresolved | **PARTIAL** | gate is red before *and* after (9/31 → 11/31); the delta is the proof, not the exit code |
+| hedges | a player walked through hedgerows | **PARTIAL** | the gate cannot detect its own exporter wiring being removed |
+| tram_tubes | two places with no builder | **PARTIAL** | **the builders were never called** — see below |
+| materials_scene | drum mixed two material scenes | **CONFIRMED** | half the new gate is a tautology |
+
+**A TRIANGLE COUNT CANNOT SEE A TRANSLATION, and this is the sharpest finding of the session.**
+`bake_columns` promised it refused a rebuild that did not match the shipped mesh's "triangle count
+AND BOUNDS". The code was `if len(T) != tris:` — count only; `box`, which carries z, was computed
+and discarded. Yellow's 24-landing stack is congruent under a shift in z:
+
+```
+shipped yellow: 21388 tri, z 158.4..161.8
+  z=160   21388 tri   off   0.000 m   pass     <- positive control
+  z=200   21388 tri   off  40.000 m   REFUSE
+  z=240   21388 tri   off  80.000 m   REFUSE
+```
+
+**21,388 in every row.** The verifier then traced the consequence: `bake_one` hands Godot the
+SHIPPED render and the REBUILT collision, `finalise` writes the rebuilt z, and `verify()` reads
+that *field* rather than geometry — so an 80 m render/collision split reports as CONNECTING, with
+`box_gap_m` contradicting `nearest_landing_m` in the same row and nothing comparing them. *A guard
+audited only where it happens to work is not a guard.*
+
+**INSTANCE TWELVE OF THE SIGNATURE DEFECT, and a verifier found it rather than a gate.**
+`ground_tram` (PLC-073) and `radial_tubes` (PLC-114) got real builders — geometry, gates,
+extrapolations — and **nothing called either**, so the shipped drum still had 36 people standing in
+an empty field. Now wired in `export_drum`: **14,072 and 35,468 tri** carrying their own group
+names. A build failure now *prints* instead of passing silently, because `reach_gate` stays green
+either way — the ground under both places is attributed regardless — which is exactly how the
+crowd-in-a-field state survived a green gate for a whole session.
+
+**AND THE RESIDUAL ALL SIX REPORTED INDEPENDENTLY: the new gate has no CI caller.** That is the
+signature defect wearing a different hat. Three now run — `sreach_gate`, `slod_gate`,
+`scolumn_site` — each with an entry in the aggregate step so one red step cannot blind the rest.
+Doing it honestly required teaching `reach_gate` that **CANNOT RUN is not FAILED**: on a clean CI
+checkout `station/generated/` is absent, and returning 1 there reports "no place is reachable" on a
+tree where the question was never asked. `--allow-unbuilt` forgives only the never-ran state and
+says so on its own output; a run that happens and finds places unreachable still exits 1.
+
+- **RING-TO-RING TRAVEL: THE PLACEMENT GATE NOW READS 0 OF 5 COLUMNS JOINING NOTHING** (was 2 of 5),
+  after a full re-export: **72 of 134 landings across the station meet a deck, 50 dead doors at
+  levels the register does not carry.** Red's 41 misses are decomposed rather than asserted — those
+  levels have no geometry at ANY z, so a shaft legitimately *passes* them; what is wrong is that it
+  opens a door at each, which is `spoke_way`'s per-shaft `landings=False` and not a placement fault.
+
+- **(SUPERSEDED) RING-TO-RING TRAVEL WORKED IN 3 SECTORS OF 5:**
   `tools/bake_columns.py --verify`:
 
   | column | landings on a deck | |
