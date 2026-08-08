@@ -141,6 +141,14 @@ SECTORS = ("blue", "green", "grey", "red", "yellow")
 # see the verdict move.
 NEAR_M = 5.0
 
+# How far the rebuilt shaft may sit from the shipped one before the bake
+# refuses. Not a tuning knob: both come from the SAME `spoke_way` call with the
+# same arguments, so in agreement they are bit-identical and any non-zero
+# offset is a real disagreement about where the shaft is. A millimetre is
+# float noise; 80 m is the defect this exists to catch.
+BOUNDS_TOL_M = 0.001
+
+
 
 # ===========================================================================
 # WHAT THERE IS TO BAKE
@@ -397,6 +405,39 @@ def bake_one(col, work, timeout=600, quiet=True):
                       "bake describes a different shaft"
                       % (len(T), os.path.basename(col["glb"]), tris))
         return rep
+    # AND THE BOUNDS, BECAUSE A TRIANGLE COUNT CANNOT SEE A TRANSLATION.
+    #
+    # This guard's docstring promised "triangle count AND BOUNDS" and the code
+    # compared only the count. An adversarial verifier broke it end to end on
+    # yellow, whose stack is congruent under a pure shift in z:
+    #
+    #   yellow  shipped 21,388 tri @ z 158.4..161.8
+    #           rebuild 21,388 tri @ z 238.4..241.8   -- guard refuses: FALSE
+    #   green   shipped  7,624 tri  -> rebuild 6,908  -- guard refuses: True
+    #
+    # `ring_stack` returns a bit-identical 24-landing stack at z=160 and z=240,
+    # so 21,388 == 21,388 and the shaft sails through 80 m from where the
+    # shipped render mesh is. `bake_one` then hands Godot the SHIPPED render
+    # and the REBUILT collision, and `finalise` writes the rebuilt z into the
+    # manifest -- so `verify()` reads the moved z, reports the column as
+    # connecting, and the player gets a render/collision split with a green
+    # gate over it. The other columns refuse only because their landing COUNT
+    # happens to change; the guard was audited where it works.
+    #
+    # `box` was already computed above and thrown away. This compares it.
+    if V:
+        reb = [(min(p[i] for p in V), max(p[i] for p in V)) for i in range(3)]
+        off = max(max(abs(reb[i][0] - box[i][0]), abs(reb[i][1] - box[i][1]))
+                  for i in range(3))
+        if off > BOUNDS_TOL_M:
+            rep["why"] = (
+                "rebuilt shaft has the same %d triangles as %s but sits %.3f m "
+                "away (rebuilt z %.1f..%.1f against the shipped %.1f..%.1f) -- "
+                "a congruent stack at a different z. Baking this would give the "
+                "shipped render mesh a collision shell from somewhere else."
+                % (tris, os.path.basename(col["glb"]), off,
+                   reb[2][0], reb[2][1], box[2][0], box[2][1]))
+            return rep
     xv, xt, xmeta = st["collision"]
     # THE SOURCE GROUP NAMES SURVIVE -- `lift_shaft`, `lift_sill`, `lift_car`.
     # `_write_cell` names its nodes after them and `lift_car` is a separate
