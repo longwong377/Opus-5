@@ -62,3 +62,4 @@ scratchpad/push_mirror.log
 # tools/package.sh output: a 324 MB staged build and a 113 MB tarball.
 # Derived, like station/generated/, and for the same reason.
 dist/
+.engine/
