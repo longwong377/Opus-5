@@ -101,6 +101,62 @@ def cast(o, d, verts, tris):
     return best
 
 
+def grid_index(verts, tris, cell_m=8.0):
+    """Triangles bucketed into a uniform grid. (cell_m, {cell: [tri, ...]}).
+
+    For `cast_short`, whose caller fires thousands of SHORT rays at one long
+    object -- `drum_dressing.ribbon_gate` probes every 6 m cross-section of a
+    2.5 km hedgerow, which is 850 rays against 3,400 triangles and is fifteen
+    seconds of Möller-Trumbore for one ribbon.
+
+    A triangle is registered in EVERY cell its own AABB touches, which is what
+    makes the lookup exact rather than approximate: if a triangle's AABB meets
+    the ray's, their cell ranges must share a cell, so nothing can be missed.
+    """
+    idx = {}
+    inv = 1.0 / cell_m
+    for n, tri in enumerate(tris):
+        p = [verts[tri[0]], verts[tri[1]], verts[tri[2]]]
+        lo = [int(math.floor(min(q[k] for q in p) * inv)) for k in range(3)]
+        hi = [int(math.floor(max(q[k] for q in p) * inv)) for k in range(3)]
+        for ix in range(lo[0], hi[0] + 1):
+            for iy in range(lo[1], hi[1] + 1):
+                for iz in range(lo[2], hi[2] + 1):
+                    idx.setdefault((ix, iy, iz), []).append(n)
+    return cell_m, idx
+
+
+def cast_short(o, d, verts, tris, index, max_t):
+    """`cast` over a BOUNDED ray, through a `grid_index`. Same answer.
+
+    `max_t` is not an optimisation the caller may get wrong for free: the
+    candidate set is the cells the ray's own segment AABB touches, so a hit
+    past `max_t` is not looked for and not returned. The self-test asserts this
+    agrees with brute-force `cast` on every ray it can disagree on.
+    """
+    cell_m, idx = index
+    inv = 1.0 / cell_m
+    end = [o[k] + d[k] * max_t for k in range(3)]
+    lo = [int(math.floor(min(o[k], end[k]) * inv)) for k in range(3)]
+    hi = [int(math.floor(max(o[k], end[k]) * inv)) for k in range(3)]
+    seen = set()
+    best = None
+    for ix in range(lo[0], hi[0] + 1):
+        for iy in range(lo[1], hi[1] + 1):
+            for iz in range(lo[2], hi[2] + 1):
+                for n in idx.get((ix, iy, iz), ()):
+                    if n in seen:
+                        continue
+                    seen.add(n)
+                    tri = tris[n]
+                    h = _ray_tri(o, d, verts[tri[0]], verts[tri[1]],
+                                 verts[tri[2]])
+                    if h is not None and h <= max_t and \
+                            (best is None or h < best):
+                        best = h
+    return best
+
+
 _PROFILE = {}
 
 
@@ -720,6 +776,36 @@ def prop_boxes(verts, tris, groups, solid=None, min_m=0.18, gap=0.04):
     bar's till, a medlab's scanner -- while the walkability guarantee had been
     computed as though they were solid. A guarantee computed against a different
     world than the one that ships is not a guarantee.
+
+    MEASURED, NOT FIXED: THIS IS A ROOM-SCALE TOOL AND THE DRUM USES IT AT
+    ARCHITECTURAL SCALE. Found while giving the drum's hedges collision
+    (INV-1244) and recorded here rather than in a session note, because this is
+    the function a reader would have to be looking at to act on it.
+    `tools/export_drum.py` hands this the Garden's townscape. Measured on the
+    shipped build:
+
+        townscape render                    51,026 triangles
+        this function's answer              **27 boxes** (324 triangles)
+        largest single box       **93.62 x 41.07 x 87.96 m = 338,153 m3**
+
+    Two causes, both correct at room scale and both wrong here. The box is a
+    WORLD AABB, and the settlement grid stands at about 22 degrees, so a thin
+    diagonal component's axis-aligned footprint is up to **x108** its own
+    oriented one (`garden_stair_accent`, 743.79 m2 of AABB for 6.89 m2 of
+    object; `garden_boundary` averages x14.0 over its 12 components). Then the
+    touch-merge -- right for a chair, whose legs touch its seat -- chains a
+    plinth into a block into a colonnade into the next building, taking 806
+    connected components down to 27. A player walking into the Garden's town is
+    stopped by an invisible box around the whole neighbourhood.
+
+    NOT changed here, deliberately: the return shape is a world AABB, both
+    callers (`export_drum` and `deck.build_collision`) consume it as one, and
+    every room on the station goes through this path. The fix is an ORIENTED
+    box per component -- rotating calipers about the vertical, emitted through
+    `boxes_mesh` with a yaw place_fn, exactly as `drum_dressing.ribbon_boxes`
+    does for a hedge -- plus a cap on the merge so architecture cannot chain.
+    Reproduce: `collision.prop_boxes(*garden.townscape(...),
+    solid=export_drum._dressing_solid)`.
     """
     if solid is None:
         import rooms as _R                                       # noqa: PLC0415
@@ -1021,6 +1107,42 @@ def _selftest():
     check("a stand point is on the floor, just above it",
           abs(math.hypot(sp[0], sp[1]) - m["floor_r_m"] + 0.05) < 1e-6,
           f"r={math.hypot(sp[0], sp[1]):.4f} floor={m['floor_r_m']}")
+
+    # --- the grid-indexed caster agrees with brute force ---------------------
+    # `cast_short`'s docstring says the self-test asserts this, and a claim
+    # made in prose and absent from the code is the oldest defect written down
+    # in this repository's own working agreement. Cast at the corridor shell
+    # from inside, in every direction, at three reaches -- the SHORT reaches
+    # matter most because that is where the two can disagree: `cast` returns
+    # the nearest hit at any distance and `cast_short` must return None rather
+    # than a hit past `max_t`.
+    gi = grid_index(v, t, 8.0)
+    disagree = 0
+    trials = 0
+    for n in range(180):
+        a = math.radians(n * 2.0)
+        o = ((m["floor_r_m"] - 1.2) * math.cos(a),
+             (m["floor_r_m"] - 1.2) * math.sin(a), m["z_m"] + (n % 7) - 3.0)
+        for d in ((math.cos(a), math.sin(a), 0.0),
+                  (-math.cos(a), -math.sin(a), 0.0),
+                  (0.0, 0.0, 1.0), (0.3, -0.4, 0.87)):
+            for reach in (0.4, 2.0, 40.0):
+                trials += 1
+                brute = cast(o, d, v, t)
+                if brute is not None and brute > reach:
+                    brute = None
+                fast = cast_short(o, d, v, t, gi, reach)
+                if (brute is None) != (fast is None) or (
+                        brute is not None and abs(brute - fast) > 1e-9):
+                    disagree += 1
+    check("cast_short agrees with brute-force cast", disagree == 0,
+          f"{trials - disagree} of {trials} rays agree")
+    # ...and the index is doing work rather than returning everything.
+    _cm, _ix = gi
+    biggest = max(len(v) for v in _ix.values())
+    check("the grid index actually partitions", biggest < len(t) // 2,
+          f"largest cell holds {biggest} of {len(t)} triangles, "
+          f"{len(_ix)} cells")
 
     # --- the axial shell: the same corridor with its long axis swapped -------
     r0 = it.ring_radii(schema, profile, "blue")[0]["r_mid"]

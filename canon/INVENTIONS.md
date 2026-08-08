@@ -14262,3 +14262,132 @@ instance rather than a representative one, the addresses should move onto a rose
 builders take the place as an argument precisely so that they can follow without being rewritten.
 
 ---
+## INV-1244 — the drum's ribbons are solid: one oriented box per merged run
+
+**Authority 5 (derived by measurement off the emitted cross-sections).**
+`station/drum_dressing.py::ribbon_boxes`, `RIBBON_GROUPS`, `_ribbon_slack`.
+Gates: `python3 station/drum_dressing.py --ribbon-collision` and
+`python3 tools/drum_hedge_gate.py`.
+
+INV-1229 gave every STANDING feature on the drum an oriented collision box and said in writing
+what it was leaving out: *"Hedgerows, park hedges and reed margins: a ribbon's world AABB is a
+whole field, so colliding them needs a box per resampled segment and that is not in this pass —
+a player currently walks through hedges."* This is that pass.
+
+**Why a ribbon could not go through `feature_boxes`.** That function takes each feature's box from
+`drum_dressing.prototype`, the same call `dressing_set` renders it through. A hedgerow has no
+prototype: it is generated in place along a polyline, so the box has to be fitted to the
+cross-sections `_ribbon` itself emits. It therefore lives in `drum_dressing`, beside the thing it
+measures — and it goes through the SAME two calls INV-1229 settled on, `collision.boxes_mesh`
+with a `_to_world` place_fn, because a second mechanism for one job is the drift this repository
+keeps paying for.
+
+**Which ribbons are solid, decided by a TABLE and not three times.** `RIBBON_GROUPS` maps each
+ribbon kind to the two material groups `_ribbon` emits, `dressing_set` reads it to render, and
+`ribbon_boxes` reads it to decide solidity: **a ribbon is solid when its SIDE — the surface a
+walking body meets — is `garden_hedge` rather than `garden_foliage`.** So the decision *is* the
+render's own group name and there is no second list to drift. The if/elif chain it replaces ended
+in an `else` that would have handed any new ribbon kind hedgerow's groups *and* hedgerow's
+collision decision, silently; the table raises instead, and `_selftest` asserts every kind in
+`field()["lines"]` appears in it.
+
+**Reeds are deliberately not solid.** `garden_foliage` on both faces, and INV-1229's own rule for
+tree crowns applies unchanged: a crown is not a wall. It is also the judgement the near rung
+already makes for a crop stand, and a reed margin marks the water's edge, which is a thing a
+player is supposed to be able to blunder into.
+
+**The merge, and the two limits that bound it.** A box per rendered cross-section would be 4,755
+boxes and 57,060 triangles. Runs are merged greedily under two limits, both bounding the same
+quantity — how much air the collider carries beyond the object, which is the number INV-1229
+rejected a world AABB over:
+
+1. **Side air ≤ slack/2.** For every cross-section in the run, the distance from that section's
+   own edge to the box face beside it, measured **along that section's own across direction**.
+   `slack = (1 - RIBBON_TOP_FRAC) * width / 2` — 0.315 m on a hedgerow, 0.180 m on a park hedge
+   — which is the amount by which a BOX round a single tapered cross-section already stands proud
+   of the ribbon at its crown. A merge that adds no more air than being a box already costs is a
+   merge a player cannot meet.
+2. **Chord sag ≤ slack.** `boxes_mesh` emits each face as two triangles through four mapped
+   corners, and on a drum a face spanning an arc cuts it: the chord sits `R(1 − cos(dA/2))` off
+   the surface, 0.35 m at 28 m of arc and 7.0 m at 125 m at FLOOR_R = 278.3 m. Limit 1 cannot see
+   this, because limit 1 is measured in the local frame where the run is straight. An axial run
+   carries no such term and is not capped by it.
+
+**Measured, configured, on the whole drum:** 28,536.9 m of solid ribbon (26,632.2 hedgerow +
+1,904.7 park hedge) becomes **795 boxes and 9,540 triangles**, one box per 38.8 m of hedgerow and
+per 17.6 m of park hedge. Against the drum's stated 627,056-triangle collision that is **+1.5%**.
+The 1,434.4 m of reeds carries none.
+
+**The gate is a cast probe, not a count.** A count of boxes goes green on 795 boxes in the wrong
+frame. `--ribbon-collision` fires a ray at every rendered cross-section from 4 m out on both
+sides, at half the LOWER of the two bounding crowns, and asks three things: does the ray hit a
+ribbon a player can SEE (else the probe is discarded rather than counted); does it hit the
+collider; and how far apart are the two stops.
+
+| | boxes withheld (`--bare`) | shipped |
+|---|---|---|
+| probes aimed at a visible ribbon | 9,510 of 9,510 | 9,510 of 9,510 |
+| stopped by something solid | **0** | **9,510** |
+| worst distance from the visible surface | — | **0.311 m against a derived 0.315 m** |
+
+**Three of the report's own numbers were instrument error, and finding that out is most of the
+work.** Recorded because each is a way a gate can manufacture its worst finding:
+
+* **1.049 m** — the probe fired from the exact first or last cross-section lies in the plane of
+  that end's cap and crosses the side face precisely on its boundary edge, so Möller-Trumbore
+  decides it on 1e-6 of tolerance, misses the near face and reports the FAR one. The tell was
+  that the same 4.350 came back off six different ribbons with different wobble. Probing
+  mid-section fixed it.
+* **0.483 m** — the first merge limit bounded the box's TOTAL width, which sounds equivalent to
+  bounding the air and is not: a centreline that wanders half a slack each way keeps the total
+  inside the limit while standing a whole slack clear at each end.
+* **13 mm** — attributed to oblique crossing, and it was not. `HEDGE_WOBBLE_M` moves a hedgerow's
+  crown between 1.55 and 2.25 m, so a probe at half the MEAN of two crowns sits at 0.61 of the
+  lower one, on a section narrower than the taper term assumes. The obliquity divisor `1/|dx|`
+  was kept anyway — it is correct and free — and is recorded as **inert**: box counts and every
+  gate figure are identical with and without it.
+
+**What would overturn it.** A show frame establishing hedgerow width or height (both are INV-495
+extrapolations, and every figure here is derived from them); a character controller whose capsule
+radius makes 0.315 m of slack visible; or a decision that a reed bed should stop a body, which
+would move one row of `RIBBON_GROUPS` and cost about 480 more boxes.
+
+## INV-1245 — a polyline's angles must be unwrapped before anything reads them as an arc
+
+**Authority 5 (a defect fix; the geometry it corrects is INV-495's).**
+`station/drum_dressing.py::unwrap_deg`, read by `Line.length_m` and `_ribbon_resample`.
+
+`_park` builds a hedge run by stepping a circumferential fraction and hands it to
+`_uw_to_station`, which returns `(u % 1.0) * 360`. A run that starts at 4.42° and walks backwards
+therefore comes out as 4.42, 2.14, **359.86**, 357.58 … and every consumer that reads `a1 - a0`
+as an arc reads that one step as **+357.7°**.
+
+**One park hedge of 138 ribbons on this drum crossed the seam.** Its own arithmetic made it
+**1,821.9 m long instead of 115.8 m**; `_ribbon` resampled it into **305 cross-sections instead of
+20** and RENDERED it as a ribbon wrapping the whole habitat, sweeping through every land-use band
+on the way round.
+
+**Why nothing caught it.** `Line.length_m` fed exactly two things: `_line_tris`, a triangle cost
+model, and `_field_digest`, a hash. Neither can tell 1,822 m of hedge from 116 m — one gets a
+bigger number and stays under budget, the other gets a different hex string and matches its
+committed value because the value was recorded with the defect already in it. **Nothing anywhere
+compared a ribbon's stated length to the distance between its own two ends.** What found it was
+INV-1244's collision gate reporting 1.683 m of collider standing clear of the ribbon, on that one
+line.
+
+**Fixed at the level of the rule.** `unwrap_deg` is one function and both `Line.length_m` and
+`_ribbon_resample` read it, so the arithmetic cannot be right in the renderer and wrong in the
+collider. `_selftest` asserts the property rather than the line: **no ribbon may be longer than
+the drum's own diagonal** (2,634.1 m), which would have failed the day the defect was written and
+does not depend on knowing which line has it.
+
+**Consequences, stated because they are visible in committed numbers.** `FIELD_DIGEST` moves from
+`9103bbc25c65353e` to `8474a536bc8c7426`: no feature moved, and the `points` half of the digest is
+byte-for-byte what it was — only the seam-crossing line's length changed. Total ribbon length on
+the drum falls from 31,657.7 m to **29,951.6 m**, all of it that one hedge. `_line_tris` and every
+LOD figure derived through it were over-estimating the drum's dressing by ~1,700 m of ribbon, i.e.
+in the safe direction, so `LOD_SCALE_M` and `DRESSING_TRIS` are not invalidated — they had
+headroom they did not know about.
+
+**What would overturn it.** A polyline generator that deliberately wants a run to wrap the drum
+more than once — none exists, and `unwrap_deg` would have to be given an explicit turn count.

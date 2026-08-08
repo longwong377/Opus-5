@@ -58,8 +58,14 @@ WHAT IS NOT IN, STATED RATHER THAN OMITTED QUIETLY
                  this repository builds a ground-level tram. `tram.py` builds
                  the ELEVATED guideway cars, which are `drum_tram`.
   radial_tubes   no builder anywhere; `interior.drum_spokes` is the spokes.
-  hedge collision  a hedgerow's world AABB is a whole field. Colliding hedges
-                 needs a box per ribbon segment; it is not in this pass.
+
+WHAT USED TO BE IN THAT LIST AND IS NOT ANY MORE. It read *"hedge collision: a
+hedgerow's world AABB is a whole field. Colliding hedges needs a box per ribbon
+segment; it is not in this pass."* It is in this pass now --
+`drum_dressing.ribbon_boxes()`, one oriented box per merged run, 795 boxes and
+9,540 triangles for 28.5 km of solid hedge. `tools/drum_hedge_gate.py` fires
+9,510 rays at the assembly BELOW and reports **9,510 of 9,510 stopped**, against
+**510 of 9,510** with the ribbon part withheld. -- INV-1244
 
 Run: python3 tools/export_drum.py --dry-run
      python3 tools/export_drum.py                     # writes green_1_0_*
@@ -116,8 +122,15 @@ def _lod0_scale():
 # WHICH DRESSING KINDS A BODY CANNOT WALK THROUGH. Structures, not planting: a
 # town block, a shed, a silo, a gantry leg, a spire and a jetty are masonry, and
 # a lamp column is a post you walk into. Trees are handled separately (trunk
-# only -- see `_feature_boxes`), and hedges are excluded for the reason in the
-# header.
+# only -- see `_feature_boxes`).
+#
+# THE RIBBONS ARE NO LONGER EXCLUDED and this list is not where they live.
+# `drum_dressing.RIBBON_GROUPS` decides which of them is solid, from the render
+# group each one's SIDE carries, and `dd.ribbon_boxes()` builds them -- because
+# a hedgerow is generated along a polyline and has no prototype for `_proto_box`
+# to measure. Their solidity is deliberately NOT a second entry here: two lists
+# naming the same decision is the drift this file's own docstrings keep warning
+# about. -- INV-1244
 SOLID_KINDS = ("town_block", "shed", "silo", "gantry", "spire", "jetty", "lamp")
 
 # The structural parts of the drum and the register location that NAMES each.
@@ -725,8 +738,18 @@ def main(argv=None):
         if not a.no_dressing:
             fv, ft, fn = feature_boxes()
             cparts.append(("features", fv, ft, ["drum_solid"] * len(ft)))
+            # AND THE RIBBONS, which `feature_boxes` cannot do because a
+            # hedgerow has no prototype to take a box from -- it is generated
+            # in place along a polyline, so the box has to be fitted to the
+            # cross-sections `_ribbon` emits, which is where it is fitted.
+            # Same two calls underneath (`boxes_mesh` + `_to_world`), same
+            # `drum_solid` group. Gated by `station/drum_dressing.py
+            # --ribbon-collision` and by `tools/drum_hedge_gate.py`, which
+            # asks this assembly rather than that function. -- INV-1244
+            rv, rt, rn = dd.ribbon_boxes()
+            cparts.append(("ribbons", rv, rt, ["drum_solid"] * len(rt)))
         else:
-            fn = 0
+            fn = rn = 0
         # The end caps and the spokes: what stops a body walking off the drum.
         for n, v, t, g in parts:
             if n in ("endcap_fore", "endcap_aft", "spokes"):
@@ -802,7 +825,8 @@ def main(argv=None):
                 "ground_tris": len(gt),
                 "dressing_tris": dmeta.get("triangles", 0),
                 "dressing_features": dmeta.get("features", 0),
-                "feature_boxes": fn, "townscape_boxes": len(tboxes),
+                "feature_boxes": fn, "ribbon_boxes": rn,
+                "townscape_boxes": len(tboxes),
                 "room_boxes": rboxes,
                 "places": len(boxes),
                 "places_with_geometry": sorted(hits),
@@ -830,7 +854,7 @@ def main(argv=None):
               f"{dmeta.get('features', 0)} features + fixed "
               f"{len(T) - len(gt) - dmeta.get('triangles', 0):,}")
         print(f"    collision {len(CT):,} tri, {row['collision_mb']:.2f} MB "
-              f"({fn} feature boxes, {len(tboxes)} townscape, "
+              f"({fn} feature boxes, {rn} ribbon, {len(tboxes)} townscape, "
               f"{rboxes} room)")
         print(f"    floor probe: {probe['hit']}/{probe['samples']} radial "
               f"casts land, r {probe['radius_min_m']}..{probe['radius_max_m']} m")

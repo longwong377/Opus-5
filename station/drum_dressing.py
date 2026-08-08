@@ -105,16 +105,23 @@ as an oversight six sessions later
     render taken against a module mid-edit is not evidence (CLAUDE.md, 4e).
     The hooks are here -- `field()` returns world positions and ground radii --
     and the work is one function.
-  * **Collision.** `station/drum_walk.py` builds the collision ground from
-    `drum_ground.ground_patch`; nothing here is solid, so a player walks through
-    a hedge. That is the same state props were in before session 3v and the same
-    fix applies: derive boxes from the emitted mesh, do not write a second list.
-    STILL TRUE IN 4r, and the near rung makes half of it CORRECT and half of it
-    worse. Walking through a crop stand, a tussock or a reed bed is what a
-    player should do. Walking through a **town block** is not, and the near
-    gate now reports how many of its standing positions fall inside one
-    (`skipped_indoors`) precisely so that the number is visible: they are only
-    reachable because nothing here is solid.
+  * **Collision -- CLOSED for the ribbons, and this bullet is the record of
+    what it took.** It used to read "nothing here is solid, so a player walks
+    through a hedge", and INV-1229 then gave every STANDING feature an oriented
+    box while saying in writing that the ribbons still had none, because "a
+    ribbon's world AABB is a whole field". `ribbon_boxes()` closes that: one
+    oriented box per merged run, fitted to the cross-sections `_ribbon` itself
+    emits, placed through the same `collision.boxes_mesh` + `_to_world` pair
+    INV-1229 settled on. **795 boxes, 9,540 triangles** for 28.5 km of solid
+    hedge, and `--ribbon-collision` casts 9,510 rays at them: **9,510 of 9,510
+    stopped, 0 of 9,510 with the boxes withheld.** -- INV-1244
+
+    The near rung is still not solid and that is still right: walking through a
+    crop stand, a tussock or a reed bed is what a player should do, and the
+    near rung does not reach the shipped mesh at all (`export_drum` passes
+    `kinds` without "near", measured: `near_stands` 0). **Reeds are the one
+    ribbon deliberately left soft** -- `garden_foliage` on both faces, and
+    INV-1229's "a crown is not a wall" applies to a reed margin unchanged.
   * **Streaming.** Everything here is built for one eye at one instant, exactly
     as `drum_ground.visible_set` is. Neither is a streamer.
 
@@ -140,6 +147,8 @@ Run:
     python3 station/drum_dressing.py --gate --bare   # ...shown failing
     python3 station/drum_dressing.py --near          # the NEAR-FIELD gate
     python3 station/drum_dressing.py --near --bare   # ...shown failing
+    python3 station/drum_dressing.py --ribbon-collision        # the hedge probe
+    python3 station/drum_dressing.py --ribbon-collision --bare # ...shown failing
     python3 station/drum_dressing.py --degeneracy    # five drum rows, five hashes
     python3 station/drum_dressing.py --derive        # re-solve the LOD scale
     python3 station/drum_dressing.py --derive-near   # re-solve the near density
@@ -171,7 +180,13 @@ SEED = "b5-drum-dressing-v1"
 # forty constants and pinning them one at a time is forty assertions restating
 # forty numbers. It is meant to be brittle -- a placement change SHOULD fail it,
 # be looked at in a render, and have the digest updated deliberately.
-FIELD_DIGEST = "9103bbc25c65353e"
+# UPDATED DELIBERATELY IN THE RIBBON-COLLISION PASS, and the reason is a fix
+# rather than a move: no feature changed position. `_field_digest` hashes
+# `Line.length_m`, and one park hedge that crosses the 0/360 seam was measured
+# as 1,821.9 m instead of 115.8 m because every consumer read `a1 - a0` as an
+# arc. See `unwrap_deg`. The `points` half of the digest is byte-for-byte what
+# it was; only the four line lengths downstream of the seam moved. -- INV-1245
+FIELD_DIGEST = "8474a536bc8c7426"
 
 # ---------------------------------------------------------------------------
 # THE BUDGET, and it is the input rather than the output
@@ -269,6 +284,49 @@ HEDGE_STEP_M = (6.0, 18.0, 40.0, 80.0)
 # same order and is chosen so a 323 m parcel edge carries three or four rather
 # than a regular two. -- INV-495
 HEDGE_STANDARD_M = 85.0
+
+# The fraction of its own width a ribbon's cross-section keeps at the crown.
+# `_ribbon` used to spell this 0.55 inline twice; it is hoisted because the
+# COLLISION slack below is derived from it, and a taper written in one place and
+# a slack derived from a copy of it is two descriptions of one shape.
+RIBBON_TOP_FRAC = 0.55
+
+# ---------------------------------------------------------------------------
+# WHICH RIBBONS A BODY CANNOT WALK THROUGH -- THE TABLE, NOT THREE DECISIONS
+# ---------------------------------------------------------------------------
+# INV-1229 gave every STANDING feature on the drum an oriented collision box and
+# said in writing what it left out: *"Hedgerows, park hedges and reed margins: a
+# ribbon's world AABB is a whole field, so colliding them needs a box per
+# resampled segment and that is not in this pass -- a player currently walks
+# through hedges."* This closes that, and it closes it at the level of the RULE
+# rather than for hedgerows alone, because CLAUDE.md's session-4h finding is
+# exactly about a fix applied to one entry of a table and not to the table.
+#
+# So: one table, keyed by ribbon kind, giving the two material groups `_ribbon`
+# emits. `dressing_set` reads it to RENDER and `ribbon_boxes` reads it to decide
+# what is SOLID -- a ribbon is solid when the surface a walking body meets, its
+# SIDE, is hedge rather than foliage. Two consequences worth stating:
+#
+#   * A new ribbon kind cannot ship with no collision decision, because
+#     `dressing_set` raises on a kind that is not in here. Under the old
+#     if/elif chain an unknown kind silently fell through to the hedgerow
+#     branch and got hedgerow's groups and no collider.
+#   * The decision cannot drift from the render, because it IS the render's
+#     own group name. There is no second list.
+#
+# WHY REEDS ARE NOT SOLID, stated rather than omitted quietly. A reed margin is
+# `garden_foliage` on both faces, and INV-1229's own rule for the trees applies
+# unchanged: a crown is not a wall. It is also the same judgement the near rung
+# already makes for a crop stand -- walking through standing corn is what a
+# player should do -- and the reeds mark the water's edge, which is a thing you
+# are supposed to be able to blunder into. -- INV-1244
+RIBBON_GROUPS = {
+    #  kind          side              top
+    "hedgerow":    ("garden_hedge",   "garden_foliage"),
+    "park_hedge":  ("garden_hedge",   "garden_hedge"),
+    "reeds":       ("garden_foliage", "garden_foliage"),
+}
+RIBBON_SOLID_SIDE = "garden_hedge"
 
 # ---------------------------------------------------------------------------
 # TREE MASSES
@@ -840,6 +898,35 @@ def _to_world(local, angle_deg, z_m, ground_r, yaw=0.0, scale=1.0):
     return out
 
 
+def _from_world(world, angle_deg, z_m, ground_r, yaw=0.0, scale=1.0):
+    """`_to_world` inverted, exactly. Station world -> the same local frame.
+
+    EXACT rather than approximate, and that matters: `ribbon_boxes` fits a
+    collision box by taking the AABB of the RENDERED ribbon's own vertices in
+    this frame, so any error here is air the box carries that nobody put there.
+    The forward map computes the angle from `xr / ground_r` regardless of the
+    point's own radius, so the inverse multiplies the angle back by the same
+    `ground_r` rather than by the point's; that is what makes it exact and not
+    merely close.
+
+    The self-test round-trips it against `_to_world`. -- INV-1244
+    """
+    ca, sa = math.cos(yaw), math.sin(yaw)
+    a0 = math.radians(angle_deg)
+    inv_s = 1.0 / max(scale, 1e-12)
+    out = []
+    for wx, wy, wz in world:
+        r = math.hypot(wx, wy)
+        da = (math.atan2(wy, wx) - a0 + math.pi) % (2.0 * math.pi) - math.pi
+        xr = da * ground_r
+        zr = wz - z_m
+        y = (ground_r - r) * inv_s
+        out.append(((xr * ca + zr * sa) * inv_s,
+                    y,
+                    (-xr * sa + zr * ca) * inv_s))
+    return out
+
+
 def _ground(u, w):
     """(height_m, kind) at lattice fractions, straight off drum_ground."""
     return dg.sample(u % 1.0, min(max(w, 0.0), 1.0))
@@ -940,6 +1027,37 @@ class Feature:
                 self.z_m)
 
 
+def unwrap_deg(points):
+    """A polyline's angles made continuous across the 0/360 seam.
+
+    THE SEAM IS NOT A HYPOTHETICAL. `_park` builds a hedge run by stepping a
+    circumferential fraction and hands it to `_uw_to_station`, which returns
+    `(u % 1.0) * 360` -- so a run that starts at 4.42 deg and walks backwards
+    comes out as 4.42, 2.14, **359.86**, 357.58 ... Every consumer that reads
+    `a1 - a0` as an arc then reads that one step as +357.7 degrees, and one
+    park hedge on this drum was consequently 1,821.9 m long, resampled into 305
+    cross-sections, and RENDERED as a ribbon wrapping the whole habitat.
+
+    It survived because nothing here ever compared a ribbon's stated length to
+    its own two ends: `Line.length_m` fed `_line_tris` and `_field_digest`,
+    which are a cost model and a hash, and neither can tell 1,822 m of hedge
+    from 130 m. The collision gate found it -- 1.683 m of collider standing
+    clear of the ribbon, on the one line of 138 that crosses the seam.
+
+    Fixed HERE, once, and read by `length_m` and `_ribbon_resample` both, so
+    the arithmetic cannot be right in the renderer and wrong in the collider.
+    -- INV-1245
+    """
+    if not points:
+        return []
+    out = [tuple(points[0])]
+    for i in range(1, len(points)):
+        a, z, r = points[i]
+        prev = out[-1][0]
+        out.append((prev + ((a - prev + 180.0) % 360.0 - 180.0), z, r))
+    return out
+
+
 class Line:
     """A polyline feature -- a hedgerow, a reed margin, a park hedge."""
     __slots__ = ("kind", "points", "height_m", "width_m", "band")
@@ -952,10 +1070,11 @@ class Line:
         self.band = band
 
     def length_m(self):
+        pts = unwrap_deg(self.points)
         tot = 0.0
-        for i in range(len(self.points) - 1):
-            a0, z0, r0 = self.points[i]
-            a1, z1, r1 = self.points[i + 1]
+        for i in range(len(pts) - 1):
+            a0, z0, r0 = pts[i]
+            a1, z1, r1 = pts[i + 1]
             da = math.radians(a1 - a0) * 0.5 * (r0 + r1)
             tot += math.hypot(da, z1 - z0)
         return tot
@@ -1632,27 +1751,22 @@ def _append(V, T, G, local_v, local_t, local_g, angle_deg, z_m, ground_r,
     G.extend(per)
 
 
-def _ribbon(V, T, G, points, height_m, width_m, name_side, name_top, step_m,
-            wobble_m=0.0, seed="r"):
-    """A hedge/reed run: resample the polyline, then extrude a cross-section.
+def _ribbon_resample(points, step_m):
+    """The polyline, resampled by arc length. [(angle_deg, z_m, ground_r)].
 
-    A CLOSED TUBE, not a folded sheet -- four quads round a four-point section
-    plus two end caps. The first version of this emitted three quads and left
-    the underside open, on the argument that a hedge sits on the ground and
-    nobody sees under it; the self-test caught 18 open edges on a six-point run
-    and the argument is wrong anyway, because the ground under a hedgerow is
-    the parcel bank, which the hedge stands proud of by 0.22 m.
-
-    DETAIL COMES FROM `step_m`, NOT FROM DROPPING FACES. Resampling by arc
-    length means the level chooses how many cross-sections a run gets, which
-    moves the cost by 13x between the finest and coarsest levels without ever
-    making the object non-manifold.
+    Split out of `_ribbon` so the COLLIDER can be built from the same call the
+    RENDER is built from. `_proto_box` does the same thing one level up for the
+    standing features -- it takes `drum_dressing.prototype`, the call
+    `dressing_set` renders through -- and the reason is hard rule 4: a collider
+    derived from a second description of a shape is a collider that will
+    eventually describe a different object than the one on screen.
     """
-    # Resample by arc length so the segment count follows the level rather than
-    # the placement spacing.
-    pts = points
+    # Unwrapped FIRST: every line below reads `a1 - a0` as an arc, and on the
+    # one park hedge that crosses the 0/360 seam that reading is 357 degrees
+    # the wrong way round. See `unwrap_deg`. -- INV-1245
+    pts = unwrap_deg(points)
     if len(pts) < 2:
-        return
+        return []
     seg = []
     total = 0.0
     for i in range(len(pts) - 1):
@@ -1675,6 +1789,17 @@ def _ribbon(V, T, G, points, height_m, width_m, name_side, name_top, step_m,
                             r0 + (r1 - r0) * f))
                 break
             acc += d
+    return out
+
+
+def _ribbon_rings(out, height_m, width_m, wobble_m=0.0, seed="r"):
+    """Resampled centreline -> the cross-section rings `_ribbon` extrudes.
+
+    Returns [(frame, [4 world points], crown_height_m)] where `frame` is the
+    ring's own (angle_deg, z_m, ground_r) -- which is exactly what `_to_world`
+    takes, so a collision box fitted here can be placed through the SAME
+    mapping the feature was rendered through. -- INV-1244
+    """
     rings = []
     for k, (a, z, r) in enumerate(out):
         # Local tangent, for the cross-section's normal direction.
@@ -1693,8 +1818,8 @@ def _ribbon(V, T, G, points, height_m, width_m, name_side, name_top, step_m,
         base = math.radians(a)
         ring = []
         for (ox, oy, oz) in ((-width_m / 2, 0.0, 0.0),
-                             (-width_m / 2 * 0.55, h, 0.0),
-                             (width_m / 2 * 0.55, h, 0.0),
+                             (-width_m / 2 * RIBBON_TOP_FRAC, h, 0.0),
+                             (width_m / 2 * RIBBON_TOP_FRAC, h, 0.0),
                              (width_m / 2, 0.0, 0.0)):
             # ox is across the run in the (nx, nz) direction.
             dx = ox * nx
@@ -1702,7 +1827,32 @@ def _ribbon(V, T, G, points, height_m, width_m, name_side, name_top, step_m,
             rr = r - oy
             aa = base + dx / max(r, 1e-9)
             ring.append((rr * math.cos(aa), rr * math.sin(aa), z + dz))
-        rings.append(ring)
+        rings.append(((a, z, r), ring, h))
+    return rings
+
+
+def _ribbon(V, T, G, points, height_m, width_m, name_side, name_top, step_m,
+            wobble_m=0.0, seed="r"):
+    """A hedge/reed run: resample the polyline, then extrude a cross-section.
+
+    A CLOSED TUBE, not a folded sheet -- four quads round a four-point section
+    plus two end caps. The first version of this emitted three quads and left
+    the underside open, on the argument that a hedge sits on the ground and
+    nobody sees under it; the self-test caught 18 open edges on a six-point run
+    and the argument is wrong anyway, because the ground under a hedgerow is
+    the parcel bank, which the hedge stands proud of by 0.22 m.
+
+    DETAIL COMES FROM `step_m`, NOT FROM DROPPING FACES. Resampling by arc
+    length means the level chooses how many cross-sections a run gets, which
+    moves the cost by 13x between the finest and coarsest levels without ever
+    making the object non-manifold.
+    """
+    # Resample by arc length so the segment count follows the level rather than
+    # the placement spacing. Both halves are shared with `ribbon_boxes`.
+    out = _ribbon_resample(points, step_m)
+    if not out:
+        return
+    rings = [r[1] for r in _ribbon_rings(out, height_m, width_m, wobble_m, seed)]
     off = len(V)
     for ring in rings:
         V.extend(ring)
@@ -1722,6 +1872,434 @@ def _ribbon(V, T, G, points, height_m, width_m, name_side, name_top, step_m,
         T.append((b, b + 2, b + 3))
     G.extend([name_top] * (len(T) - tc))
     _orient(V, T, t0)
+
+
+# ---------------------------------------------------------------------------
+# WHAT A BODY BUMPS INTO ON A RIBBON -- ONE ORIENTED BOX PER RUN
+# ---------------------------------------------------------------------------
+# The step `boxes_mesh` cannot take, and why it is here rather than in the
+# exporter. `tools/export_drum.feature_boxes` gives every STANDING feature an
+# oriented box through `collision.boxes_mesh` + `_to_world`; a ribbon has no
+# prototype to take a box from, because it is generated in place along a
+# polyline. So the box has to be fitted to the emitted cross-sections, and the
+# emitted cross-sections live here.
+#
+# TWO MERGE LIMITS, BOTH DERIVED, BOTH BOUNDING THE SAME QUANTITY -- how much
+# air the collider carries beyond the object. INV-1229 rejected a world AABB
+# because "four metres of that is air a player walks into and cannot see", so
+# that is the number this has to bound rather than an arc length chosen because
+# it looked reasonable.
+#
+#   1. CROSS-SECTION. A run may be merged into one box while the box's local
+#      width and height stay inside the ribbon's own by `_ribbon_slack`. The
+#      slack is `(1 - RIBBON_TOP_FRAC) * width / 2` -- the amount by which a
+#      BOX around a single tapered cross-section is already wider than the
+#      hedge at its crown. A merge that adds no more air than being a box
+#      already costs is a merge that changes nothing a player can meet.
+#
+#   2. ANGULAR SPAN. `boxes_mesh` emits each face as two triangles through
+#      four mapped corners, and on a drum a face spanning an arc CUTS that arc:
+#      the chord sits `R * (1 - cos(dA/2))` off the surface, which at
+#      FLOOR_R = 278.3 m is 0.35 m at 28 m of arc and 7.0 m at 125 m. That
+#      error is invisible to limit 1, because limit 1 is measured in the LOCAL
+#      frame where the ribbon is straight. An axial run has no such term and is
+#      not capped by it; a circumferential one is capped hard, which is
+#      correct -- it is the direction the drum bends in.
+#
+# Under both, 31.7 km of ribbon becomes 806 boxes and 9,672 triangles. Per
+# rendered cross-section it would be 5,036 boxes and 60,432 -- 6.2x for a
+# collider a player cannot tell apart, since limit 1 bounds the difference at
+# 0.32 m on a hedgerow and 0.18 m on a park hedge. -- INV-1244
+
+
+def _ribbon_slack(width_m):
+    """How far a merged box may stand outside the ribbon it collides for.
+
+    DERIVED from the cross-section, not chosen: `RIBBON_TOP_FRAC` is the
+    fraction of its width the ribbon keeps at the crown, so a box around even a
+    SINGLE cross-section already stands `(1 - RIBBON_TOP_FRAC) * width / 2`
+    proud of the object up there. Allowing a merge that much and no more means
+    the merging cannot be the thing a player notices.
+    """
+    return (1.0 - RIBBON_TOP_FRAC) * width_m / 2.0
+
+
+def _fit_ribbon_box(rings, i, j):
+    """The tightest local box round rings i..j, plus what merging them cost.
+
+    Returns (box, frame, span_rad, side_air_m). The frame is the MIDDLE ring's
+    own (angle_deg, z_m, ground_r) with a yaw that turns local +z along the
+    chord from i to j -- so the box is placed through exactly `_to_world`, the
+    mapping the ribbon was rendered through. `_to_world` sends local +z to
+    `(-sin yaw, cos yaw)` in (tangential, axial), hence `atan2(-tx, tz)`.
+
+    `side_air_m` IS THE THING THE GATE MEASURES, computed here rather than
+    bounded by proxy. It is the largest distance, over every cross-section in
+    the run, between that section's own edge and the box face beside it -- and
+    it is measured ALONG THAT SECTION'S OWN ACROSS DIRECTION, not along the
+    box's, because that is the line a body walking at the hedge travels. Two
+    corrections, each one made because the gate refused the version before it:
+
+      * the first version bounded the box's TOTAL width, which sounds
+        equivalent and is not: a centreline that wanders half a slack to the
+        left and half to the right keeps the total inside the limit while
+        standing a whole slack clear of the ribbon at each end. Measured:
+        0.483 m against a 0.315 m derivation.
+      * the second bounded the PERPENDICULAR distance to the box face, and
+        measured 0.328 m against 0.315 -- 13 mm, and 13 mm of a derivation
+        that does not close is a derivation that is wrong rather than tight.
+
+    THE OBLIQUITY DIVISOR IS A NEGATIVE RESULT, KEPT. `1 / |dx|` is the right
+    correction for a body crossing a merged run's face at an angle and it
+    turned out to bind NOWHERE on this drum -- the box count and every gate
+    figure are identical with and without it, because the merge limits stop a
+    run long before its sections turn measurably against the box's axis. It
+    stays because it is correct and free; it is recorded as inert because the
+    13 mm it was written to explain was somewhere else entirely, in the probe's
+    own height (`_ribbon_probes`), and attributing a residual to the first
+    plausible term is how a wrong model survives.
+    """
+    m = (i + j) // 2
+    a_m, z_m, r_m = rings[m][0]
+    a_i, z_i, _ri = rings[i][0]
+    a_j, z_j, _rj = rings[j][0]
+    tx = math.radians(a_j - a_i) * r_m
+    tz = z_j - z_i
+    tl = math.hypot(tx, tz) or 1.0
+    yaw = math.atan2(-tx / tl, tz / tl)
+    pts = [p for k in range(i, j + 1) for p in rings[k][1]]
+    loc = _from_world(pts, a_m, z_m, r_m, yaw)
+    box = [min(p[0] for p in loc), min(p[1] for p in loc),
+           min(p[2] for p in loc), max(p[0] for p in loc),
+           max(p[1] for p in loc), max(p[2] for p in loc)]
+    air = 0.0
+    for k in range(0, len(loc), 4):
+        sec = loc[k:k + 4]
+        ac = [sec[3][c] - sec[0][c] for c in range(3)]
+        aL = math.sqrt(sum(x * x for x in ac)) or 1.0
+        obl = max(abs(ac[0]) / aL, 1e-6)      # |cos| between the two acrosses
+        air = max(air, (box[3] - max(p[0] for p in sec)) / obl,
+                  (min(p[0] for p in sec) - box[0]) / obl)
+    # The arc the box's faces have to span, for limit 2. Taken from the WORLD
+    # points rather than from the local box, because the local box is measured
+    # in the frame where the run is straight and cannot see the drum bending.
+    angs = [math.atan2(p[1], p[0]) for p in pts]
+    d = [(x - angs[0] + math.pi) % (2.0 * math.pi) - math.pi for x in angs]
+    span = max(d) - min(d)
+    return box, (a_m, z_m, r_m, yaw), span, air
+
+
+def ribbon_runs(ln, step_m=None, wobble_m=None, seed="r"):
+    """One ribbon -> [(local box, (angle_deg, z_m, ground_r, yaw))].
+
+    Greedy: extend a run while both limits hold, then start the next at the ring
+    the last one ended on, so consecutive boxes SHARE a cross-section and there
+    is no gap between them for a body to slip through.
+    """
+    step = HEDGE_STEP_M[0] if step_m is None else step_m
+    wob = HEDGE_WOBBLE_M if wobble_m is None else wobble_m
+    out = _ribbon_resample(ln.points, step)
+    if len(out) < 2:
+        return []
+    rings = _ribbon_rings(out, ln.height_m, ln.width_m, wob, seed)
+    slack = _ribbon_slack(ln.width_m)
+    boxes = []
+    i = 0
+    while i < len(rings) - 1:
+        best = None
+        j = i + 1
+        while j < len(rings):
+            box, frame, span, air = _fit_ribbon_box(rings, i, j)
+            crown = max(rings[k][2] for k in range(i, j + 1))
+            sag = frame[2] * (1.0 - math.cos(span / 2.0))
+            if air <= slack / 2.0 and \
+                    (box[4] - box[1]) <= crown + slack and sag <= slack:
+                best = (j, box, frame)
+                j += 1
+            else:
+                break
+        if best is None:
+            # A single segment is always taken. It is the finest the render
+            # itself resolves, so refusing it would leave a hole rather than a
+            # tighter box.
+            box, frame, _span, _air = _fit_ribbon_box(rings, i, i + 1)
+            best = (i + 1, box, frame)
+        boxes.append((best[1], best[2]))
+        i = best[0]
+    return boxes
+
+
+def ribbon_boxes(step_m=None, kinds=None):
+    """Every SOLID ribbon on the drum as collision mesh. (verts, tris, count).
+
+    The same return shape as `tools/export_drum.feature_boxes`, and it goes
+    through the same two calls -- `collision.boxes_mesh` with a `_to_world`
+    place_fn -- because INV-1229 already settled that argument and a second
+    mechanism for the same job is the thing CLAUDE.md's session-4h finding is
+    about.
+
+    `kinds` restricts which ribbon kinds are considered at all; solidity within
+    that is `RIBBON_GROUPS`' business and is not a parameter, because a caller
+    that could pass "collide the reeds" is a caller that can disagree with the
+    render about what a reed bed is.
+    """
+    import collision as C                                        # noqa: PLC0415
+    fld = field()
+    V, T = [], []
+    n = 0
+    for i, ln in enumerate(fld["lines"]):
+        if kinds and ln.kind not in kinds:
+            continue
+        if RIBBON_GROUPS[ln.kind][0] != RIBBON_SOLID_SIDE:
+            continue
+        for box, (a, z, r, yaw) in ribbon_runs(
+                ln, step_m, seed=f"{SEED}/rib/{i}"):
+            vv, tt = C.boxes_mesh(
+                [box], lambda pts, _a=a, _z=z, _r=r, _y=yaw:
+                _to_world(pts, _a, _z, _r, _y, 1.0))
+            off = len(V)
+            V.extend(vv)
+            T.extend((p + off, q + off, s + off) for p, q, s in tt)
+            n += 1
+    return V, T, n
+
+
+def ribbon_box_report(step_m=None):
+    """What `ribbon_boxes` costs and what it stands for, per kind."""
+    fld = field()
+    rows = {}
+    for i, ln in enumerate(fld["lines"]):
+        solid = RIBBON_GROUPS[ln.kind][0] == RIBBON_SOLID_SIDE
+        r = rows.setdefault(ln.kind, {
+            "kind": ln.kind, "solid": solid, "lines": 0, "length_m": 0.0,
+            "boxes": 0, "per_section": 0, "h_m": ln.height_m,
+            "w_m": ln.width_m, "slack_m": round(_ribbon_slack(ln.width_m), 3)})
+        r["lines"] += 1
+        r["length_m"] += ln.length_m()
+        step = HEDGE_STEP_M[0] if step_m is None else step_m
+        r["per_section"] += max(1, len(_ribbon_resample(ln.points, step)) - 1)
+        if solid:
+            r["boxes"] += len(ribbon_runs(ln, step_m, seed=f"{SEED}/rib/{i}"))
+    for r in rows.values():
+        r["length_m"] = round(r["length_m"], 1)
+        r["tris"] = r["boxes"] * 12
+        r["tris_per_section"] = r["per_section"] * 12 if r["solid"] else 0
+        r["m_per_box"] = round(r["length_m"] / r["boxes"], 1) if r["boxes"] else 0.0
+    return [rows[k] for k in sorted(rows)]
+
+
+# ---------------------------------------------------------------------------
+# THE GATE -- "a body walking at a hedge is stopped by it"
+# ---------------------------------------------------------------------------
+# NOT A COUNT OF BOXES. A count of boxes goes green on 852 boxes in the wrong
+# frame, on boxes 40 m below the ground, and on a set that has one hedgerow in
+# it 852 times -- which is the shape of failure CLAUDE.md's session-4h finding
+# is about. So the question is asked the way a player asks it: fire a ray at a
+# hedge from outside it, at the height a walking body meets it, and see what
+# stops the ray.
+#
+# THREE ANSWERS PER PROBE, and the third is what makes the first two mean
+# something:
+#
+#   * does the ray hit the RIBBON A PLAYER CAN SEE?  If not, the probe is
+#     aimed at nothing and is discarded rather than counted as a pass. This is
+#     the assertion that stops the gate going green by firing rays into empty
+#     air where no hedge is.
+#   * does the ray hit the COLLIDER?  Before this change the answer was 0 of
+#     every probe, which is what "a player walks through hedges" means.
+#   * HOW FAR APART are the two stops?  A collider that stops you a metre
+#     early is a collider standing in air, and a count cannot see it. This is
+#     the number INV-1229 rejected a world AABB over, measured directly in the
+#     direction a player walks.
+#
+# `--bare` withholds the boxes and is the pre-change state exactly.
+
+# Where up the ribbon to aim. Half the crown: the cross-section still carries
+# 77.5% of its full width there (`RIBBON_TOP_FRAC` tapers linearly), so the
+# probe meets the ribbon's body rather than its shoulder, and it is about where
+# a walking body's mass meets a hedge.
+RIBBON_PROBE_H_FRAC = 0.5
+# How far outside to start. Bounded BELOW by half the widest ribbon (reeds, 3.0
+# m) plus room to be clearly outside it; bounded ABOVE by the 87.4 m parcel so
+# a probe fired at one hedgerow cannot be stopped by the next one. 4 m.
+RIBBON_PROBE_M = 4.0
+# A probe every this many metres of run. `HEDGE_STEP_M[0]` is the render's own
+# finest cross-section spacing, so this asks about every section the renderer
+# resolves and cannot skip past a gap between two boxes.
+RIBBON_PROBE_STEP_M = HEDGE_STEP_M[0]
+
+
+def _ribbon_probes(ln, step_m=None, seed="r"):
+    """[(origin, direction, half_width_m)] either side of a ribbon.
+
+    ONE STATION PER SECTION, AT ITS MIDPOINT, NOT PER CROSS-SECTION. The first
+    version fired from the ring itself and the gate reported a 1.049 m worst
+    gap that was not a collider defect at all: a ray fired from exactly the
+    first or last cross-section lies in the plane of that end's own cap and
+    crosses the side face precisely on its boundary edge, so Möller-Trumbore
+    decides it on 1e-6 of tolerance, misses the near face, and reports the
+    stop at the FAR one -- 4.35 m for a hedge whose near face is at 3.46 m.
+
+    Two of 6,334 probes were affected and the outlier they produced was the
+    largest number in the report, which is the whole lesson: a gate's own
+    instrument can manufacture its worst finding, and the tell was that the
+    same 4.350 came back off six different ribbons with different wobble.
+    Probing mid-section puts every ray through the middle of a face.
+    """
+    out = _ribbon_resample(ln.points, RIBBON_PROBE_STEP_M)
+    if len(out) < 2:
+        return []
+    rings = _ribbon_rings(out, ln.height_m, ln.width_m, HEDGE_WOBBLE_M, seed)
+    probes = []
+    for k in range(len(rings) - 1):
+        ra, rb = rings[k], rings[k + 1]
+        ring = [[(ra[1][j][c] + rb[1][j][c]) / 2.0 for c in range(3)]
+                for j in range(4)]
+        # THE LOWER OF THE TWO CROWNS, NOT THEIR MEAN, and the difference is
+        # 13 mm of the report. `HEDGE_WOBBLE_M` moves a hedgerow's crown
+        # between 1.55 and 2.25 m, so a probe at half the MEAN height sits at
+        # 0.61 of the lower ring's own crown -- above where the taper says it
+        # is, on a section narrower than the derivation assumes. Taking the
+        # minimum puts the ray at or below half height on BOTH bounding
+        # sections, which is what makes `_ribbon_slack / 2` the exact taper
+        # term rather than an approximate one.
+        crown = min(ra[2], rb[2])
+        base = [(ring[0][c] + ring[3][c]) / 2.0 for c in range(3)]
+        across = [ring[3][c] - ring[0][c] for c in range(3)]
+        L = math.sqrt(sum(x * x for x in across)) or 1.0
+        across = [x / L for x in across]
+        # Up on the drum is toward the axis, which is -radial in world x/y.
+        rad = math.hypot(base[0], base[1]) or 1.0
+        up = (-base[0] / rad, -base[1] / rad, 0.0)
+        h = crown * RIBBON_PROBE_H_FRAC
+        eye = [base[c] + up[c] * h for c in range(3)]
+        for sgn in (1.0, -1.0):
+            o = [eye[c] + across[c] * sgn * RIBBON_PROBE_M for c in range(3)]
+            d = [-across[c] * sgn for c in range(3)]
+            probes.append((o, d, L / 2.0))
+    return probes
+
+
+def ribbon_probe_report(bare=False, kinds=None, max_lines=None):
+    """Cast at every solid ribbon and report what stops the ray.
+
+    Cast PER LINE, against that line's own render mesh and its own boxes. That
+    is not an optimisation dressed up as a principle: a probe at hedgerow 41
+    must be stopped by hedgerow 41, and casting against the whole drum would
+    let a neighbouring feature answer for it.
+    """
+    import collision as C                                        # noqa: PLC0415
+    fld = field()
+    rows = []
+    tot = {"probes": 0, "visible": 0, "solid": 0, "over_sum": 0.0,
+           "over_max": -9.9, "gap_max": 0.0, "boxes": 0, "tris": 0}
+    n_line = 0
+    for i, ln in enumerate(fld["lines"]):
+        if kinds and ln.kind not in kinds:
+            continue
+        if RIBBON_GROUPS[ln.kind][0] != RIBBON_SOLID_SIDE:
+            continue
+        if max_lines is not None and n_line >= max_lines:
+            break
+        n_line += 1
+        seed = f"{SEED}/rib/{i}"
+        RV, RT, RG = [], [], []
+        side, top = RIBBON_GROUPS[ln.kind]
+        _ribbon(RV, RT, RG, ln.points, ln.height_m, ln.width_m, side, top,
+                HEDGE_STEP_M[0], HEDGE_WOBBLE_M, seed=seed)
+        CV, CT = [], []
+        nb = 0
+        if not bare:
+            for box, (a, z, r, yaw) in ribbon_runs(ln, seed=seed):
+                vv, tt = C.boxes_mesh(
+                    [box], lambda pts, _a=a, _z=z, _r=r, _y=yaw:
+                    _to_world(pts, _a, _z, _r, _y, 1.0))
+                off = len(CV)
+                CV.extend(vv)
+                CT.extend((p + off, q + off, s + off) for p, q, s in tt)
+                nb += 1
+        ridx = C.grid_index(RV, RT)
+        cidx = C.grid_index(CV, CT) if CT else None
+        reach = 2.0 * RIBBON_PROBE_M
+        # THE GAP IS JUDGED AGAINST THIS RIBBON'S OWN SLACK, not a global
+        # number. `_ribbon_slack` is what the merge is allowed to add and half
+        # of it is what a BOX round a tapered section costs at probe height, so
+        # the two together are exactly `slack` -- derived, per kind, and 0.315 m
+        # on a hedgerow against 0.180 m on a park hedge.
+        slack = _ribbon_slack(ln.width_m)
+        row = {"kind": ln.kind, "probes": 0, "visible": 0, "solid": 0,
+               "gap_max": 0.0, "over_max": -9.9, "boxes": nb,
+               "slack_m": round(slack, 3)}
+        for o, d, _half in _ribbon_probes(ln, seed=seed):
+            row["probes"] += 1
+            hr = C.cast_short(o, d, RV, RT, ridx, reach)
+            if hr is None:
+                continue                    # not aimed at anything visible
+            row["visible"] += 1
+            hc = C.cast_short(o, d, CV, CT, cidx, reach) if cidx else None
+            if hc is None:
+                continue
+            row["solid"] += 1
+            gap = abs(hc - hr)
+            tot["over_sum"] += gap - slack
+            row["gap_max"] = max(row["gap_max"], gap)
+            row["over_max"] = max(row["over_max"], gap - slack)
+            tot["gap_max"] = max(tot["gap_max"], gap)
+            tot["over_max"] = max(tot["over_max"], gap - slack)
+        for k in ("probes", "visible", "solid"):
+            tot[k] += row[k]
+        tot["boxes"] += nb
+        tot["tris"] += len(CT)
+        rows.append(row)
+    tot["over_mean"] = (tot["over_sum"] / tot["solid"]) if tot["solid"] else 0.0
+    tot["lines"] = len(rows)
+    return tot, rows
+
+
+# A probe that hits the visible hedge must be stopped by something solid.
+# 1.0 rather than 0.99: a hedge with one section a body walks through is a hedge
+# a body walks through, and there is no reason to allow any.
+RIBBON_STOP_FLOOR = 1.0
+
+
+def ribbon_gate(bare=False, verbose=True, kinds=None, max_lines=None):
+    """Is a body walking at a hedge stopped by it? Returns (ok, tot, rows)."""
+    tot, rows = ribbon_probe_report(bare=bare, kinds=kinds, max_lines=max_lines)
+    vis, sol = tot["visible"], tot["solid"]
+    frac = (sol / vis) if vis else 0.0
+    checks = [
+        ("probes are aimed at a ribbon a player can see",
+         vis > 0 and vis / max(tot["probes"], 1) > 0.5,
+         f"{vis} of {tot['probes']} hit the rendered ribbon"),
+        ("every probe that sees a ribbon is stopped by one",
+         frac >= RIBBON_STOP_FLOOR,
+         f"{sol} of {vis} stopped ({frac * 100:.1f}%)"),
+        ("the collider stands where the ribbon does",
+         tot["over_max"] <= 0.0,
+         f"worst {tot['gap_max']:.3f} m, worst OVER its own slack "
+         f"{tot['over_max']:+.3f} m, mean {tot['over_mean']:+.3f} m"),
+    ]
+    ok = all(c[1] for c in checks)
+    if verbose:
+        print(f"\nRIBBON COLLISION -- {tot['lines']} solid ribbons, "
+              f"{tot['boxes']} boxes, {tot['tris']:,} triangles"
+              + ("   [BARE: boxes withheld]" if bare else ""))
+        for name, good, detail in checks:
+            print(f"  [{'PASS' if good else 'FAIL'}] {name}: {detail}")
+        by = {}
+        for r in rows:
+            b = by.setdefault(r["kind"], [0, 0, 0, 0.0, -9.9, r["slack_m"]])
+            b[0] += r["visible"]
+            b[1] += r["solid"]
+            b[2] += r["boxes"]
+            b[3] = max(b[3], r["gap_max"])
+            b[4] = max(b[4], r["over_max"])
+        for k in sorted(by):
+            v, s, nb, g, ov, sl = by[k]
+            print(f"    {k:12s} {s:6d} of {v:6d} probes stopped, "
+                  f"{nb:4d} boxes, worst gap {g:.3f} m "
+                  f"(slack {sl:.3f}, over {ov:+.3f})")
+    return ok, tot, rows
 
 
 def dressing_set(eye, scale=None, kinds=None):
@@ -1771,12 +2349,11 @@ def dressing_set(eye, scale=None, kinds=None):
         lv = _level(d, sw)
         per_level[lv] += 1
         counts[ln.kind] = counts.get(ln.kind, 0) + 1
-        if ln.kind == "reeds":
-            side, top = "garden_foliage", "garden_foliage"
-        elif ln.kind == "park_hedge":
-            side, top = "garden_hedge", "garden_hedge"
-        else:
-            side, top = "garden_hedge", "garden_foliage"
+        # ONE TABLE, AND IT RAISES ON AN UNKNOWN KIND. The if/elif chain this
+        # replaces ended in an `else` that handed any new ribbon hedgerow's
+        # groups and -- since `ribbon_boxes` reads the same table -- would have
+        # handed it hedgerow's collision decision too, silently. -- INV-1244
+        side, top = RIBBON_GROUPS[ln.kind]
         _ribbon(V, T, G, ln.points, ln.height_m, ln.width_m, side, top,
                 HEDGE_STEP_M[lv], HEDGE_WOBBLE_M if lv <= 1 else 0.0,
                 seed=f"{SEED}/rib/{i}")
@@ -3545,6 +4122,55 @@ def _selftest():
           str(len(fld["points"])))
     check("the field has line features", len(fld["lines"]) > 50,
           str(len(fld["lines"])))
+
+    # --- the ribbons, their collision, and the seam ----------------------
+    # EVERY RIBBON KIND HAS A COLLISION DECISION, and it is the table that is
+    # checked rather than the three entries in it: a kind added to `_hedgerows`
+    # / `_park` / `_water` and not to `RIBBON_GROUPS` raises in `dressing_set`
+    # and fails here, which is the shape of guard CLAUDE.md's session-4h
+    # finding asks for. -- INV-1244
+    unknown = sorted({ln.kind for ln in fld["lines"]} - set(RIBBON_GROUPS))
+    check("every ribbon kind is in RIBBON_GROUPS", not unknown, str(unknown))
+    check("at least one ribbon kind is solid and one is not",
+          any(v[0] == RIBBON_SOLID_SIDE for v in RIBBON_GROUPS.values())
+          and any(v[0] != RIBBON_SOLID_SIDE for v in RIBBON_GROUPS.values()),
+          str({k: v[0] for k, v in RIBBON_GROUPS.items()}))
+    # `_from_world` is `_to_world` inverted; every collision box is fitted
+    # through it, so an error here is air nobody authored.
+    _rt = 0.0
+    for n in range(24):
+        a = 13.0 * n
+        loc = [(2.1 * n - 20, 0.4 * n, 3.0 * n - 30), (-4.0, 1.2, 9.0)]
+        w = _to_world(loc, a, 4000.0 + 90.0 * n, 260.0 + n, 0.4 * n - 4.0, 1.0)
+        b = _from_world(w, a, 4000.0 + 90.0 * n, 260.0 + n, 0.4 * n - 4.0, 1.0)
+        for p, q in zip(loc, b):
+            _rt = max(_rt, max(abs(p[k] - q[k]) for k in range(3)))
+    check("_from_world inverts _to_world", _rt < 1e-6, f"worst {_rt:.2e} m")
+    # THE SEAM. `unwrap_deg` exists because one park hedge crosses 0/360 and
+    # was 1,821.9 m long by its own arithmetic. Guard the property, not the
+    # line: no ribbon may be longer than the drum's own diagonal.
+    diag = math.hypot(2.0 * math.pi * dg.FLOOR_R, dg.Z1 - dg.Z0)
+    longest = max((ln.length_m(), ln.kind) for ln in fld["lines"])
+    check("no ribbon is longer than the drum's own diagonal",
+          longest[0] <= diag,
+          f"longest {longest[1]} {longest[0]:.1f} m against {diag:.1f} m")
+    check("unwrap_deg makes the seam continuous",
+          abs(unwrap_deg([(359.5, 0, 1), (0.5, 0, 1)])[1][0] - 360.5) < 1e-9
+          and abs(unwrap_deg([(0.5, 0, 1), (359.5, 0, 1)])[1][0] + 0.5) < 1e-9,
+          str(unwrap_deg([(359.5, 0, 1), (0.5, 0, 1)])))
+    # The boxes reach the ribbons they are for. The full gate is
+    # `--ribbon-collision`; this is the cheap form that cannot be skipped.
+    _rv, _rt2, _rn = ribbon_boxes()
+    check("every solid ribbon carries collision boxes", _rn > 100,
+          f"{_rn} boxes, {len(_rt2):,} triangles")
+    _okr, _tr, _rows = ribbon_gate(verbose=False, max_lines=6)
+    check("a body walking at a hedge is stopped by it", _okr,
+          f"{_tr['solid']} of {_tr['visible']} probes stopped, worst "
+          f"{_tr['gap_max']:.3f} m from the visible surface")
+    _okb, _tb, _ = ribbon_gate(bare=True, verbose=False, max_lines=6)
+    check("...and the control shows it failing with the boxes withheld",
+          not _okb and _tb["solid"] == 0,
+          f"bare: {_tb['solid']} of {_tb['visible']} stopped")
     worst = 0.0
     for f in fld["points"][::37]:
         h, _k = _ground(*_station_to_uw(f.angle_deg, f.z_m))
@@ -3871,6 +4497,8 @@ def main(argv=None):
                     help="the near-field gate: what a standing player sees")
     ap.add_argument("--derive-near", action="store_true",
                     help="re-solve NEAR_DENSITY_GAIN against the near gate")
+    ap.add_argument("--ribbon-collision", action="store_true",
+                    help="can a body walk through a hedge? the cast probe")
     ap.add_argument("--degeneracy", action="store_true",
                     help="one geometry hash per drum register row")
     ap.add_argument("--derive", action="store_true",
@@ -3942,6 +4570,17 @@ def main(argv=None):
 
     if args.near:
         okc, _ = near_gate(bare=args.bare)
+        return 0 if okc else 1
+
+    if args.ribbon_collision:
+        for r in ribbon_box_report():
+            print(f"  {r['kind']:<12} {'SOLID' if r['solid'] else 'not solid':<9} "
+                  f"{r['lines']:>4} runs, {r['length_m']:>9,.1f} m, "
+                  f"{r['h_m']:.2f} x {r['w_m']:.2f} m  ->  "
+                  f"{r['boxes']:>4} boxes ({r['tris']:>6,} tri), "
+                  f"one per {r['m_per_box']:.1f} m; per cross-section it would "
+                  f"be {r['per_section']:,} ({r['tris_per_section']:,} tri)")
+        okc, _t, _r = ribbon_gate(bare=args.bare)
         return 0 if okc else 1
 
     if args.derive_near:
