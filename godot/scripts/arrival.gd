@@ -1,4 +1,10 @@
 extends "res://scripts/walk.gd"
+
+# The cluster-prefix rule lives in interact.gd and is preloaded rather than
+# copied, so the two files cannot drift about what a group name is. Copying it
+# would be the "two sources of truth" defect this project already records for
+# materials and for column placement.
+const Interact = preload("res://scripts/interact.gd")
 ## THE PLAYER'S FIRST TEN MINUTES, PLAYED.
 ##
 ## Spawn in the corridor outside customs, walk into the hall, present your
@@ -291,7 +297,15 @@ func _place_centre(place: String) -> Vector3:
 	var hi := Vector3(-INF, -INF, -INF)
 	var n := 0
 	for m in _all_meshes(self):
-		if not String(m.name).begins_with(place + "__"):
+		# THE CLUSTER PREFIX, WHICH THIS TEST DID NOT KNOW ABOUT. A multi-z deck
+		# names its groups `z7440__customs_north__prop_...` (station/deck.py:1419,
+		# added in 9db2466); `place + "__"` is false for every node on such a
+		# deck, so this returned 0 meshes for all eleven steps and the build
+		# printed `arrival: 0 of 11 steps are on this build`. Berth, disembark,
+		# queue, present, scan, desk, welcome, orient, transit, door, bunk --
+		# the entire authored opening, skipped silently, on a station whose
+		# geometry contained every one of them.
+		if not Interact.strip_cluster(String(m.name)).begins_with(place + "__"):
 			continue
 		var box: AABB = m.global_transform * m.get_aabb()
 		lo = Vector3(minf(lo.x, box.position.x), minf(lo.y, box.position.y),
