@@ -333,6 +333,45 @@ def main(argv=None):
     if sbad:
         fails += 1
 
+    # -- 3. and none of it narrowed the corridor ---------------------------
+    # `collision.corridor_profile` casts sideways between floor_y + 0.05 and
+    # floor_y + 1.8 and keeps the NARROWEST clear half width; `station/lift.py`
+    # sizes its car from the same number. So a housing that projected further
+    # than the lens it wraps would shrink the station's corridors AND its lifts
+    # with nothing to say so -- `interior_kit._selftest` asks this of
+    # `wall_station` and `service_run` and NOT of `wall_assembly`, which is
+    # where the downlights are. Asked here of the assembled section, which is
+    # what the profile is actually measured on.
+    own = _owner(len(t), spans)
+    lo_b, hi_b = 0.022 + 0.05, 0.022 + 1.8
+    inner = {}
+    for i, tri in enumerate(t):
+        pts = [v[k] for k in tri]
+        if max(p[1] for p in pts) < lo_b or min(p[1] for p in pts) > hi_b:
+            continue
+        r = min(abs(p[0]) for p in pts)
+        nm = own[i] or "untagged"
+        if nm not in inner or r < inner[nm]:
+            inner[nm] = r
+    fit = {nm: r for nm, r in inner.items()
+           if nm.startswith("light_") or nm.startswith("sign_")}
+    half = K.PROVISIONAL["corridor_width_m"] / 2.0
+    limit = half - K.PROVISIONAL["pilaster_proj_m"]
+    print(f"\nWALKING ENVELOPE -- did a housing grow into the corridor?\n")
+    print(f"    corridor half width {half:.3f} m, pilaster projection "
+          f"{K.PROVISIONAL['pilaster_proj_m']:.3f} m, so nothing may come "
+          f"inside {limit:.4f} m")
+    ebad = 0
+    for nm in sorted(fit, key=lambda a: fit[a])[:6]:
+        ok = fit[nm] >= limit - 1e-9
+        ebad += 0 if ok else 1
+        print(f"{'PASS' if ok else 'FAIL'}{nm:26s} innermost surface at "
+              f"{fit[nm]:.4f} m from the centreline")
+    print(f"\n{len(fit) - ebad}/{len(fit)} fitting and sign groups stay "
+          f"outside the body band's clear width.")
+    if ebad:
+        fails += 1
+
     if args.cost:
         own = _owner(len(t), spans)
         per = {}
@@ -420,17 +459,21 @@ def main(argv=None):
 
     if args.legacy:
         if fails:
-            print("\nCONTROL OK: the pre-housing corridor FAILS both "
-                  "questions, so the gate is not inert.")
+            print("\nCONTROL OK: the pre-housing corridor FAILS questions 1 "
+                  "and 2, so neither is inert.\nQuestion 3 PASSES here and is "
+                  "supposed to: it is a regression guard on the walking\n"
+                  "envelope, and the content it guards against is a housing "
+                  "that grows into the\ncorridor, which the legacy corridor "
+                  "has no housings to do.")
             return 0
         print("\nCONTROL DID NOT FIRE -- the legacy corridor passes this "
               "gate, which means the gate measures nothing. Fix the gate, "
               "not the content.")
         return 1
     if fails:
-        print(f"\n{fails} of 2 questions FAILED.")
+        print(f"\n{fails} of 3 questions FAILED.")
         return 1
-    print("\nboth questions pass.")
+    print("\nall three questions pass.")
     return 0
 
 
