@@ -14530,3 +14530,52 @@ cells directly, at which point the merge disappears and `bake()` should number t
 station rather than one deck. If cell rows ever gain a stable identity of their own that
 callers use instead of the integer -- the right long-term answer, since `cell_at` could
 return the `id` it already has -- this numbering stops mattering rather than becoming wrong.
+
+## INV-1248 — a crowd bucket wears its material on the INSTANCE, and the glTF default is white
+
+**Authority 5 (a wiring fix and one measurement; the wardrobe it binds is INV-259's 53 measured
+materials).** `godot/scripts/npc.gd::dress_crowd`, `godot/scripts/dress_scene.gd::bind`, gated by
+`tools/crowd_material_gate.py`.
+
+**The measurement first, because it is the part that is easy to get wrong.** The three shipped
+crowd libraries — `station/generated/scene/station/crowd_lod{2,4,8}.glb`, 864 + 780 + 504 = **2,148
+body meshes** — carry **zero glTF materials**, and not one primitive references one. That is
+correct by design: `populace.station_crowd_library` names every mesh after its material key
+(`crowd_abbai_4_0_npc_cloth__league_dark`) precisely so the engine can bind by name, and writing
+the material into the glb would be a second copy of `materials.py`'s table.
+
+**What a mesh with no glTF material actually renders as, measured rather than assumed.** Godot's
+importer does not leave the surface materialless — it manufactures a `StandardMaterial3D` per
+surface with `resource_path = ""`, `albedo_color = (1, 1, 1, 1)` and **no albedo, normal or ORM
+texture**. So the honest description of the shipped build is not "the crowd has no material"; it is
+**"the crowd has the wrong material, and that material is flat white"**. `npc_skin`, for
+comparison, is `albedo_color = (0.3913, 0.3913, 0.3913, 1)` over `skin_albedo/normal/orm.png`.
+
+**The consequence for any gate written about this.** Asking *"does the bucket have a material"*
+reports **504 of 504 on an unfixed build**. The only question that discriminates is whether the
+material is the one `material_rules` binds to the bucket's own name, which is why
+`crowd_material_gate.py --engine` compares against `interior.tscn`'s own `_material_for` rather
+than testing for null.
+
+**The decision: `material_override` on the MultiMeshInstance3D, not `surface_set_material` on the
+mesh.** Both would render. The instance wins because one `ArrayMesh` under a bucket is **shared
+between every phase and rung cut from the same body** — `_index_library` keys buckets
+`crowd_<species>_<lod>_<phase>` and hands each the mesh resource the glb loaded — so writing onto
+the resource would let one bucket decide for its siblings, and the first divergent wardrobe entry
+would be a silent cross-contamination with no gate able to see it. `material_override` also happens
+to be what `ragdoll.gd::_scan_materials` already reads first when it dresses a body it has just
+promoted out of the crowd, so the two agree by construction rather than by discipline.
+
+**Why the binder had to be widened as well as called.** `dress_scene.gd::_mesh_instances` collected
+`MeshInstance3D` only, and **`MultiMeshInstance3D` does not derive from it** — it derives straight
+from `GeometryInstance3D`. So the crowd was invisible to every material pass in the project, and a
+correctly-placed call would still have bound nothing. `light()` was deliberately NOT widened with
+it: `_fittings` reads `mi.mesh` and an AABB per span, and a crowd bucket is not a light fitting —
+one shared collector would put a lamp inside every walker.
+
+**What would overturn it.** If the crowd libraries ever ship with real glTF materials — worth doing
+only if the wardrobe stops being derived from `costume.py` — then `dress_crowd` becomes a no-op
+that should be deleted rather than left running, and the gate's `--data` layer would fail on
+`primitive(s) carrying one` being non-zero, which is the tell. If a future `npc.gd` gives each
+walker a per-instance colour through `MultiMesh.use_colors`, `material_override` must gain
+`vertex_color_use_as_albedo`, and the wardrobe albedo becomes a tint rather than the colour.

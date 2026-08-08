@@ -249,9 +249,24 @@ func _read_lighting() -> void:
 ## "271/286 on a material rule" over a frame in which not one material existed.
 ## A summary line that cannot distinguish "bound" from "matched a rule whose
 ## value is null" is the same defect as an assertion that cannot fail.
+##
+## AND A MultiMeshInstance3D IS NOT A MeshInstance3D -- session 4t, instance ten
+## of this project's signature defect, and it is the reason every human being in
+## the shipped build was an untextured white mannequin. `npc.gd` draws the whole
+## crowd as MultiMeshes and names each one after its material key on purpose;
+## `_mesh_instances` could not see one of them, and neither could any caller.
+## The two shipped callers each bound a root that does not contain the crowd
+## (`walk.gd` the level, `stream.gd` a cell), so the fix is BOTH ends -- a
+## caller in `npc.gd`, and this collector, which is the half that makes the call
+## capable of doing anything.
+##
+## `light()` deliberately does NOT widen with it. Its `_fittings` reads
+## `mi.mesh` and an AABB per span, and a crowd bucket is not a light fitting;
+## sharing one collector between them would put a lamp inside every walker.
 func bind(root: Node) -> Dictionary:
 	if _owner == null:
-		return {"meshes": 0, "bound": 0, "unmatched": PackedStringArray(),
+		return {"meshes": 0, "bound": 0, "multimesh": 0, "multimesh_bound": 0,
+			"unmatched": PackedStringArray(),
 			"ruled_but_null": PackedStringArray()}
 	var rules: Dictionary = _owner.get("material_rules")
 	var missed := {}
@@ -261,23 +276,58 @@ func bind(root: Node) -> Dictionary:
 	for mi in _mesh_instances(root):
 		meshes += 1
 		var key := String(mi.name)
-		var mat: Material = _owner._material_for(key)
-		var hit := false
-		for frag in rules:
-			if key.contains(String(frag)):
-				hit = true
-				break
+		var mat: Material = _resolve(key, rules, missed, empty)
 		if mat != null:
 			bound += 1
 			for i in mi.mesh.get_surface_count():
 				mi.set_surface_override_material(i, mat)
-		elif hit:
-			empty[key] = true
-		if not hit:
-			missed[key] = true
+	# THE INSTANCED HALF. `material_override` rather than a surface override:
+	# the mesh resource under a crowd bucket is SHARED between the buckets of
+	# every phase and rung that were cut from the same body, so writing the
+	# material onto the resource would be one bucket deciding for the others.
+	# The override lives on the instance and is what `ragdoll.gd::_scan_materials`
+	# already looks for first.
+	var mm_seen := 0
+	var mm_bound := 0
+	for mm in _multimesh_instances(root):
+		mm_seen += 1
+		meshes += 1
+		var key2 := String(mm.name)
+		var mat2: Material = _resolve(key2, rules, missed, empty)
+		if mat2 != null:
+			bound += 1
+			mm_bound += 1
+			mm.material_override = mat2
 	return {"meshes": meshes, "bound": bound,
+		"multimesh": mm_seen, "multimesh_bound": mm_bound,
 		"unmatched": PackedStringArray(missed.keys()),
 		"ruled_but_null": PackedStringArray(empty.keys())}
+
+
+## The material for one group name, recording WHY when there is none.
+##
+## Split out so the mesh loop and the multimesh loop cannot drift: this project
+## has paid twice for one rule written down in two places, and the last time it
+## happened the second copy was the one that shipped.
+func _resolve(key: String, rules: Dictionary, missed: Dictionary,
+		empty: Dictionary) -> Material:
+	var mat: Material = _owner._material_for(key)
+	var hit := false
+	for frag in rules:
+		if key.contains(String(frag)):
+			hit = true
+			break
+	if not hit:
+		missed[key] = true
+		# A FALLBACK IS NOT A BIND. `_material_for` returns `fallback_material`
+		# when no rule matches, and interior.tscn leaves that null -- but a
+		# scene that sets it (exterior.tscn does) would otherwise have every
+		# unmatched group counted as bound, which is the exact false green
+		# `judge-4e` was misled by.
+		return null
+	if mat == null:
+		empty[key] = true
+	return mat
 
 
 ## Drop the instantiated interior scene. Call once binding is done; the
@@ -496,4 +546,18 @@ func _mesh_instances(n: Node, out: Array[MeshInstance3D] = []) -> Array[MeshInst
 		out.append(n)
 	for c in n.get_children():
 		_mesh_instances(c, out)
+	return out
+
+
+## The instanced drawables. SEPARATE FROM `_mesh_instances` ON PURPOSE -- see
+## `bind`. MultiMeshInstance3D does not derive from MeshInstance3D, which is
+## exactly why the crowd was invisible to every material pass in the project.
+func _multimesh_instances(n: Node,
+		out: Array[MultiMeshInstance3D] = []) -> Array[MultiMeshInstance3D]:
+	if n is MultiMeshInstance3D:
+		var mm := n as MultiMeshInstance3D
+		if mm.multimesh != null and mm.multimesh.mesh != null:
+			out.append(mm)
+	for c in n.get_children():
+		_multimesh_instances(c, out)
 	return out

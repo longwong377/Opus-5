@@ -1001,6 +1001,7 @@ func prepare_crowd(libraries: Array, all_rows: Array) -> int:
 	var n := 0
 	for lib in libraries:
 		n += _index_library(lib, all_rows)
+	dress_crowd()
 	return n
 
 
@@ -1063,6 +1064,7 @@ func _walker_from(r: Dictionary, tag: String) -> Walker:
 ## Build the crowd from the library scene and the placement list.
 func build_crowd(library: Node, rows: Array) -> int:
 	_index_library(library, rows)
+	dress_crowd()
 	add_crowd(rows, "")
 	return _walkers.size()
 
@@ -1160,6 +1162,131 @@ func _index_library(library: Node, rows: Array) -> int:
 			_mm[k].append(mmi)
 			made += 1
 	return made
+
+
+# ---------------------------------------------------------------------------
+# The crowd's clothes
+# ---------------------------------------------------------------------------
+
+## What `dress_crowd` last found. Read by tools/crowd_material_gate.py and
+## printed on every run that has a crowd in it.
+var crowd_mm_total := 0        ## buckets offered to the binder
+var crowd_mm_bound := 0        ## buckets that came back wearing the wardrobe
+var crowd_unmatched := PackedStringArray()   ## group names no rule matched
+var crowd_dress_why := "not run"
+var _dressed := {}             ## bucket node -> true, so a re-index is cheap
+
+
+## Put the measured wardrobe on the crowd. INSTANCE TEN OF THIS PROJECT'S
+## SIGNATURE DEFECT, CLOSED HERE.
+##
+## `_index_library` has always named every bucket after its material key, and
+## the ten-line comment above it says the name exists FOR THE BINDER. Nothing
+## called the binder. The two shipped callers of `dress_scene.bind` each pass a
+## root that cannot contain the crowd -- `walk.gd` passes the level scene and
+## `stream.gd` passes one cell's visual root -- while the buckets hang off THIS
+## node. So 2,148 bodies across the three shipped libraries reached the frame on
+## the glTF importer's default material, and that default is not "no material":
+## it is a StandardMaterial3D with `albedo_color = (1,1,1,1)` and no textures.
+## An untextured white mannequin, literally, at 2.6 m from the camera.
+##
+## WHY THE OBVIOUS CHECK GOES GREEN, because it did when this was written.
+## Asking "does the bucket have a material" reports 504 of 504 on an UNFIXED
+## build, since Godot manufactures that white default per surface. The only
+## question worth asking is whether the material is THE ONE `material_rules`
+## binds to the bucket's own name, which is what `dress_scene.bind` answers and
+## what `crowd_unmatched` reports.
+##
+## IT OWNS ITS OWN DRESSER RATHER THAN BORROWING ONE. `walk.gd` releases its
+## dresser immediately after the monolithic bind, so a borrowed reference would
+## be alive on the streamed path and dead on the other -- and a dead dresser's
+## `bind` returns zeros, which reads exactly like success. A second instantiate
+## of `interior.tscn` costs one scene: every Material under it is already in
+## Godot's resource cache by the time a crowd exists, because the deck was
+## dressed from the same table.
+##
+## BEST EFFORT, LOUDLY, and `--no-dress` still means what it says. This must
+## never fail a walk test -- what colour somebody's coat is has no bearing on
+## whether a player can stand up -- so every failure prints its reason and
+## leaves the crowd drawable.
+func dress_crowd() -> Dictionary:
+	var todo: Array[MultiMeshInstance3D] = []
+	for k in _mm.keys():
+		for mmi in _mm[k]:
+			if not _dressed.has(mmi):
+				todo.append(mmi)
+	if todo.is_empty():
+		return {"total": crowd_mm_total, "bound": crowd_mm_bound}
+	crowd_mm_total += todo.size()
+
+	# THE SAME FLAG walk.gd READS, and read the same way. With `--no-dress` the
+	# build is grey geometry under a flat ambient and that control has to keep
+	# covering the people; a crowd that dressed itself anyway would make the
+	# control a lie about half the frame.
+	for a in OS.get_cmdline_user_args():
+		if String(a) == "--no-dress":
+			crowd_dress_why = "disabled by --no-dress (control)"
+			for mmi in todo:
+				_dressed[mmi] = true
+			print("npc: crowd dressing DISABLED (control) -- %d bucket(s) stay "
+				% todo.size() + "on the glTF default, which is flat white")
+			return {"total": crowd_mm_total, "bound": crowd_mm_bound}
+
+	var scr := load("res://scripts/dress_scene.gd")
+	if scr == null:
+		crowd_dress_why = "dress_scene.gd did not load"
+		push_error("npc: crowd NOT dressed -- " + crowd_dress_why)
+		print("npc: crowd NOT dressed -- %s" % crowd_dress_why)
+		return {"total": crowd_mm_total, "bound": crowd_mm_bound}
+	var dress := Node.new()
+	dress.name = "CrowdDress"
+	dress.set_script(scr)
+	add_child(dress)
+	if not dress.call("prepare"):
+		crowd_dress_why = ", ".join(dress.get("problems"))
+		push_error("npc: crowd NOT dressed -- " + crowd_dress_why)
+		print("npc: crowd NOT dressed -- %s" % crowd_dress_why)
+		dress.queue_free()
+		return {"total": crowd_mm_total, "bound": crowd_mm_bound}
+
+	# A HOLDER WITH EXACTLY THE BUCKETS IN IT. `bind` walks a subtree, and this
+	# node's other children are walker colliders and the dresser itself; handing
+	# it `self` would work today and quietly start binding a walker's collision
+	# capsule the day one carries a mesh. Reparented back immediately.
+	var holder := Node3D.new()
+	holder.name = "CrowdDressHolder"
+	add_child(holder)
+	for mmi in todo:
+		remove_child(mmi)
+		holder.add_child(mmi)
+	var m: Dictionary = dress.call("bind", holder)
+	for mmi in todo:
+		holder.remove_child(mmi)
+		add_child(mmi)
+		_dressed[mmi] = true
+	holder.queue_free()
+	dress.call("release")
+	dress.queue_free()
+
+	crowd_mm_bound += int(m.get("multimesh_bound", 0))
+	var un: PackedStringArray = m.get("unmatched", PackedStringArray())
+	for u in un:
+		if not crowd_unmatched.has(u):
+			crowd_unmatched.append(u)
+	var nul: PackedStringArray = m.get("ruled_but_null", PackedStringArray())
+	crowd_dress_why = "ok"
+	if not nul.is_empty():
+		crowd_dress_why = "%d rule(s) resolved to NULL" % nul.size()
+		push_error("npc: %d crowd group(s) matched a material rule that "
+			% nul.size() + "resolved to NULL -- the material library did not "
+			+ "load; the crowd is the glTF default, which is flat white")
+	print("npc: crowd %d/%d bucket(s) MATERIALLED%s%s"
+		% [crowd_mm_bound, crowd_mm_total,
+			("" if un.is_empty() else ", %d on the glTF default: %s"
+				% [un.size(), ", ".join(un.slice(0, 6))]),
+			("" if nul.is_empty() else ", %d rule(s) NULL: %s"
+				% [nul.size(), ", ".join(nul.slice(0, 6))])])
+	return {"total": crowd_mm_total, "bound": crowd_mm_bound}
 
 
 ## The capsule a player bumps into as somebody walks past them.
