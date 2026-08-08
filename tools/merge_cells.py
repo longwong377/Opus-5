@@ -507,9 +507,35 @@ def budget_report(man, out=print):
             % ("{:,}".format(t), cid, t / cell_tris, deck))
     if len(over) > 12:
         out("      ... %d more" % (len(over) - 12))
+    # A DECK THAT IS ONE CELL AND OVER BUDGET WAS NEVER CUT AT ALL, and that is
+    # a different bug from a cell that is merely heavy: no residency radius can
+    # help, because the streamer's unit of work is the whole thing. It is
+    # detected by SHAPE -- one cell, over the per-cell allowance -- rather than
+    # by name, so a second deck that arrives in that state is caught too. It
+    # is printed here because `report()` is on the shipped path and a tool
+    # nothing calls is this project's signature defect.
+    uncut = uncut_decks(cells, cell_tris)
+    for stem, t in uncut:
+        out("  %s IS ONE CELL of %s tri (%.2fx cell_tris) -- it was never cut. "
+            "No residency radius can make that affordable; the streamer loads "
+            "and frees whole cells.%s"
+            % (stem, "{:,}".format(t), t / cell_tris,
+               "  Run: python3 tools/bake_drum.py --bake"
+               if stem == "green_1_0" else ""))
     return {"worst_resident": worst, "worst_at": at, "resident_cells": n_at,
             "over_cell": len(over), "cell_tris": cell_tris,
-            "resident_tris": res_tris}
+            "resident_tris": res_tris, "uncut": [s for s, _t in uncut]}
+
+
+def uncut_decks(cells, cell_tris):
+    """Decks contributing exactly one cell, and that cell over the allowance."""
+    by = {}
+    for c in cells:
+        stem = c.get("deck") or str(c.get("id", "")).rsplit("_c", 1)[0]
+        by.setdefault(stem, []).append(int(c.get("tris", 0) or 0))
+    return sorted(((s, t[0]) for s, t in by.items()
+                   if len(t) == 1 and t[0] > cell_tris),
+                  key=lambda st: -st[1])
 
 
 def selftest(cells_dir=CELLS, manifest=None):
