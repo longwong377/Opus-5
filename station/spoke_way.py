@@ -154,7 +154,7 @@ def spoke_way(schema, profile, sector, rings, angle_deg, z_m, at_deck=None,
 # The tube is rigid and radial, so it is mapped through a Cartesian frame
 # anchored at the floor -- a line down its axis passes through the spin axis,
 # which is the property that makes it a radial tube rather than a bent one.
-# INV-467..470.
+# INV-1240..1243.
 
 RADIAL_BORE_R_M = 3.60        # DERIVED, not picked. `interior.spoke`'s own
                               # `section_rects` give the spoke a half-thickness

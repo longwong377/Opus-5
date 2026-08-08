@@ -1401,7 +1401,7 @@ def braking_distance(schema, profile, sector=None):
 # bench, a planter) is four times nearer the lens, so the projective
 # rectification that gave the guideway car its length off 34b has nothing to
 # work on here. Every length below is therefore DERIVED from something already
-# in this repository and says from what. INV-461..466.
+# in this repository and says from what. INV-1235..1239.
 
 # ONE TRUSS BAY. `transit.ground_line`'s own docstring fixes the stop count --
 # *"there is one stop under each guideway, so the two drum systems meet"* -- so

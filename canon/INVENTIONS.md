@@ -14005,3 +14005,260 @@ all, which would make `deck.room_geometry` the right path and this gate redundan
 avoid, and the reason nothing here is a private copy. Or the register dropping the tokens the drum
 has no object for, which would close the gap by narrowing the claim rather than by building
 anything.
+
+## INV-1235 — the ground car is ONE TRUSS BAY long
+
+**What.** `tram.GROUND_CAR_BAYS = 1.0`, so the ground-level ring tram's car is
+`interior.TRUSS_BAY_M` = **24.0 m** long. Authority 5.
+
+**Why it is not measured.** `reference/03-sector-blue/Babylon_5_2-22_29a.jpg` is authority 1 for the
+ground tram's existence, livery and elevated way, and it establishes **no dimension at all**. The
+projective rectification that gave the *guideway* car its length off `_34b` (INV-012's frame, where
+a long run of 24 m truss bays sits in the same shot as the car) has nothing to work on here: no
+object of known size shares the car's depth plane, and the terrace furniture that is measurable — a
+bench, a circular planter — is roughly four times nearer the lens.
+
+**What constrained it.** `transit.ground_line`'s own docstring fixes the stop count and says why:
+*"there is one stop under each guideway, so the two drum systems meet"*, i.e. `interior.SPOKE_COUNT`
+stops. A ground stop therefore stands **under a guideway truss**, and the structure overhead is
+bayed at `interior.TRUSS_BAY_M` (INV-012). A car that must berth within one bay of the thing it
+interchanges with is one bay long. Everything dimensional on this drum is already expressed as a
+multiple of that bay, so if the truss is ever rescaled the ground car rescales with it instead of
+silently ceasing to fit — the same discipline `tram.py` applies to the guideway car.
+
+That it lands at exactly a quarter of the guideway car (`CAR_BAYS` = 4.0) is a **consequence** of
+both being expressed in bays, not a coincidence and not a design choice.
+
+**What would overturn it.** Any frame putting the ground car beside an object of established size —
+a person at a door, a stop canopy of known span, a road vehicle. A ruling that the ground line's
+stops are *not* under the guideways, which would cut the derivation at its root and leave the length
+unconstrained again.
+
+---
+
+## INV-1236 — the ground car's section, built outward from a seated body
+
+**What.** `tram.GROUND_CAR_W_M` = 2 × 0.45 + 1.30 + 2 × `WALL_T` = **2.64 m** over the body, and the
+level table `tram.ground_levels()` — skirt, solebar, floor, sill, head, cant, roof — with the saloon
+floor 0.95 m over the rail head, a 0.62 m underframe below it and 0.34 m of roof structure above the
+clear height. Authority 5.
+
+**What constrained it.** 29a shows a **continuous window band at seated eye height**, which means
+**longitudinal** benches rather than transverse bays. That fixes the section as: two thigh depths
+(0.45 m each — a seated person on a bench), the knee-to-knee aisle between the two rows with room for
+a stander in it (1.30 m), and the same exterior skin thickness the guideway car already has
+(`WALL_T` = 0.22 m). Nothing here is free except the two body dimensions, and both are human.
+
+**The clear height is NOT re-decided.** `GROUND_CLEAR_M` is `level_y("cant") - level_y("floor")` off
+the guideway car — 2.865 m. The two systems carry the same species on the same station and there is
+no argument for giving one of them a lower ceiling; taking it from the other car rather than
+measuring it inside a build keeps it a constant rather than a thing that moves when a mesh does.
+
+**The floor height is a LOW-FLOOR argument.** 0.95 m over the rail head against a 0.75 m platform is
+one 0.20 m step, which is the boarding a stop with no lift and no ramp has to offer. Raise the floor
+and the stop needs a ramp the reference does not show.
+
+**What would overturn it.** A frame of the ground car's interior (none exists; 35a is the *guideway*
+saloon). A ruling that the ground car is transverse-seated, which would widen it and shorten the
+window band.
+
+---
+
+## INV-1237 — the ground line's way: rail height, pier pitch, deck width
+
+**What.** `GROUND_RAIL_H_M` = **4.60 m** rail head over the drum's ground; `GROUND_PIER_PITCH_M` =
+`interior.TRUSS_BAY_M / 2` = **12.0 m**; `GROUND_WAY_W_M` = car + 1.10 m walkway either side =
+**4.84 m** of deck. Authority 5.
+
+**What constrained the height.** 29a is authority 1 that the way is **elevated** — the car runs on a
+track behind a railing at terrace level, with the terrace's planting below it — and that is all it
+says. The height is derived from what the way must clear: the ring line crosses the Garden, and
+`drum_dressing` stands town blocks, gantries, sheds and lamp columns on that ground with roads
+between them. 4.60 m is one storey of clearance plus the 0.60 m structural depth carried below the
+deck: the least lift that passes a road vehicle underneath and still reads as "elevated" at 29a's
+proportion, where the way sits about a storey over the terrace rather than on a high viaduct.
+
+**What constrained the pitch.** Half the drum's own structural module, so a pier lands under every
+second truss bay and the two systems' rhythms agree instead of beating against each other. A pitch
+chosen freely would have been the only number on this drum not expressed in bays.
+
+**What constrained the width.** The car plus a walkway either side wide enough to pass a person —
+which is what makes the way evacuable, and which the parapet in 29a implies by standing outboard of
+the running line rather than against it.
+
+**What would overturn it.** A frame establishing the way's height against the buildings behind it. A
+ruling on the Garden's road vehicles, which would set the clearance directly.
+
+---
+
+## INV-1238 — the ground stop, its canopy, and a livery colour with no material
+
+**What.** The stop at PLC-073's registered address: a 30.0 m platform (one car plus 6 m) 4.00 m wide,
+a 26.0 m lofted canopy 3.60 m high carrying **three vertical lit slots**, a plinth under it, a
+tactile platform edge, an 18-step stair to the terrace, and the fittings PLC-073's acceptance check
+names. Authority 1 for the canopy's *form* and its slot count, 5 for every dimension.
+
+**What is measured.** 29a, read at 3× in `reference/00-INDEX.md`'s own supplementary pass and
+re-read here: the canopy is *"a grey streamlined pod … carrying three vertical illuminated slots on
+its flank"*, long and low with a rounded, tapered end, standing on a plinth with a dark undercroft
+beneath. So it is lofted through half-elliptical rings with a soffit closing it, tapered over the
+last 4.4 m at each end, and ribbed — **not boxed**. A box canopy is the failure this project has a
+name for, and `spoke_way._radial_gate`'s companion control measures what one would read.
+
+**The livery is measured and cannot yet be rendered, and that is stated rather than hidden.** Over a
+165 × 14 px patch of the car's flank in 29a the median is sRGB **(54, 76, 72)** — G/R 1.41, B/R 1.33,
+i.e. green-dominant and desaturated: a teal, not a leaf green. The cream upper body reads
+(138, 128, 114) where the frame is lit and (86, 75, 68) in shade. **`materials.py` carries no green
+paint**: `green_section` resolves to `habitat_windows`, an emissive. The flank band is therefore
+bound to `tram_band`, which is the *other* tram's maroon stripe, so that every group name resolves
+and `materials._selftest`'s source scan stays exactly as green as it was. **The colour is wrong until
+one material is added**, and the target above is the number to add it from. Reported rather than
+applied because `materials.py` was not this session's file.
+
+**What would overturn it.** A white-balanced reading of 29a — the patch above is raw sRGB with no
+gains, unlike the 35a readings in `materials.py` which carry 0.913/1.090/1.013. A frame showing the
+canopy from another angle, which would fix its plan shape rather than only its silhouette.
+
+---
+
+## INV-1239 — on a ring line the way is an ARC and the car is a CHORD
+
+**What.** `tram.ground_stop` emits every long member of the way **bay by bay** through
+`tram._on_drum`, so the viaduct follows the drum's arc; and it places each car by **one rigid
+transform**, so a car is a straight 24 m chord standing at up to `ground_throw_over_m()` = **0.259 m**
+off the arc it runs on. Authority 5 as a modelling ruling; the geometry is arithmetic.
+
+**Why it matters and is not pedantry.** PLC-073's footprint is 20° × 200 m. Twenty degrees of arc at
+the drum's 278.3 m floor radius is **97.1 m long with a 4.23 m sagitta**. A viaduct emitted as one
+straight box would stand four metres off the drum floor at its ends and fail layer 2a's own
+criterion — *inside its own footprint* — while looking perfectly reasonable in any render taken from
+the middle. Emitted at the 12 m pier pitch, each bay's own sagitta is **0.065 m**, which is inside
+the deck's thickness.
+
+**And the car must NOT be arced**, because a rail vehicle is rigid. The 0.259 m of throw-over at the
+car's middle is a real quantity with a real consequence: the platform edge carries a **gap** rather
+than a fit, which is why `ground_platform` sets the tactile strip back from the running line instead
+of against it.
+
+**What would overturn it.** A ruling that the ground line is *axial* rather than circumferential,
+which would remove the arc entirely — and which would contradict `transit.ground_line`
+(`kind: tangential`, `ring: True`, INV-096). Articulated cars, which would reduce the throw-over to
+the bogie spacing.
+
+---
+
+## INV-1240 — the radial tube's bore, derived from the spoke's own section
+
+**What.** `spoke_way.RADIAL_BORE_R_M` = **3.60 m** internal radius, with a 0.10 m skin. Authority 5.
+
+**What constrained it.** `interior.spoke`'s own returned `section_rects` give the green spoke a
+**half-thickness of 9.0 m** at the radii between the guideway and the drum floor, and its `portal`
+dict already claims `half_w` = **7.4 m** of the tangential clear for the guideway tram to pass
+through. The transit tube is the other thing that has to live inside that section, so it gets what
+the section leaves beside the portal: 9.0 − `interior.SPOKE_PORTAL_FRAME_M` (1.6) = **7.4 m of
+clear**, i.e. a 3.70 m radius, less a 0.10 m skin. Every number in that chain is already in the
+repository and none of them is chosen here.
+
+**What would overturn it.** Any frame or plan showing the tube's interior against a person. A change
+to `interior.spoke`'s section, which this derivation would then follow rather than contradict — the
+point of deriving it from `section_rects` rather than writing 3.60 down.
+
+---
+
+## INV-1241 — the tube is banded at the drum's own structural module
+
+**What.** `spoke_way.radial_segments` divides the run into `round(rise / interior.TRUSS_BAY_M)`
+segments — **10 of 24.49 m** over the 253.25 m from the drum floor to the hub — with a collar group
+at every joint, a coloured band proud of each collar, a flared **rim collar** where the tube leaves
+the hall roof, and an 18 m **conical collar at the hub**. Authority 1 for all four features, 5 for
+the interval.
+
+**What is canon.** `docs/gazetteer/LOCATIONS.md`: the spokes are *"banded in segments with coloured
+band markings at intervals and a conical collar at the hub"*, authority 1 off
+`Babylon_5_2-22_34b.jpg` and `_33a`. `interior.spoke`'s own docstring reads the same frames as
+*"smooth barrel, collar groups of fine rings at segment joints, an open lattice section, a pale
+collar where it meets the drum wall"*.
+
+**What is extrapolated.** Only the **interval**. The frames show bands; they do not count them
+against anything of known size. It is the drum's own structural module for the same reason INV-1235
+and INV-1237 are: it is the one length this drum already has, and a number picked here would be the
+only one on the drum that answers to nothing.
+
+**What would overturn it.** A frame in which the bands can be counted against a truss bay or an end
+cap. A ruling that the tube is a pressure vessel with a stress-driven ring pitch, which would be a
+better derivation than a structural-module one.
+
+---
+
+## INV-1242 — the rim station, its plinth, and TWO mappings in one place
+
+**What.** `spoke_way.radial_hall`: a 36.0 m (arc) × 26.0 m (axial) × 8.40 m boarding hall on the
+drum floor at PLC-114's registered address, standing on a **0.35 m plinth**, with the tube's
+octagonal base drum in the middle carrying two door pockets. Authority 5 throughout.
+
+**What constrained the hall.** It has to hold the queue for a line whose headway is
+`transit.line_report(spoke_line)['round_trip_s']` = 313 s with one car — five minutes between
+services, which is a hall rather than a shelter. Its height is set by the tube's base collar, which
+at 1.62 × the bore must stand clear of a door head; two storeys is the least that does.
+
+**What the plinth buys, and it is a gate rather than a look.** Built into the ground, the floor
+slab's underside would sit 0.35 m *outside* the drum's floor radius — inside the sub-floor deck stack
+that `spoke_way`'s ring column already serves. On a plinth, **nothing this module authors is outside
+the floor**, which is the one radial thing the footprint gate can honestly assert. It measured
+0.000 m at the time of writing.
+
+**TWO MAPPINGS, and the reason is arithmetic.** The hall is a 36 m floor-level structure on a 278.3 m
+radius; emitted as a chord its middle would stand **0.58 m off the ground**, so it is mapped along
+the **arc** (`_arc_map`). The tube is rigid and radial, so it is mapped through a Cartesian frame
+anchored at the floor (`_rigid_map`) — under which a line down its axis reaches the **spin axis**,
+which is the property that makes it a radial tube rather than a bent one, and which the self-test
+measures. Same ruling as INV-1239, applied to the other axis.
+
+**What would overturn it.** Any frame of a spoke's drum-floor terminus. A ruling on the Garden's
+population served per rosette, which would size the hall directly instead of by headway.
+
+---
+
+## INV-1243 — a footprint criterion for a member that LEAVES its deck
+
+**What.** `spoke_way.radial_footprint_fit` tests PLC-114 in **two parts**: on the deck (every vertex
+within the hall's height of the floor radius) in **degrees** against the register's wedge; off the
+deck in **metres of tangential offset** against the arc that wedge reserves at the floor. Plus the
+radial term, split between what this module authors and what `lift.py` contributes. Authority 5 as a
+gating ruling.
+
+**Why the obvious test is wrong.** `directory.py` defines a footprint as *"(angular extent in
+degrees, longitudinal extent in metres) — the two axes a ring deck actually has"* and adds *"radial
+extent is the deck, which the address already names"*. That is a fair test for anything that stays on
+its deck. **PLC-114 does not**: it is a tube from r = 278.3 m to r = 21.7 m, and a tangential
+half-width of 9.07 m is 1.9° at the floor and **19.9° at the hub**. A degrees-only test rejects a
+correct tube — which is the exact mirror of a gate that cannot fail on wrong geometry, and just as
+useless. The self-test **measures that rejection** as a control rather than asserting it.
+
+**Why the metres half is not a loophole.** A tube that sat neatly inside its wedge at the floor and
+then leaned 40 m sideways on the way in would pass a degrees test at the deck and fail this. Measured
+at the time of writing: 18.0 m of tangential offset against the 24.3 m the wedge reserves, 74% used.
+
+**The radial term is two numbers on purpose.** `lift.lift_shaft`'s rim landing has a floor slab and a
+bulkhead with real thickness and reaches **0.533 m** outward — `lift.py`'s design, and correct, since
+a slab has depth. Rolling it into one number would either fail this place for another module's
+geometry or excuse this place's own. So the gate asserts the number this file can fix and prints the
+other with its cause named.
+
+**AN OPEN QUESTION, RECORDED RATHER THAN DECIDED.** The tube crosses the guideway at r = 236.6 m,
+`interior.spoke` already cuts the spoke open there, and `docs/spec/PLACES.md` PLC-115
+(`transfer_systems`) wants a tram→lift→shuttle interchange to work as its board promises. That is an
+obvious third stop. It is **not built**, because `transit.spoke_line` says `stops: 2` and is the
+authority for this service since INV-097; adding one here would put two stop counts in the
+repository. Whoever resolves it should change `transit.spoke_line` first and let
+`spoke_way.radial_stack` follow, which it will, because it reads that function rather than restating
+it.
+
+**A second one, and it is the register's.** PLC-073 is addressed at 210° and PLC-114 at 20°, while
+the drum's spokes and `transit.ground_line`'s stops are at **0°, 120° and 240°**. Both places were
+built at their registered addresses, because footprint compliance is the hard requirement and
+`directory.py` was not this session's file. If those two rows are meant to name a *specific*
+instance rather than a representative one, the addresses should move onto a rosette — and both
+builders take the place as an argument precisely so that they can follow without being rewritten.
+
+---
