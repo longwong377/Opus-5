@@ -44,7 +44,6 @@ if somebody FIXED the defect; the way not to write a third is to show the gate
 failing on the content it was written against.
 """
 import argparse
-import math
 import os
 import sys
 
