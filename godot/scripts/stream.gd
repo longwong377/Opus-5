@@ -427,6 +427,15 @@ func bake(args: Dictionary) -> int:
 		# engine-local handle (`prime`, `cell_by_index`) and has to be unique and
 		# small, so it is compacted. For a 1-D bake it is the arc index and the
 		# id is the old one, unchanged.
+		#
+		# AND "UNIQUE" HERE MEANS WITHIN THIS DECK, WHICH IS ALL THIS FUNCTION
+		# CAN PROMISE. `tools/merge_cells.py` concatenates seventy-six of these
+		# manifests, and until session 4t it kept these numbers -- seventy-six
+		# handle spaces in one array, 823 cells on 190 values, and `prime()`
+		# loading a cell 1,756.7 m from the body. That merge now RENUMBERS by
+		# position in the merged array and keeps this value as `index_in_deck`.
+		# So: a per-deck manifest's `index` is this; a merged manifest's is not,
+		# and `_assert_index_is_an_identity` below shouts if it ever is again.
 		var cid := ("%s_c%02dz%02d" % [stem, i, bnd] if banded
 			else "%s_c%02d" % [stem, i])
 		var cix := (i * n_band + (bnd - band_lo) if banded else i)
@@ -1221,6 +1230,7 @@ func configure(manifest_path: String, dress: Node, fixture_energy: float,
 		d["collision_path"] = ("" if String(d.get("collision", "")) == ""
 			else dir.path_join(String(d["collision"])))
 		cells.append(d)
+	_assert_index_is_an_identity(manifest_path)
 	var res: Dictionary = j.get("residency", {})
 	radius_m = float(res.get("radius_m", 0.0))
 	free_m = float(res.get("free_radius_m", radius_m * 2.0))
@@ -1244,6 +1254,57 @@ func configure(manifest_path: String, dress: Node, fixture_energy: float,
 			("" if lag_frames == 0 else
 				"  -- LAGGED %d frames (stress control)" % lag_frames)])
 	return true
+
+
+## A PRECONDITION, BECAUSE `index` IS AN IDENTITY AND NOTHING ELSE CHECKS IT.
+##
+## `cell_at(p)` returns `c["index"]` and `cell_by_index()`/`prime()` look it back
+## up, both by FIRST MATCH over `cells`. That composition is the identity exactly
+## while no two cells share an index -- and on the manifest this build shipped,
+## 823 cells carried 190 distinct values, so the level's one primed cell was the
+## wrong one for 617 of them. `the_garden` sits in `green_1_0_c00` (per-deck
+## index 0); `blue_0_0_c00z00` is also index 0 and comes first in the merged
+## array, so `prime()` loaded a corridor 1,756.7 m away and the body stood over
+## nothing. See `tools/merge_cells.py` and `tools/cell_identity.py`.
+##
+## THE CAUSE IS ON THE PYTHON SIDE and the fix landed there -- `merge_cells`
+## numbers the merged array. This is the runtime's own guard against being handed
+## a manifest merged by an older copy of that tool, and it is exactly the
+## `ragdoll.gd::promote` move: a precondition is cheaper than a render and can
+## fail for a reason no render can express.
+##
+## IT DOES NOT REFUSE TO CONFIGURE, deliberately. Returning false here makes the
+## game load NOTHING, which is a worse failure than the one being reported --
+## `merge_cells.selftest`'s own docstring makes that argument about the four
+## conditions `configure` does refuse on. A wrong cell is a fall; no cells is a
+## black screen. So it shouts and continues.
+func _assert_index_is_an_identity(manifest_path: String) -> void:
+	var seen := {}
+	var dup := 0
+	var worst := -1
+	var worst_n := 0
+	var example := ""
+	for c: Dictionary in cells:
+		var i := int(c.get("index", -1))
+		if seen.has(i):
+			dup += 1
+			seen[i] = int(seen[i]) + 1
+			if int(seen[i]) > worst_n:
+				worst_n = int(seen[i])
+				worst = i
+				example = String(c.get("id", "?"))
+		else:
+			seen[i] = 1
+	if dup == 0:
+		return
+	push_error("stream: THIS MANIFEST'S `index` IS NOT AN IDENTITY -- %d cells "
+		% cells.size() + "carry only %d distinct values, so cell_by_index() "
+		% seen.size() + "returns the FIRST cell with an index and not the one "
+		+ "cell_at() found. index %d is claimed by %d cells (e.g. %s); prime() "
+		% [worst, worst_n, example]
+		+ "will load a cell the body is not standing in. Re-run "
+		+ "`python3 tools/merge_cells.py` -- it renumbers, and it takes seconds "
+		+ "with no re-bake. [%s]" % manifest_path)
 
 
 func set_player(body: Node3D) -> void:

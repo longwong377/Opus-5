@@ -41,6 +41,107 @@ That budget is already RED and this makes it redder -- `boot.py --axial-gate`
 measured peak resident 359,584 tri against a 180,000 budget on blue_0_0 alone.
 It is recorded here rather than hidden: see `--report`, which prints the worst
 case the merged manifest can produce.
+
+===========================================================================
+AND `index` IS AN IDENTITY, SO CONCATENATING SEVENTY-SIX OF THEM BROKE IT
+===========================================================================
+
+THE DOCSTRING ABOVE ASSERTED IDS AND FORGOT INDICES, and the loop below says so
+in its own comment: *"IDS MUST STAY UNIQUE ACROSS THE MERGE ... a collision
+would make `stream.gd` free the wrong cell, which is a hole in the floor rather
+than a wrong number."* That is exactly right about `id`, and it is word for word
+the argument for `index`, which nothing ever checked. Measured on the shipped
+manifest before this change: **823 cells carrying 190 distinct `index` values**,
+index 7 alone shared by 33 cells, 712 of the 823 sitting on a number somebody
+else also claims.
+
+The cause is structural rather than careless. `stream.gd::bake()` computes
+`cix = arc * n_band + band` PER DECK and is right to -- its own comment says
+*"`index` is only an engine-local handle (`prime`, `cell_by_index`) and has to be
+unique and small, so it is compacted"*. Seventy-six decks each numbering from
+zero, concatenated without renumbering, is seventy-six overlapping handle spaces
+in one array, and "unique" was a property of the input this merge quietly spent.
+
+AND IT IS AN IDENTITY, WHICH IS WHY IT IS NOT COSMETIC. `stream.gd::cell_at(p)`
+RETURNS `c["index"]`, and `walk.gd::_load_streamed` feeds that straight back
+through `cell_by_index()` and `prime()`. Both are FIRST-MATCH scans over the same
+array, so with duplicates the round trip is not the identity: `cell_at` finds the
+cell the body is standing in, hands back an integer, and `cell_by_index` returns
+the FIRST cell carrying that integer -- a different cell, usually on a different
+deck. `prime()` then loads THAT one, synchronously, as the level's load screen,
+and the body is left standing over geometry nobody asked for.
+
+MEASURED by putting a body at each cell's own recorded spawn point and running
+that exact chain -- `tools/cell_identity.py`, on the shipped manifest:
+
+    the primed cell is the cell the body is in       170 of 787
+    the primed cell is somewhere else                617 of 787
+      median distance to the primed cell's geometry     2,724.8 m
+      further than 50 m from anything that loaded              574
+
+Of those 617, **248 are this defect alone** -- `cell_at` found the right cell and
+`cell_by_index` handed back a different one. The other 369 are a SECOND defect
+that renumbering does not touch and this file cannot reach; it is named and
+measured at the bottom of `tools/cell_identity.py`. Renumbering here takes the
+round trip from **170 to 418 of 787**, and the residual is stated rather than
+rounded away.
+
+AND THE SAME MEASUREMENT OVER CONTENT, WHICH IS THE ONE THAT MATTERS. Put a body
+at each of the register's **129 named places**, at the `floor_xyz` the bake
+recorded for it, and ask whether the cell the streamer primes has any geometry
+under that body:
+
+                                        as shipped   renumbered
+    floor under the body                 23 of 129    91 of 129
+    when not, distance to the primed     2,065.1 m      42.7 m   (median)
+    ... worst                            7,231.5 m     166.5 m
+
+THE GARDEN IS THE CLEANEST SINGLE CASE and it is the one the 4t panel traced.
+`the_garden` sits in `green_1_0_c00`, whose per-deck index is **0**;
+`blue_0_0_c00z00` is also index 0 and comes first in the merged array, so
+`prime()` loaded a corridor cell **1,756.7 m away** and the body stood over
+nothing. `zen_garden` and `drum_tram` share that same index 0 and the same wrong
+cell; `garden_terrace` got `blue_0_2_c08z11`, 2,733.5 m away.
+
+AND THE REASON IT SURVIVED IS WORTH MORE THAN THE FIX: **the one deck the boot
+manifest names is the one deck the defect cannot touch.** `per_deck()` globs
+`sorted()`, so `blue_0_0` is first, so `cell_by_index` always resolves to a
+`blue_0_0` cell when `blue_0_0` claims that index -- and `boot.json`'s spawn is
+on `blue_0_0`. Every launch-and-look check anyone ran started on the only deck
+that works. A defect that is invisible from the spawn point is invisible from
+every test that starts at the spawn point.
+
+THE FIX IS TO NUMBER THE MERGED ARRAY, NOT TO KEEP SEVENTY-SIX NUMBERINGS.
+A merged cell's `index` is its position in the merged list: unique by
+construction, still "small" in the sense `bake()` wanted, and derived from the
+array the engine actually scans rather than from the deck it used to live on. The
+deck-local handle is kept as `index_in_deck` beside `deck`, so nothing is lost
+and a merged row can still be lined up against the per-deck manifest it came
+from.
+
+WHAT WAS CHECKED BEFORE RENUMBERING, because an index anything persists or
+cross-references would break silently and this project has paid for that twice:
+
+  * `stream.gd` -- `cell_by_index`, `cell_at`, `prime`, the free guard in
+    `update()` and `_entering`. Every one consumes the index WITHIN the one
+    manifest it loaded. Nothing stores one anywhere.
+  * `walk.gd` -- `_start_cell`, `_cell_index`, `_nearest_cell`, and the axial
+    gate's `_g_idx`. All within one loaded manifest. `_g_idx` gets strictly
+    BETTER: it enumerates cells by index, so on the shipped manifest it could
+    only ever visit 190 of 823 cells and always the first of each collision.
+  * `station/boot.py::start_cell` -> `boot.json`'s `cells_start`, which `main.gd`
+    prints. Recomputed by `boot.build()` from the manifest it names, every time,
+    so there is nothing stale to leave behind. (`station/generated/` is
+    gitignored; no manifest is committed.)
+  * `tools/reach_gate.py` -- matches cell **ids**, never indices.
+  * THE PER-DECK MANIFESTS ARE NOT TOUCHED. This tool reads them and writes one
+    new file. `docs/streaming-4g.md`'s `--start-cell=4` commands run against
+    `cells_<deck>/cells.json`, whose numbering is unchanged and stays correct.
+  * `station/boot.py::_fixture` writes its own per-deck test manifests with
+    `"index": k` -- per deck, so unaffected.
+
+`--legacy-index` is the control: it concatenates without renumbering, exactly as
+before, and `--selftest` then FAILS on the file it just wrote.
 """
 
 import argparse
@@ -66,7 +167,22 @@ def per_deck(cells_dir=CELLS):
     return out
 
 
-def merge(cells_dir=CELLS, out_path=OUT):
+def duplicate_indices(cells):
+    """-> {index: [id, ...]} for every `index` more than one cell claims.
+
+    THE ASSERTION THE MERGE WAS MISSING, in the form a caller can print. It is a
+    property of the merged ARRAY -- no geometry, no predicate, no tolerance --
+    because `cell_at` and `cell_by_index` are both first-match scans over that
+    array and a repeated key makes their composition something other than the
+    identity. See the module docstring.
+    """
+    seen = {}
+    for c in cells:
+        seen.setdefault(int(c.get("index", -1)), []).append(str(c.get("id", "")))
+    return {i: ids for i, ids in seen.items() if len(ids) > 1}
+
+
+def merge(cells_dir=CELLS, out_path=OUT, renumber=True):
     sets = per_deck(cells_dir)
     if not sets:
         raise SystemExit("merge_cells: no *_cells.json in %s" % cells_dir)
@@ -85,7 +201,35 @@ def merge(cells_dir=CELLS, out_path=OUT):
             if cid in ids:
                 raise SystemExit("merge_cells: duplicate cell id %r" % cid)
             ids.add(cid)
+            # AND SO MUST INDICES, FOR THE SAME REASON ONE LEVEL DOWN. The id is
+            # what the streamer keys residency on; the INDEX is what `cell_at`
+            # returns and `cell_by_index`/`prime` look back up, so a repeated
+            # index primes a cell the body is not standing in. Renumbering is the
+            # whole fix: position in the merged array, which is unique because
+            # the array is what the engine scans.
+            if renumber:
+                c["deck"] = stem
+                c["index_in_deck"] = int(c.get("index", -1))
+                c["index"] = len(cells)
             cells.append(c)
+
+    dup = duplicate_indices(cells)
+    if dup and renumber:
+        # Cannot happen -- the index is the array position. Asserted anyway,
+        # because a guard that can only fire on a future edit is the only kind
+        # worth keeping once the present edit is correct.
+        raise SystemExit("merge_cells: renumbering did not make indices unique "
+                         "(%d collisions) -- this is a bug in merge()" % len(dup))
+    if dup:
+        worst = max(dup.items(), key=lambda kv: len(kv[1]))
+        print("merge_cells: --legacy-index -- %d of %d cells carry an index "
+              "another cell also claims (%d distinct values for %d cells; "
+              "index %d alone is shared by %d). `cell_by_index(cell_at(p))` is "
+              "NOT the identity on this manifest: see the module docstring and "
+              "`python3 tools/cell_identity.py`."
+              % (sum(len(v) for v in dup.values()), len(cells),
+                 len({int(c.get("index", -1)) for c in cells}), len(cells),
+                 worst[0], len(worst[1])))
 
     # Residency: the widest radius wins. See the module docstring.
     def _f(man, key, default=0.0):
@@ -171,6 +315,15 @@ def merge(cells_dir=CELLS, out_path=OUT):
         # what. Nothing in the engine reads these.
         "merged_from": {"decks": len(sets), "cells": len(cells),
                         "by_deck": by_deck},
+        # WHOSE NUMBERING THE `index` FIELD IS, said out loud in the artefact
+        # rather than only in this source. A reader holding a manifest can tell
+        # whether its indices are an identity without re-deriving it.
+        "index_from": ("position in the merged array -- unique by construction; "
+                       "the deck-local handle is kept as index_in_deck"
+                       if renumber else
+                       "THE PER-DECK HANDLE, CONCATENATED AND NOT UNIQUE "
+                       "(--legacy-index) -- cell_by_index(cell_at(p)) is not "
+                       "the identity on this manifest"),
     }
     with open(out_path, "w") as f:
         json.dump(man, f)
@@ -183,6 +336,9 @@ def report(man):
     print("merged %d deck cell sets -> %d cells" % (m["decks"], m["cells"]))
     print("  radius %.1f m, free at %.1f m, longest cell %.1f m"
           % (r["radius_m"], r["free_radius_m"], r["cell_length_m"]))
+    print("  index: %d distinct value(s) over %d cells -- %s"
+          % (len({int(c.get("index", -1)) for c in man["cells"]}),
+             len(man["cells"]), man.get("index_from", "?")))
     print("  budget %s tri resident, %s per cell"
           % (r.get("resident_tris"), r.get("cell_tris")))
     # THE WORST CASE THIS MANIFEST CAN PRODUCE, stated rather than discovered
@@ -201,8 +357,14 @@ def report(man):
         print("    %-16s %3d cells" % (stem, k))
 
 
-def selftest(cells_dir=CELLS):
+def selftest(cells_dir=CELLS, manifest=None):
     """Assert the merged manifest is loadable by `stream.gd::configure`.
+
+    `manifest` defaults to `<cells_dir>/station_cells.json`, and `main()` passes
+    the path it JUST WROTE. It used to read the default no matter where `--out`
+    pointed, so a run with a non-default `--out` reported on a stale file it had
+    not produced -- the "gate reads an artefact it cannot rebuild" defect in
+    miniature.
 
     IT CHECKS THE THINGS configure() ACTUALLY REFUSES ON, in its own order:
     a dictionary, a `cells` key, a positive residency radius and a positive
@@ -211,7 +373,7 @@ def selftest(cells_dir=CELLS):
     tool exists to fix, so it is asserted here rather than discovered on a
     launch.
     """
-    p = os.path.join(cells_dir, "station_cells.json")
+    p = manifest or os.path.join(cells_dir, "station_cells.json")
     if not os.path.exists(p):
         print("  NO MERGED MANIFEST -- run: python3 tools/merge_cells.py")
         return 1
@@ -237,8 +399,26 @@ def selftest(cells_dir=CELLS):
                 missing += 1
     if missing:
         bad.append("%d referenced .scn file(s) are absent" % missing)
-    print("merged manifest: %d cells, radius %.1f m"
-          % (len(j.get("cells", [])), float(res.get("radius_m", 0.0))))
+    # `index` MUST BE AN IDENTITY. `stream.gd::cell_at` returns it and
+    # `cell_by_index`/`prime` look it back up, both by first match over this same
+    # array, so a repeated value primes a cell the body is not standing in. This
+    # is the cheap half of `tools/cell_identity.py` -- no geometry needed.
+    rows = j.get("cells", [])
+    dup = duplicate_indices(rows)
+    if dup:
+        worst = max(dup.items(), key=lambda kv: len(kv[1]))
+        bad.append("%d of %d cells share an `index` with another cell "
+                   "(%d distinct values; index %d is claimed by %d cells, "
+                   "including %s). `cell_by_index(cell_at(p))` therefore primes "
+                   "the wrong cell -- run `python3 tools/merge_cells.py` to "
+                   "renumber, and `python3 tools/cell_identity.py` for the "
+                   "consequence."
+                   % (sum(len(v) for v in dup.values()), len(rows),
+                      len({int(c.get("index", -1)) for c in rows}),
+                      worst[0], len(worst[1]), ", ".join(worst[1][:3])))
+    print("merged manifest: %d cells, radius %.1f m, %d distinct index value(s)"
+          % (len(rows), float(res.get("radius_m", 0.0)),
+             len({int(c.get("index", -1)) for c in rows})))
     if bad:
         for b in bad:
             print("  BAD: %s" % b)
@@ -253,13 +433,17 @@ def main():
     ap.add_argument("--out", default=OUT)
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--legacy-index", action="store_true",
+                    help="THE CONTROL: concatenate the per-deck numbering "
+                         "without renumbering, as this tool did before session "
+                         "4t. --selftest then FAILS on the manifest it wrote.")
     a = ap.parse_args()
     if a.selftest:
-        return selftest(a.cells)
-    man = merge(a.cells, a.out)
+        return selftest(a.cells, a.out if a.out != OUT else None)
+    man = merge(a.cells, a.out, renumber=not a.legacy_index)
     report(man)
     print("\n  wrote %s" % os.path.relpath(a.out, ROOT))
-    return selftest(a.cells)
+    return selftest(a.cells, a.out)
 
 
 if __name__ == "__main__":

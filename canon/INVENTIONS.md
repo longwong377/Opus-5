@@ -14479,3 +14479,54 @@ an interact token and an economy key. Four names joined `NOT_GROUPS` for the sam
 carry the drum and `SCENE_VOLUME` collapses back to the identity. If `drum_parts` ever builds the
 bar interiors, `check_material_coverage` will fail on the real names and `drum` must gain
 `interior` at that point, accepting the weaker gate knowingly.
+
+## INV-1247
+
+**A merged cell manifest's `index` is its position in the merged array, not the per-deck
+handle it was baked with.**
+
+`godot/scripts/stream.gd::bake()` numbers a deck's cells `arc * n_band + band`, which is
+unique **within that deck** and is documented as "an engine-local handle ... unique and
+small". `tools/merge_cells.py` concatenated seventy-six of those manifests and kept the
+numbers, so the shipped manifest carried **823 cells on 190 distinct `index` values**,
+index 7 alone claimed by 33 cells and 712 of 823 sitting on a value somebody else also
+claimed. Renumbering by merged-array position is the extrapolation logged here: nothing in
+the show or in `canon/` constrains it, and the deck-local value is preserved as
+`index_in_deck` beside `deck` so nothing is lost.
+
+**What constrained it.** `index` is an IDENTITY on the shipped path and nothing had ever
+said so. `stream.gd::cell_at(p)` RETURNS `c["index"]`; `walk.gd::_load_streamed` feeds it
+straight back through `cell_by_index()` and `prime()`. Both are first-match scans over the
+same array, so with a repeated key the composition is not the identity: `cell_at` finds the
+cell the body is in, and `cell_by_index` returns the first cell carrying that integer.
+Position in the merged array is the only numbering that is unique **by construction rather
+than by luck**, and it is derived from the array the engine actually scans -- a numbering
+imposed from outside (a hash, a deck offset table) would be a second description of the
+same order.
+
+**Measured, with a control.** `tools/cell_identity.py`, on the manifest in
+`dist/Babylon5`: a body at each cell's own recorded spawn point, through the shipped chain.
+The primed cell is the cell the body is standing in for **170 of 787**; 617 prime something
+else, median **2,724.8 m** from the nearest triangle that loaded. 248 of those 617 are this
+defect (`cell_at` was right and `cell_by_index` lost it); 369 are a separate containment
+ambiguity this entry does not touch. After renumbering: **418 of 787**, and the median
+distance when it is still wrong falls to **41.3 m**. Over the register's **129 named
+places**, at the `floor_xyz` the bake measured for each: **23 of 129 -> 91 of 129** have any
+geometry under the body, median miss 2,065.1 m -> 42.7 m.
+`python3 tools/merge_cells.py --legacy-index` is the control and `--selftest` fails on what
+it writes.
+
+**Why it survived.** `per_deck()` globs `sorted()`, so `blue_0_0` is first, so
+`cell_by_index` always resolves to a `blue_0_0` cell when `blue_0_0` claims that index --
+and `boot.json`'s spawn is on `blue_0_0`. **The one deck the boot manifest names is the one
+deck the defect cannot touch**, so every launch-and-look check anyone ran started on the
+only deck that worked. `the_garden` is the clean failure: its cell `green_1_0_c00` carries
+per-deck index 0, `blue_0_0_c00z00` carries index 0 and comes first, and `prime()` loaded a
+corridor **1,756.7 m away**.
+
+**What would overturn it.** A consumer that needs the deck-local number back -- there is
+none today; `index_in_deck` is there for exactly that. Or a future bake that emits merged
+cells directly, at which point the merge disappears and `bake()` should number the whole
+station rather than one deck. If cell rows ever gain a stable identity of their own that
+callers use instead of the integer -- the right long-term answer, since `cell_at` could
+return the `id` it already has -- this numbering stops mattering rather than becoming wrong.
