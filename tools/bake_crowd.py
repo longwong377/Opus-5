@@ -36,6 +36,16 @@ returns ((18.0, 2), (45.0, 4), (400.0, 8)): the runtime picks per person per
 frame by distance, so shipping one rung leaves every walker outside that band
 undrawable. The ladder is derived from `schedule.NPC_BUDGET`'s allowances, so
 it is read here rather than restated.
+
+AND THE CONVERSE, WHICH THIS TOOL DID NOT ASK UNTIL INV-1232. "Is every rung on
+disk" and "does every walker name a rung" are different questions, and a build
+can pass the first while failing the second: `populace.corridor_lod` derived the
+level a placement NAMES by its own copy of `crowd_ladder`'s rule, without
+`crowd_ladder`'s near-band cap, so it could answer with a level this file was
+never going to write. Nothing in the runtime errors on that -- `npc.gd`'s
+`_place_crowd` finds no bucket for the key and the walker is quietly not drawn.
+`--selftest` now reads the `*_crowd.json` beside the libraries and asserts the
+two sets agree in BOTH directions.
 """
 
 import argparse
@@ -106,6 +116,8 @@ def selftest(out_dir=DECKDIR):
     did. `walk.gd` resolves the library beside the CROWD PLACEMENT LIST, so
     which directory holds it is the entire question.
     """
+    import glob
+    import json
     import populace as P
     lad = P.crowd_ladder()
     missing = []
@@ -121,10 +133,56 @@ def selftest(out_dir=DECKDIR):
         print("  lod %-2d %-8s %s" % (
             lod, "OK" if ok else "MISSING",
             ("%.1f MB" % (os.path.getsize(p) / 1e6)) if ok else "--"))
+
+    # -- THE OTHER DIRECTION: does every walker name a library that is here? --
+    # `walk.gd::_load_crowd_libs` loads these files and `npc.gd::_place_crowd`
+    # buckets each walker on `crowd_<species>_<lod>_<phase>`. A record whose
+    # `lod` has no glb finds no bucket and is drawn nowhere -- no error, no
+    # warning, an empty corridor. So the placement lists are read here, beside
+    # the libraries, which is the only place both halves exist at once.
+    have = {int(os.path.basename(p)[len("crowd_lod"):-len(".glb")])
+            for p in glob.glob(os.path.join(out_dir, "crowd_lod*.glb"))}
+    rows = sorted(glob.glob(os.path.join(out_dir, "*_crowd.json")))
+    named, orphan, examples = {}, 0, []
+    for p in rows:
+        try:
+            with open(p) as f:
+                data = json.load(f)
+        except Exception as exc:                                # noqa: BLE001
+            print("  (unreadable %s: %s)" % (os.path.basename(p), exc))
+            continue
+        for rec in data:
+            lv = int(rec.get("lod", -1))
+            named[lv] = named.get(lv, 0) + 1
+            if lv not in have:
+                orphan += 1
+                if len(examples) < 3:
+                    examples.append("%s: %s" % (os.path.basename(p),
+                                                rec.get("mesh", "?")))
+    if rows:
+        print("\n  %d placement file(s), %d walker(s), naming lods %s"
+              % (len(rows), sum(named.values()),
+                 {k: v for k, v in sorted(named.items())}))
+    else:
+        # A GATE MUST SAY WHEN IT DID NOT RUN. Reporting OK here on the
+        # strength of three files and no placements is the shape of every
+        # manufactured pass in this repository.
+        print("\n  NO PLACEMENT LISTS beside the libraries -- the "
+              "'does every walker name a rung' half did NOT run.")
+
     if missing:
         print("\n  CROWD LIBRARY INCOMPLETE -- rungs %s missing." % missing)
         print("  Every walker in those distance bands is undrawable.")
         print("  Run: python3 tools/bake_crowd.py")
+        return 1
+    if orphan:
+        print("\n  %d WALKER(S) NAME A LIBRARY THAT IS NOT HERE -- lods %s."
+              % (orphan, sorted(k for k in named if k not in have)))
+        for e in examples:
+            print("    e.g. %s" % e)
+        print("  They are drawn nowhere and the runtime logs nothing.")
+        print("  The generator picked a level off the ladder: see "
+              "populace.lod_for_distance and INV-1232.")
         return 1
     print("\n  CROWD LIBRARY OK")
     return 0

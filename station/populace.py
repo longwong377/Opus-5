@@ -110,9 +110,13 @@ def room_lod():
     invisible room. The nearest rung is the right one, because a room occupant
     is somebody you walk up to; beyond that the runtime picks by distance,
     which is the whole point of instancing them.
+
+    THE SNAP IS `lod_for_distance` NOW, not `lad[0][1]` -- same answer, one
+    rule. This function had the right instinct and its own copy of it, which is
+    exactly how `corridor_lod` came to be missing the same instinct; see
+    INV-1232.
     """
-    lad = crowd_ladder()
-    return int(lad[0][1]) if lad else 4
+    return lod_for_distance(0.0)
 # Nobody is in a sealed plant room at 0300, and a bar at 1300 is not full.
 # Without a floor every quiet room reads as abandoned rather than quiet.
 MIN_PRESENT = 0
@@ -1017,6 +1021,56 @@ def crowd_ladder():
     return tuple(dedup)
 
 
+# THE FIX FOR INV-1232, AND IT IS A SWITCH SO THE GATE CAN WITHDRAW IT.
+# `--lod-gate --legacy` sets this False on the module `corridor_lod` actually
+# reads and re-runs the SAME gate against the SAME shipped function, which is
+# the only kind of negative control worth having: a parallel "old" code path
+# tested beside the new one proves nothing about the one that ships.
+SNAP_TO_LADDER = True
+
+
+def lod_for_distance(distance_m):
+    """The chain level a body seen from `distance_m` is DRAWN at. A BAKED rung.
+
+    THE ONE FUNCTION THAT DECIDES A CROWD LOD, and it exists because there were
+    two. `crowd_ladder()` decides what `tools/bake_crowd.py` writes to disk --
+    `crowd_lod<N>.glb`, currently N in (2, 4, 8) -- and `corridor_lod` used to
+    decide, independently, which N a walker's placement record would NAME. Two
+    derivations of one number, from the same table, by the same rule, is a
+    divergence waiting for somebody to change one of them. It had already
+    happened: see INV-1232 for the measurement.
+
+    A rung is `(max_distance_m, chain_lod)`, nearest first, and the band is
+    half-open -- `d < hi` -- because `schedule.NPC_BUDGET`'s own bands are
+    `lo <= d < hi` and `export_drum.crowd_lod_for` reads them the same way.
+    Past the last rung the answer is the last rung: an impostor at 900 m is
+    still the coarsest thing that was baked.
+
+    THE RUNTIME ASKS THE IDENTICAL QUESTION and gets it from here rather than
+    from a copy: `station/boot.py` writes `crowd_ladder()` into `boot.json` as
+    `max_m:lod` pairs and `npc.gd::_lod_at` walks them. So the level a body is
+    baked at, the level it is drawn at, and the file it is drawn from are three
+    readings of one table instead of three tables.
+
+    ONE DIVERGENCE, NAMED RATHER THAN LEFT TO BE FOUND: `npc.gd::_lod_at` tests
+    `d <= rung[0]` where this tests `d < hi`, so a body at EXACTLY 18.000000 m
+    is lod 2 in the engine and lod 4 here. It is a tie on a float that a moving
+    walker occupies for no frames, and both answers are baked rungs, so the
+    consequence is nothing; the reason for choosing `<` is that it is the
+    reading `NPC_BUDGET`'s own bands and `export_drum.crowd_lod_for` already
+    use, and three agreeing readings beat two.
+    """
+    lad = crowd_ladder()
+    if not lad:
+        # No ladder means no library; the caller is baking geometry, not
+        # naming a key, and the finest level is the honest answer.
+        return 0
+    for hi, lod in lad:
+        if distance_m < float(hi):
+            return int(lod)
+    return int(lad[-1][1])
+
+
 def corridor_lod(radius_m, width_m):
     """The LOD to bake a corridor's people at, chosen by that sight line.
 
@@ -1029,19 +1083,38 @@ def corridor_lod(radius_m, width_m):
     0.75 puts a Blue deck in lod3's 45-400 m band at 120 triangles, and a
     132-triangle body is a blob at the 2 m the NEAREST of them is at.
 
-    `body.lod_chain()` is then searched for the level whose actual triangle
-    count is nearest that allowance, rather than assuming the two ladders are
-    indexed the same -- they are not. The chain's own levels measure 4,560 /
-    2,256 / 2,068 / 1,012 / 484 / 372, so the budget's 600 lands on level 4.
+    THAT DISTANCE IS THEN SNAPPED TO `crowd_ladder()`, WHICH IS THE BAKED SET,
+    and until INV-1232 it was not. The old body of this function searched
+    `body.lod_chain()` for the level whose measured triangle count was nearest
+    the band's allowance -- the same rule `crowd_ladder` uses, written out a
+    second time -- and so it could return a level `crowd_ladder` had
+    deliberately DROPPED. It drops exactly one: the 0-6 m band, because a
+    library at chain level 0 is 14 species x 12 slots x 7,212 triangles
+    RESIDENT to draw the four agents that band ever holds. `corridor_lod` did
+    not implement that cap, so a corridor whose mean sight line is under 6 m
+    named `crowd_lod0.glb`, which `bake_crowd.py` never writes.
+
+    Measured rather than argued, and the honest figure is smaller than the one
+    the defect was reported with. The reachable image of the old function was
+    four values, not ten -- `want` only ever takes one of NPC_BUDGET's four
+    allowances -- and three of the four were baked. It needs
+    `0.5*sqrt(8 R w) < 6`, i.e. `R*w < 18 m2`; at the station's 2.1612 m
+    corridor that is `R < 8.329 m`, and the smallest ring the schema places is
+    yellow ring 3 at **13.99 m**. A factor of 1.68. Latent, not live: the built
+    station's 1,994 walkers over 71 decks name {2: 29, 4: 1,497, 8: 468}, all
+    of them baked.
 
     THIS IS A BAKE-TIME COMPROMISE AND IT IS WORTH SAYING SO. A player standing
-    next to one of these people sees a 372-triangle body where the budget would
-    give them 8,000. The fix is runtime LOD -- `npc.gd` already holds each
-    person's parts and could swap them -- and until that exists the honest
-    choice is the LOD that is right for the distance they are USUALLY at, not
-    the one that is right for the rare close encounter.
+    next to one of these people sees a 156-triangle body where the budget would
+    give them 8,000. The runtime lifts it -- `npc.gd::_lod_at` re-buckets every
+    walker by distance from the eye each crowd tick, off this same ladder --
+    but only while a player body exists; a render or a headless build keeps
+    whatever was baked, which is why the baked value has to be a rung too.
     """
     far = 0.5 * corridor_sight_m(radius_m, width_m)
+    if SNAP_TO_LADDER:
+        return lod_for_distance(far)
+    # -- WITHDRAWN BY `--lod-gate --legacy`: the pre-INV-1232 body ------------
     bands = _sched.NPC_BUDGET["lod"]
     want = bands[-1][3]
     for _name, lo, hi, tri, _n in bands:
@@ -3173,6 +3246,232 @@ def _rooms_gate(places=ROOM_GATE_PLACES, hour=13.0):
     return 1 if fail else 0
 
 
+# ---------------------------------------------------------------------------
+# DOES EVERY LOD THIS MODULE CAN NAME HAVE A LIBRARY BEHIND IT?
+# ---------------------------------------------------------------------------
+# Where the (radius, width) sweep looks. It goes DELIBERATELY below anything on
+# this station: `corridor_lod`'s un-baked answer needs `R*w < 18 m2`, which at
+# the 2.1612 m corridor is R < 8.329 m, and the smallest ring the schema places
+# is 13.99 m. A sweep that only visited real decks would pass on the broken
+# function -- which is this project's oldest lesson (`interior_kit`'s tag gate
+# ran on a corridor with no doors) applied to a number instead of a mesh.
+LOD_GATE_RADII_M = (0.5, 1.0, 2.0, 4.0, 6.0, 8.0, 8.3, 8.4, 10.0, 14.0, 20.0,
+                    30.0, 60.0, 100.0, 150.0, 211.478, 300.0, 428.84, 560.0,
+                    800.0, 2000.0)
+LOD_GATE_WIDTHS_M = (0.6, 1.0, 2.1612, 2.6, 4.0, 8.0, 20.0, 60.0, 600.0)
+# Areas for `export_drum.crowd_lod_for`, from a cabin to the whole barrel.
+LOD_GATE_AREAS_M2 = (1.0, 10.0, 78.0, 500.0, 1000.0, 5000.0, 35734.0, 4.5e6)
+
+
+_ROOT = os.path.dirname(HERE)
+
+
+def _built_scene_dirs():
+    """Directories a build writes `crowd_lod<N>.glb` and `*_crowd.json` into."""
+    base = os.path.join(HERE, "generated", "scene")
+    return tuple(os.path.join(base, s) for s in ("station", "deck"))
+
+
+def lod_gate(out=print, dirs=None):
+    """EVERY CROWD LOD THIS PROJECT CAN NAME IS A RUNG THAT GETS BAKED.
+
+    THE QUESTION NO GATE HERE ASKED. `tools/bake_crowd.py --selftest` asks the
+    converse -- "is every rung of `crowd_ladder()` on disk" -- and that passes
+    on a build where the ladder is complete and every walker in it names a
+    fourth level nobody baked. `populace._rooms_gate` asks it for room
+    occupants' POSE slots and not for their level. So the two halves of one
+    lookup, the file and the key, were each checked against themselves.
+
+    A key names a library file: `crowd_key(species, lod, slot)` is
+    `crowd_<sp>_<lod>_<slot>`, and `walk.gd::_load_crowd_libs` resolves the
+    mesh out of `crowd_lod<lod>.glb`. A level with no glb is not an error
+    anywhere in the runtime -- `_place_crowd` finds no bucket for the key and
+    the walker is simply not drawn. Silence is the whole reason this needs an
+    assertion rather than a log line.
+
+    CHEAP AND BUILD-FREE BY DESIGN. The sweep is arithmetic over
+    `crowd_ladder()`; the one placement run builds three bodies. It is safe to
+    run while agents are working, which is the only kind of gate that gets run.
+    The artefact half needs `station/generated/scene/*` and says LOUDLY that it
+    was skipped when there is none -- a gate that quietly passes on an absent
+    artefact is the tool that manufactures evidence.
+    """
+    import glob as _glob                                         # noqa: PLC0415
+    import json as _json                                         # noqa: PLC0415
+    fail = 0
+    chain_n = len(_body.lod_chain())
+    lad = crowd_ladder()
+    rungs = sorted({int(l) for _h, l in lad})
+    out(f"crowd ladder: {lad}")
+    out(f"  chain levels: {chain_n};  rungs bake_crowd writes: {rungs}")
+    out(f"  SNAP_TO_LADDER = {SNAP_TO_LADDER}"
+        + ("" if SNAP_TO_LADDER else "   <-- WITHDRAWN (negative control)"))
+    if not lad:
+        out("  FAIL: the ladder is empty -- no crowd library would be baked")
+        return 1
+    for r in rungs:
+        if not 0 <= r < chain_n:
+            out(f"  FAIL: rung {r} is not an index into a {chain_n}-level "
+                f"chain -- body.lod_chain() and crowd_ladder() disagree")
+            fail += 1
+
+    # -- 1. the whole reachable domain of corridor_lod -----------------------
+    seen, bad = {}, []
+    for rad in LOD_GATE_RADII_M:
+        for w in LOD_GATE_WIDTHS_M:
+            lv = int(corridor_lod(rad, w))
+            seen.setdefault(lv, []).append((rad, w))
+            if lv not in rungs:
+                bad.append((rad, w, lv))
+    out(f"\ncorridor_lod over {len(LOD_GATE_RADII_M)}x{len(LOD_GATE_WIDTHS_M)}"
+        f" = {len(LOD_GATE_RADII_M) * len(LOD_GATE_WIDTHS_M)} "
+        f"(radius, width) pairs, down to R = {min(LOD_GATE_RADII_M)} m:")
+    for lv in sorted(seen):
+        ex = seen[lv][0]
+        out(f"  lod {lv:<2} {len(seen[lv]):>4} pairs  e.g. R={ex[0]} w={ex[1]}"
+            f"   {'BAKED' if lv in rungs else 'NEVER BAKED  <-- FAIL'}")
+    if bad:
+        out(f"  FAIL: {len(bad)} of "
+            f"{len(LOD_GATE_RADII_M) * len(LOD_GATE_WIDTHS_M)} name a library "
+            f"that is never baked, e.g. R={bad[0][0]} m w={bad[0][1]} m "
+            f"-> crowd_lod{bad[0][2]}.glb")
+        fail += 1
+
+    # -- 2. every OTHER function in this project that names a crowd LOD ------
+    # A fix applied to one caller and not to the rule is a fix that will be
+    # needed again -- CLAUDE.md's own words, and this table is the check.
+    out("\nevery other emitter of a crowd LOD:")
+    others = [("populace.room_lod()", int(room_lod()))]
+    try:
+        import agenda as _ag                                     # noqa: PLC0415
+        others.append(("agenda.CROWD_LOD", int(_ag.CROWD_LOD)))
+    except Exception as exc:                                     # noqa: BLE001
+        out(f"  agenda: NOT CHECKED ({str(exc)[:60]})")
+        fail += 1
+    try:
+        sys.path.insert(0, os.path.join(_ROOT, "tools"))
+        import export_drum as _ed                                # noqa: PLC0415
+        for a in LOD_GATE_AREAS_M2:
+            others.append((f"export_drum.crowd_lod_for({a:g} m2)",
+                           int(_ed.crowd_lod_for(a)[0])))
+    except Exception as exc:                                     # noqa: BLE001
+        out(f"  export_drum: NOT CHECKED ({str(exc)[:60]})")
+        fail += 1
+    for name, lv in others:
+        ok = lv in rungs
+        out(f"  {name:<40} lod {lv:<2} {'ok' if ok else 'NEVER BAKED  <-- FAIL'}")
+        if not ok:
+            fail += 1
+
+    # -- 3. a real placement list, end to end --------------------------------
+    # The sweep tests the function; this tests what the function's answer
+    # BECOMES -- the `lod` a runtime reads off a record and the `mesh` key it
+    # resolves against the library. Two decks: one the station actually has,
+    # and one inside the band the defect lives in.
+    out("\nplacements, and the key each one resolves to:")
+    lib_keys = {}
+    for r in rungs:
+        _v, _t, g = station_crowd_library(r)
+        lib_keys[r] = {n[:-len("_npc_body")] for n, _a, _b in g
+                       if n.endswith("_npc_body")}
+    # AND THE HARD CASE IS DERIVED, NOT WRITTEN DOWN. The near band the old
+    # function fell into is `NPC_BUDGET["lod"][0]`, and a corridor lands in it
+    # when `0.5*sqrt(8 R w) < hi`. Solving for R and standing just inside it
+    # puts the probe in the band by construction, so a change to the band edge
+    # moves the probe with it instead of quietly retiring the test.
+    hw = 1.0806                                 # collision.corridor_profile
+    near_hi = float(_sched.NPC_BUDGET["lod"][0][2])
+    r_near = 0.98 * (2.0 * near_hi) ** 2 / (8.0 * 2.0 * hw)
+    # Five busy places, so the corridor has anybody in it at all: at this
+    # radius the ring is 110 m2 and `corridor_headcount`'s empty-deck floor
+    # rounds to zero people.
+    busy = ("zocalo", "earharts", "docking_bays", "medlab_one", "customs")
+    for label, rad, arc, served in (
+            ("a Blue ring deck", 211.478, 344.0, ()),
+            (f"R={r_near:.2f} m, inside the near band", r_near, 360.0, busy)):
+        far = 0.5 * corridor_sight_m(rad, 2.0 * hw)
+        try:
+            _v, _t, _g, st = populate_corridor(
+                f"lodgate/{rad:.2f}", rad, hw, arc, 0.0, 0.0, hour=13.0,
+                served=served, instanced=True)
+        except Exception as exc:                                 # noqa: BLE001
+            out(f"  {label}: BUILD FAILED ({str(exc)[:70]})")
+            fail += 1
+            continue
+        rows = list(st.get("instances", ()))
+        miss_lod = [r for r in rows if int(r["lod"]) not in rungs]
+        miss_key = [r for r in rows
+                    if r.get("mesh") not in lib_keys.get(int(r["lod"]), set())]
+        out(f"  {label:<36} mean sight {far:5.2f} m -> lod {st['lod']:<2} "
+            f"{len(rows):>3} walker(s)  "
+            f"{len(rows) - len(miss_lod)}/{len(rows)} on a baked rung, "
+            f"{len(rows) - len(miss_key)}/{len(rows)} resolve a mesh key")
+        if int(st["lod"]) not in rungs:
+            out(f"    FAIL: the deck's own lod {st['lod']} has no "
+                f"crowd_lod{st['lod']}.glb -- every walker on it is drawn "
+                f"nowhere, and nothing in the runtime logs it")
+            fail += 1
+        if miss_lod or miss_key:
+            r0 = (miss_lod or miss_key)[0]
+            out(f"    FAIL: e.g. {r0.get('mesh')} at lod {r0['lod']}")
+            fail += 1
+        if not rows:
+            out("    NOT PROBED: no walkers here, so only the deck's own lod "
+                "above was checked, not any record")
+            fail += 1
+    if r_near * 2.0 * hw >= 18.0 or 0.5 * corridor_sight_m(
+            r_near, 2.0 * hw) >= near_hi:
+        out(f"    FAIL: the probe at R={r_near:.2f} m is NOT in the near band "
+            f"-- this gate is no longer building its own hard case")
+        fail += 1
+
+    # -- 4. the shipped artefact, if one has been built ----------------------
+    out("\nthe built artefact:")
+    checked_any = False
+    for d in (dirs if dirs is not None else _built_scene_dirs()):
+        if not os.path.isdir(d):
+            continue
+        glbs = {int(os.path.basename(p)[len("crowd_lod"):-len(".glb")])
+                for p in _glob.glob(os.path.join(d, "crowd_lod*.glb"))}
+        rows = sorted(_glob.glob(os.path.join(d, "*_crowd.json")))
+        if not rows and not glbs:
+            continue
+        checked_any = True
+        named, unbaked = {}, 0
+        for p in rows:
+            try:
+                with open(p) as f:
+                    data = _json.load(f)
+            except Exception:                                    # noqa: BLE001
+                continue
+            for rec in data:
+                lv = int(rec.get("lod", -1))
+                named[lv] = named.get(lv, 0) + 1
+                if lv not in glbs:
+                    unbaked += 1
+        rel = os.path.relpath(d, _ROOT)
+        out(f"  {rel}: glbs {sorted(glbs)}, {len(rows)} placement file(s), "
+            f"{sum(named.values())} walkers naming "
+            f"{ {k: v for k, v in sorted(named.items())} }")
+        if unbaked:
+            out(f"    FAIL: {unbaked} walker(s) name a library that is not "
+                f"there -- they are drawn nowhere and nothing logs it")
+            fail += 1
+        for r in rungs:
+            if r not in glbs:
+                out(f"    FAIL: rung {r} of the ladder has no "
+                    f"crowd_lod{r}.glb -- every walker in its band is "
+                    f"undrawable")
+                fail += 1
+    if not checked_any:
+        out("  SKIPPED -- no build in station/generated/scene. The domain "
+            "checks above still ran; this half did NOT.")
+
+    out(f"\n{'LOD GATE OK' if not fail else 'LOD GATE FAILED'} "
+        f"({fail} problem(s))")
+    return 1 if fail else 0
+
+
 def _state_at(day, hour):
     """What a timetable says at an hour. PURE -- the runtime does the same."""
     if not day:
@@ -3188,6 +3487,21 @@ def _state_at(day, hour):
 
 
 if __name__ == "__main__":
+    if "--lod-gate" in sys.argv:
+        # THE FLAG GOES ON THE MODULE THE FUNCTION READS, not on this scope.
+        # Launched as `python3 station/populace.py` this file is `__main__`,
+        # and `import populace` loads a SECOND copy -- `_rooms_gate` records
+        # what that cost the first time. `corridor_lod` here reads
+        # `__main__.SNAP_TO_LADDER`, so both are set and the control cannot
+        # silently withdraw nothing.
+        if "--legacy" in sys.argv:
+            SNAP_TO_LADDER = False
+            try:
+                import populace as _me                          # noqa: PLC0415
+                _me.SNAP_TO_LADDER = False
+            except Exception:                                   # noqa: BLE001
+                pass
+        sys.exit(lod_gate())
     if "--rooms" in sys.argv:
         sys.exit(_rooms_gate())
     if "--cast" in sys.argv:

@@ -13817,3 +13817,86 @@ floor at the transit angle (the candidate set is the assumption most likely to b
 change to `NEAR_M`; per-deck landings in `spoke_way`, which would change what "joined" is worth by
 removing the dead doors from the denominator; or a canon frame establishing where a sector's
 transit core actually sits along the axis, which would replace the whole derivation with a fact.
+
+## INV-1232 — a crowd LOD is a BAKED RUNG, not an index into the body chain
+
+**Authority 5 — extrapolation. Session 4t.**
+
+**What.** `station/populace.corridor_lod(radius_m, width_m)` no longer returns an index into
+`npc/body.lod_chain()`. It returns a rung of `populace.crowd_ladder()`, through a new
+`populace.lod_for_distance(distance_m)` that `room_lod()` also calls, so the level a placement
+NAMES and the level `tools/bake_crowd.py` WRITES come from one function instead of two copies of
+one rule.
+
+**Why — and the reported version of this defect was bigger than the measured one.** It was raised
+as *"`corridor_lod` returns an index into `lod_chain()`, which has ten levels, so seven of ten
+possible answers name a library that was never baked"*. The structure of that claim is right and
+the number is not, and the correction matters because it changes what the fix has to do.
+
+Measured, in one process, `python3 station/populace.py --lod-gate`:
+
+| | |
+|---|---|
+| `lod_chain()` levels | **10**, measuring 7,212 / 3,692 / 1,752 / 1,216 / 624 / 512 / 448 / 276 / 156 / 2 triangles |
+| `crowd_ladder()` | `((18.0, 2), (45.0, 4), (400.0, 8))` — `bake_crowd.py` writes rungs **2, 4, 8** |
+| the old function's **reachable image** | **four** values, not ten: `{0, 2, 4, 8}` |
+
+`want` only ever takes one of `schedule.NPC_BUDGET["lod"]`'s four allowances (8,000 / 2,000 / 600
+/ 120), so levels 1, 3, 5, 6, 7 and 9 were never attainable at all. **Three of the four reachable
+answers were baked.** The one that was not is level 0 — and it is not baked *deliberately*:
+`crowd_ladder` drops the 0–6 m band (`out = out[1:]`) because a library at chain level 0 is 14
+species × 12 slots × 7,212 triangles resident to draw the four agents that band ever holds.
+
+So the real defect is one value, and it is exactly the one deliberate decision `crowd_ladder`
+makes that `corridor_lod` did not know about. **A second derivation of a number is not wrong
+because it computes differently; it is wrong because it cannot inherit an exception.**
+
+**Reachability — latent, not live, and the margin is 1.68×.** The un-baked answer needs
+`0.5·sqrt(8·R·w) < 6`, i.e. `R·w < 18 m²`. At `collision.corridor_profile`'s **2.1612 m** corridor
+that is **R < 8.329 m**. Sweeping `interior.ring_radii` over all five sectors at nine z each (192
+ring/z combinations) the smallest ring the schema places is **13.99 m** — yellow ring 3 at z = 0.
+And the built station's placements name only baked rungs: **1,994 walkers over 71 `*_crowd.json`
+files, {2: 29, 4: 1,497, 8: 468}**. Two claims in the report are therefore refuted with evidence:
+nothing on the station names an un-baked library today, and *"the ring decks happen to land on 4"*
+is wrong — **65 of the 192 land on 2** and 127 on 4.
+
+**What it would have cost had it been reached.** Nothing errors. `npc.gd::_index_library`
+allocates MultiMesh buckets only for the ladder's levels, and `_place_crowd` skips a walker whose
+key `crowd_<sp>_<lod>_<phase>` has no bucket. The corridor is simply empty. The runtime does
+re-bucket by distance every crowd tick (`npc.gd:2070`, `w.lod = _lod_at(...)`), which would have
+healed it from the second frame — **but only while `_body != null`**, so a render, a headless
+build, or any mode without a player body keeps whatever was baked. That is why the baked value has
+to be a rung too, and it is the reason this is worth fixing rather than noting.
+
+**How it is derived now.** `lod_for_distance(d)` walks `crowd_ladder()` nearest-first and returns
+the first rung with `d < hi`, else the last rung's level. That is byte-identical to the old answer
+on everything the old answer got right: an A/B over **4,050 (radius, width) pairs in one process**
+gives **3,904 identical and 146 changed, every change `0 → 2`, and the BEFORE value un-baked in
+all 146 of them**. `room_lod()` is now `lod_for_distance(0.0)` and still returns 2.
+
+**The gate, and it fails on the pre-fix behaviour.** `python3 station/populace.py --lod-gate`
+asks four questions with no build and no GPU: every answer of `corridor_lod` over 189
+(radius, width) pairs **reaching down to R = 0.5 m**; every other emitter in the project
+(`room_lod`, `agenda.CROWD_LOD`, `export_drum.crowd_lod_for` over eight areas); two real
+`populate_corridor` placement lists, one of them at a radius **derived from the near band's own
+edge** so the probe cannot stop being the hard case; and, when a build exists, every `lod` in
+every `*_crowd.json` against the `crowd_lod<N>.glb` beside it.
+`--legacy` withdraws the snap on the module `corridor_lod` actually reads and the same gate
+reports **41 of 189 pairs naming `crowd_lod0.glb`, 0 of 3 walkers on a baked rung, exit 1**.
+`tools/bake_crowd.py --selftest` gained the same assertion from the artefact end; shown failing on
+a synthetic directory at exit 1 and passing on the real build.
+
+**One caller is gated but NOT fixed, and it is named rather than left.** `station/agenda.py`
+writes `CROWD_LOD = 4` — a rung today, but written down instead of derived, which is this defect
+one degree milder. It should be `populace.lod_for_distance(...)`. That file was not this task's to
+edit; the gate now fails if the ladder ever moves off 4.
+
+**Divergence with the runtime, stated:** `npc.gd::_lod_at` tests `d <= rung[0]` where this tests
+`d < hi`, so a body at exactly 18.000000 m is lod 2 in the engine and lod 4 here. Both are baked
+rungs and a walker occupies that tie for no frames. `<` was chosen because it is the reading
+`NPC_BUDGET`'s bands and `export_drum.crowd_lod_for` (INV-1230) already use.
+
+**What would overturn it.** A runtime that can skin a body per frame, which removes the shared
+library and the whole snapping constraint; a crowd library baked at every rung of `lod_chain()`,
+which removes the constraint but not the two-derivations problem; or a corridor authored under
+8.33 m radius, which would turn this from latent into live.
