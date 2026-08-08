@@ -354,25 +354,69 @@ def main(argv=None):
         # measured here.
         deck = {"light_portal_head": 247, "light_downlight": 489,
                 "light_pilaster_strip": 494}
-        bodies = {}
-        for name, _sz, _m, _d in rows:
-            bodies[name] = bodies.get(name, 0) + 1
+        # PER FITTING, NOT PER LENS, and the difference is a factor of seven on
+        # one of the three rows: `pilaster`'s channel holds SEVEN cells inside
+        # ONE can and ONE rim, so dividing the body total by the lens count
+        # attributes a seventh of a channel to each cell and reports a fitting
+        # that costs 17 triangles. A fitting is a connected body; that is the
+        # same distinction `_components` is written for one section up.
+        body_idx = [i for i in range(len(t)) if own[i] in BODY_GROUPS]
+        # A FITTING IS THE CAN PLUS ITS RIM AND THE RIM IS FOUR BANDS, so a
+        # fitting is FIVE connected components, not one -- they interpenetrate
+        # rather than sharing vertices, which is exactly what `luminaire` builds
+        # them to do. Attribution is therefore by AABB OVERLAP with a lens, and
+        # the fitting count is the lens-body count.
+        lens_boxes = {}
+        for name in deck:
+            idx = [i for i in range(len(t)) if own[i] == name]
+            lens_boxes[name] = [_aabb(v, t, lc) for lc in _components(t, idx)] \
+                if idx else []
+        per_fitting = {}
+        for comp in _components(t, body_idx):
+            blo, bhi = _aabb(v, t, comp)
+            owner_name = None
+            for name, boxes in lens_boxes.items():
+                if any(all(blo[j] <= lhi[j] + 1e-6 and llo[j] <= bhi[j] + 1e-6
+                           for j in range(3)) for llo, lhi in boxes):
+                    owner_name = name
+                    break
+            key = owner_name or "unattributed"
+            slot = per_fitting.setdefault(key, [0, 0])
+            # HOW MANY FITTINGS: one CAN is one fitting, derived rather than
+            # written down. Writing the counts here would be a second
+            # description of what the kit built, which is the drift this
+            # project has paid for more than once.
+            slot[0] += 1 if all(own[i] == "light_housing" for i in comp) else 0
+            slot[1] += len(comp)
         print()
-        total = 0
+        total = 0.0
         for name, count in sorted(deck.items()):
-            here = bodies.get(name, 0)
-            if not here:
+            if name not in per_fitting:
                 print(f"  {name:24s}  not built in this section")
                 continue
-            body_tri = sum(per.get(g, 0) for g in BODY_GROUPS)
-            share = body_tri * here / max(1, len(rows))
-            each = share / here
+            nfit, ntri = per_fitting[name]
+            each = ntri / nfit
             print(f"  {name:24s} {each:6.0f} tri of body each x {count:4d} "
                   f"a ring deck = {each * count:9,.0f}")
             total += each * count
+        if per_fitting.get("unattributed", [0])[0]:
+            print(f"  {'unattributed':24s} {per_fitting['unattributed'][0]:4d} "
+                  f"bodies hold no lens -- suspicious, read the geometry")
+        # LETTERING PER LAP, on the same footing. The packaged deck carries
+        # `sign_frame` 1,968 triangles at 12 a plate, so 164 sign plates -- and
+        # 164 `sign_text` plates that were blank. The lettering that replaces
+        # them is charged per letter, which is why `signage._spans` merges runs.
+        if srows:
+            per_plate = sum(r[1] for r in srows) / len(srows)
+            letters_lap = per_plate * 164
+            print(f"  {'lettering':24s} {per_plate:6.0f} tri each x "
+                  f"{164:4d} a ring deck = {letters_lap:9,.0f}")
+            total += letters_lap
         print(f"  {'':24s} {'':24s}   ring-deck total  {total:9,.0f} tri")
-        print("\n  measured against the packaged deck's 484,440 triangles: "
-              f"+{total / 484440 * 100:.1f}%")
+        print("\n  the SAME fittings before this pass cost 12 tri of lens each "
+              "and no body at all,\n  and the sign plates were blank, so the "
+              "ring-deck delta IS the total above:\n  on the packaged deck's "
+              f"484,440 triangles that is +{total / 484440 * 100:.1f}%.")
 
     if args.legacy:
         if fails:
