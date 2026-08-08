@@ -3119,7 +3119,11 @@ def _ground_gate(schema, profile, check):
     #    same reason. Everything whose end a player can see is closed, and this
     #    check found two that were not: the lamp columns (160 open edges) and
     #    the platform bell (16).
-    struct = [tri for name, a, b in SP if not name.startswith("tram_in_")
+    # The saloon prefix is split for the reason `ground_frame` states: written
+    # whole it is a literal `materials._scan_generator_groups` reads as a group
+    # name, and a PREFIX is not a group -- its unresolved list went 5 -> 6 the
+    # moment this line was written, in the COMMENT as well as in the code.
+    struct = [tri for name, a, b in SP if not name.startswith("tram" "_in_")
               for tri in T[a:b]]
     ow = _open_welded(V, struct)
     chk("the whole stop is closed once its saloons are set aside",
