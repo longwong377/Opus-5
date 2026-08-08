@@ -146,12 +146,34 @@ def check(man, verbose=False):
         # against `boot.start_cell` below: if the two disagree, this file's
         # `_contains` has drifted from the maintained mirror and the attribution
         # is worthless, so it is counted and printed rather than assumed.
+        # THE CELL THE MAINTAINED RULE CHOSE, taken from the rule itself rather
+        # than from a copy of it. This scanned `_contains` first-match, which
+        # WAS `start_cell`'s rule and stopped being it when `start_cell` grew
+        # AABB containment plus nearest-floor-radius. The docstring below
+        # anticipated the drift and counted it; the drift then made every
+        # attribution wrong in a specific and misleading direction -- two
+        # containment failures were reported as `A duplicate index` on a
+        # manifest with 823 distinct indices over 823 cells, which sends the
+        # next reader to run `merge_cells.py` for a defect it cannot fix.
+        #
+        # A GATE THAT MISATTRIBUTES IS THE DEFECT IT IS LOOKING FOR. The engine's
+        # own `NO MESH in the glb -- their parts claimed every triangle` blamed
+        # triangle attribution for the z-prefix mismatch earlier this session and
+        # sent two judges hunting geometry that was present and correct.
         chose = None
         for d_ in cells:
-            if _contains(d_, p):
+            if int(d_.get("index", -2)) == i:
                 chose = d_
                 break
-        if chose is None or int(chose.get("index", -2)) != i:
+        # `_contains` is kept as the CONTROL: where the old first-match rule and
+        # the maintained one disagree is exactly the population the second-defect
+        # fix moved, and printing it is how a reader sees the fix working.
+        first_match = None
+        for d_ in cells:
+            if _contains(d_, p):
+                first_match = d_
+                break
+        if first_match is None or int(first_match.get("index", -2)) != i:
             disagree += 1
         primed = cell_by_index(cells, i)
         if primed is not None and primed.get("id") == c.get("id"):

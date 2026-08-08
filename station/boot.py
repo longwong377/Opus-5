@@ -152,6 +152,12 @@ FLOOR_GROUP = "collision"
 # is swept, so its floor is one radius to within the sweep's own tolerance; a
 # wall rises inward from it and must not be sampled as ground.
 FLOOR_BAND_M = 0.15
+
+# How far outside a cell's recorded box a point may sit and still count as
+# inside it -- float noise for a body standing on the box's lower face, not a
+# knob for the containment rule. `stream.gd::AABB_SLOP_M` is the same number for
+# the same reason; the two rules are mirrors and must not drift.
+AABB_SLOP_M = 0.25
 # The hour the station starts at when nothing says otherwise. 13:00 is
 # `life.gd`'s own Clock default and the middle of the working day, which is when
 # the most is happening to look at.
@@ -588,7 +594,31 @@ def start_cell(man, spawn):
     correct one -- would be a second description of where a cell is, and the
     failure mode is silent: the wrong cell primed, and a body standing on a
     floor that has not arrived.
+
+    AND FIRST MATCH IS NOT AN ANSWER WHEN SEVENTEEN CELLS CLAIM ONE POINT.
+
+    The arc predicate above tests ANGLE and Z and never RADIUS, which is right
+    for one deck and wrong for a merged manifest: concentric decks at the same
+    angle and z all claim a body standing on any one of them. Measured on the
+    shipped manifest, up to 17 cells claim a single point. Taking the first in
+    array order returned a cell on whichever deck sorts first -- the Garden's
+    body was primed a corridor 1,756.7 m away and stood over nothing.
+
+    So: of the cells whose predicate matches, keep those whose own world AABB
+    actually contains the point, and take the one whose floor radius is nearest
+    -- which is what "the deck you are standing on" means on a spun station,
+    where decks are concentric and separated by radius alone.
+
+        picks the body's own cell, as shipped                418 of 787
+        ... with AABB containment then nearest floor radius  786 of 787
+
+    `tools/cell_identity.py --second-defect` is that measurement.
+
+    THE ENGINE'S MIRROR IS `stream.gd::cell_at` AND IT CARRIES THE SAME RULE.
+    The paragraph above is exactly why: a second description of where a cell is
+    fails silently. They were changed together and must stay that way.
     """
+    best, best_dr, first = -1, float("inf"), -1
     for c in man.get("cells") or []:
         arc = c.get("arc")
         if arc:
@@ -597,14 +627,35 @@ def start_cell(man, spawn):
                 continue
             if not (float(arc["z0"]) <= spawn[2] <= float(arc["z1"])):
                 continue
-            return int(c["index"])
+        else:
+            ab = c.get("aabb")
+            if not ab:
+                continue
+            lo, size = ab["pos"], ab["size"]
+            if not all(lo[i] <= spawn[i] <= lo[i] + size[i] for i in range(3)):
+                continue
+        if first < 0:
+            first = int(c["index"])
         ab = c.get("aabb")
-        if not ab:
-            continue
-        lo, size = ab["pos"], ab["size"]
-        if all(lo[i] <= spawn[i] <= lo[i] + size[i] for i in range(3)):
-            return int(c["index"])
-    return -1
+        if ab:
+            lo, size = ab["pos"], ab["size"]
+            if not all(lo[i] - AABB_SLOP_M <= spawn[i]
+                       <= lo[i] + size[i] + AABB_SLOP_M for i in range(3)):
+                continue
+        if arc and "r_m" in arc:
+            fr = float(arc["r_m"])
+        elif ab:
+            fr = math.hypot(ab["pos"][0] + ab["size"][0] / 2.0,
+                            ab["pos"][1] + ab["size"][1] / 2.0)
+        else:
+            fr = 0.0
+        dr = abs(fr - math.hypot(spawn[0], spawn[1]))
+        if dr < best_dr:
+            best_dr, best = dr, int(c["index"])
+    # A point inside no cell's box but inside some cell's arc keeps the old
+    # answer rather than becoming -1: a worse cell is still a cell, and -1 is a
+    # body with no ground at all.
+    return best if best >= 0 else first
 
 
 def bake_cells(stem, deck_dir=None, timeout=900):

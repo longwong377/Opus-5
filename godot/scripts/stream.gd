@@ -1,4 +1,12 @@
 extends Node3D
+
+## How far outside a cell's recorded box a point may sit and still count as
+## inside it. A cell's AABB is the bounding box of its CONTENT, so a body
+## standing on the floor is at the box's lower face and float noise can put it a
+## millimetre outside. This is slop for FLOAT NOISE, not a knob for the
+## containment rule -- widening it past a body's own radius would start
+## admitting the neighbouring decks the rule exists to exclude.
+const AABB_SLOP_M := 0.25
 ## CELL RESIDENCY -- the thing that makes the station bigger than one file.
 ##
 ## WHAT THIS EXISTS TO END. `walk.gd` takes ONE `--glb` and loads it whole, so
@@ -1405,11 +1413,85 @@ func distance_to(c: Dictionary, p: Vector3) -> float:
 
 
 ## The cell the player is inside, or -1.
+## Which cell a point is in. FIRST MATCH IS NOT AN ANSWER WHEN SEVENTEEN CELLS
+## CLAIM THE SAME POINT.
+##
+## `distance_to`'s arc branch tests ANGLE and Z and never RADIUS, so every deck
+## stacked at the same angle and z claims a body standing on any one of them --
+## measured on the shipped manifest, up to 17 cells claim a single point, and 3
+## points are claimed by 17. Taking the first in array order therefore returned a
+## cell on whatever deck happens to sort first, and `prime()` loaded THAT as the
+## level's opening cell: the Garden's body was primed a corridor 1,756.7 m away
+## and stood over nothing.
+##
+## THE RULE IS MEASURED, NOT CHOSEN. Filter to the cells whose own world AABB
+## actually contains the point, then take the one whose floor radius is nearest
+## it -- which is what "the deck you are standing on" means on a spun station,
+## where decks are concentric and separated by radius alone.
+##
+##     cell_at picks the body's own cell, as shipped        418 of 787
+##     ... with AABB containment then nearest floor radius  786 of 787
+##
+## `tools/cell_identity.py --second-defect` is that measurement and prints the
+## single residual by name (two `column_yellow` cells with no arc row and
+## overlapping boxes).
+##
+## AND IT IS APPLIED IN BOTH MIRRORS OR NEITHER. `station/boot.py::start_cell`
+## answers the same question for the manifest writer, and its docstring already
+## warns that "a second rule here -- even a correct one -- would be a second
+## description of where a cell is, and the failure mode is silent". Changing one
+## and not the other is exactly the divergence that warning exists to prevent.
 func cell_at(p: Vector3) -> int:
+	var best := -1
+	var best_dr := INF
+	var first := -1
 	for c in cells:
-		if distance_to(c, p) <= 0.0:
-			return int(c["index"])
-	return -1
+		if distance_to(c, p) > 0.0:
+			continue
+		if first < 0:
+			first = int(c["index"])
+		if not _aabb_holds(c, p):
+			continue
+		var dr: float = absf(_floor_r_of(c) - Vector2(p.x, p.y).length())
+		if dr < best_dr:
+			best_dr = dr
+			best = int(c["index"])
+	# A point inside no cell's box but inside some cell's arc keeps the old
+	# answer rather than becoming -1: a worse cell is still a cell, and -1 is a
+	# body with no ground at all.
+	return best if best >= 0 else first
+
+
+func _aabb_holds(c: Dictionary, p: Vector3) -> bool:
+	var bb = c.get("aabb", null)
+	if typeof(bb) != TYPE_DICTIONARY:
+		return true            # no box recorded: cannot exclude on this rule
+	var pos: Array = bb.get("pos", [])
+	var siz: Array = bb.get("size", [])
+	if pos.size() < 3 or siz.size() < 3:
+		return true
+	for i in 3:
+		var lo := float(pos[i])
+		var v := p.x if i == 0 else (p.y if i == 1 else p.z)
+		if v < lo - AABB_SLOP_M or v > lo + float(siz[i]) + AABB_SLOP_M:
+			return false
+	return true
+
+
+func _floor_r_of(c: Dictionary) -> float:
+	var a = c.get("arc", null)
+	if typeof(a) == TYPE_DICTIONARY and a.has("r_m"):
+		return float(a["r_m"])
+	# No arc row (a transit column): use the box's own mid radius.
+	var bb = c.get("aabb", null)
+	if typeof(bb) == TYPE_DICTIONARY:
+		var pos: Array = bb.get("pos", [])
+		var siz: Array = bb.get("size", [])
+		if pos.size() >= 2 and siz.size() >= 2:
+			var cx := float(pos[0]) + float(siz[0]) * 0.5
+			var cy := float(pos[1]) + float(siz[1]) * 0.5
+			return Vector2(cx, cy).length()
+	return 0.0
 
 
 func is_resident(id: String) -> bool:
