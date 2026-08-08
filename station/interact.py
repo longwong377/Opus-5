@@ -702,6 +702,107 @@ def near_miss(token, names):
 _ALIAS_NEVER = ("mp", "npc", "light")
 
 
+# ---------------------------------------------------------------------------
+# THE SYNONYM PASS, AND WHY IT IS FENCED TO `tread`
+# ---------------------------------------------------------------------------
+# `alias_for` catches a module that used its own name for an object when that
+# name is the register's words REARRANGED or EXTENDED -- `customs_desk` for
+# `customs_desk`, `bar_table` for `table`. It cannot catch a module that used a
+# DIFFERENT WORD for the same object, because nothing in this repository knows
+# that paving is a path or that a coping is an edge. That is English, and there
+# is no mesh measurement, no `PROP_KIND` and no head-noun rule that derives it.
+#
+# THE DRUM IS WHERE THAT BITES. `garden_town` declares `path` and `pool_edge`
+# and the townscape emits `garden_paving` (garden.py:1499, "Kerbed paths: one
+# spine along the terrace") and `garden_pool_coping` (garden.py:588,
+# "Reflecting pool: a coped basin"). Both objects are built, articulated,
+# materialled and solid. Both were invisible to the resolver.
+#
+# WHY THIS RATHER THAN A RENAME IN THE GENERATOR. A rename is the obvious fix
+# and it is the more expensive one, in a way that is measurable rather than
+# aesthetic: `tools/export_drum.py::_dressing_solid` lists `garden_pool_coping`
+# by exact string as townscape masonry a body cannot walk through, so renaming
+# that group silently removes the pool's edge from COLLISION -- the same class
+# of defect as dropping a group onto the fallback material, one layer deeper and
+# just as invisible in a frame. `garden_paving` is additionally bound by exact
+# name in `materials.py` AND in two GENERATED Godot artefacts
+# (`godot/materials/material_rules.gen.txt`, `godot/scenes/drum.tscn`), which
+# only `materials.py --export` rewrites. A rename therefore has to land in five
+# files at once or it lands a surface on the fallback. Renaming also inverts the
+# dependency this module is built on: `alias_for`'s docstring says it reads the
+# mesh precisely so that a module renaming a span cannot break it, and "rename
+# the mesh until the register's resolver matches" is that rule run backwards.
+#
+# AND THE FENCE IS THE WHOLE SAFETY ARGUMENT. The danger of any synonym is that
+# it puts a working prompt on the wrong object. So this pass is restricted, by
+# the module's OWN verb table rather than by a promise, to tokens whose verb is
+# `tread` -- and `godot/scripts/interact.gd::_aim` opens with
+# `if not it.pressable: continue`, so a `tread` row can never become a prompt,
+# a keypress or a reticle. The worst a wrong entry here can do is mark the wrong
+# ground as ground.
+#
+# THAT FENCE IS ALSO WHAT REFUSES THE THIRD CASE. `drum_tram` declares
+# `tram_door` and the car emits `tram_port`, which reads like the same
+# rearrangement -- and `tram.py:479` is explicit that a port is "Round ports
+# along the dark valance", a 0.14 x 0.9 x 0.9 m vent on the UNDERSIDE of the
+# car, below the waist rail. `tram_door` is `open` and pressable, so it never
+# reaches this pass: the rule declines it, rather than a reviewer remembering
+# to. Same for `lift_door` and `spoke_portal`, which `interior.py:1039` builds
+# as the pierced band where a guideway crosses a spoke.
+#
+# key: a segment of a register token. value: the generator segments that name
+# the same object. Asserted in `_selftest` to be reachable, tread-only and
+# minimal, so a dead entry cannot accumulate and a rename cannot leave one
+# pointing at nothing.
+_TREAD_SYNONYM = {
+    "path": ("paving",),
+    "edge": ("coping",),
+}
+
+
+def tread_alias_for(token, names, claimed=(), size=None):
+    """`alias_for` with `_TREAD_SYNONYM` applied -- for `tread` tokens only.
+
+    Returns None for anything pressable, whatever the map says, which is the
+    fence described above and the reason this is a separate function rather
+    than three lines inside `alias_for`: a caller cannot reach the synonyms
+    without going through the verb test.
+
+    A group matches when EVERY one of the token's segments is satisfied by the
+    group -- either literally or by one of that segment's synonyms. So
+    `pool_edge` still needs the group to be about a pool; only `edge` is
+    allowed to arrive as `coping`. The tiebreak is `alias_for`'s, over the
+    expanded vocabulary, so `garden_paving` (one extra segment) beats
+    `garden_paving_joint` (two) before size is consulted at all.
+    """
+    if verb_of(token) != "tread":
+        return None
+    seg = _segments(token)
+    if not seg:
+        return None
+    want = [frozenset((s,) + tuple(_TREAD_SYNONYM.get(s, ()))) for s in seg]
+    if all(len(w) == 1 for w in want):
+        # No synonym touches this token, so this pass can only repeat
+        # `alias_for`, which has already run and already failed.
+        return None
+    flat = set().union(*want)
+    size = size or {}
+    best = None
+    for n in names:
+        if n in claimed:
+            continue
+        body = n.partition(PLACE_SEP)[2] or n
+        s = set(_segments(body))
+        if any(x in _ALIAS_NEVER for x in s):
+            continue
+        if not all(w & s for w in want):
+            continue
+        key = (len(s - flat), -size.get(n, 0), len(n), n)
+        if best is None or key < best[0]:
+            best = (key, n)
+    return None if best is None else best[1]
+
+
 def weights(spans):
     """group -> how many triangles carry that name. The tiebreak, measured.
 
@@ -797,6 +898,17 @@ def resolve(declared, names, spans=None):
         if k in out:
             continue
         a = alias_for(k, names, claimed, size)
+        if a is not None:
+            out[k] = a
+            claimed.add(a)
+    # THIRD AND LAST, and only for `tread`. Ordered after `alias_for` so a
+    # synonym can never take a group the segment rule would have matched on the
+    # register's own words -- the same precedence exact matching has over
+    # aliasing, one level down.
+    for k in declared:
+        if k in out:
+            continue
+        a = tread_alias_for(k, names, claimed, size)
         if a is not None:
             out[k] = a
             claimed.add(a)
@@ -1248,6 +1360,78 @@ def _selftest():
     _r2 = resolve(("table", "stool"), ["bar_table"])
     if len(set(_r2.values())) != len(_r2):
         fails.append(f"resolve gave one group to two tokens: {_r2}")
+
+    # -- THE `tread` SYNONYM PASS -------------------------------------------
+    # THE FENCE, AS AN A/B WITH ONE VARIABLE. Two runs with the same shape of
+    # map and the same shape of group name, differing only in whether the token
+    # is `tread` or pressable. Without the second half this asserts only that
+    # some names do not match, which every misspelling also achieves.
+    _saved = dict(_TREAD_SYNONYM)
+    try:
+        _TREAD_SYNONYM.clear()
+        _TREAD_SYNONYM["catwalk"] = ("gangway",)
+        if tread_alias_for("catwalk", ["plant_gangway"]) != "plant_gangway":
+            fails.append("the tread synonym pass does not match a tread token "
+                         "-- the fence test below proves nothing")
+        _TREAD_SYNONYM.clear()
+        _TREAD_SYNONYM["door"] = ("gangway",)
+        if tread_alias_for("tram_door", ["tram_gangway"]) is not None:
+            fails.append("a synonym reached a PRESSABLE token -- the fence is "
+                         "open and a prompt can land on the wrong object")
+    finally:
+        _TREAD_SYNONYM.clear()
+        _TREAD_SYNONYM.update(_saved)
+
+    # REACHABLE: every key is a segment of a token some place actually
+    # declares, and every token carrying that segment is `tread`. The second
+    # half is what stops the map going dangerous later -- add a pressable
+    # `pool_edge_control` and this fires rather than the fence quietly
+    # swallowing it.
+    _decl = set()
+    for _p in dr.PLACES:
+        _decl.update(_p.get("interacts") or ())
+    for _k in _TREAD_SYNONYM:
+        _bearing = [t for t in _decl if _k in _segments(t)]
+        if not _bearing:
+            fails.append(f"_TREAD_SYNONYM[{_k!r}] is a segment no register "
+                         f"token carries -- a dead entry")
+        for _t in _bearing:
+            if verb_of(_t) != "tread":
+                fails.append(f"_TREAD_SYNONYM[{_k!r}] is a segment of {_t!r}, "
+                             f"which is {verb_of(_t)} and not tread")
+
+    # MINIMAL, ON THE TWO REAL CASES, over the group names the drum actually
+    # emits (garden.py:1499 and garden.py:588). Deleting an entry must lose a
+    # resolution, so an entry cannot survive its own generator being renamed.
+    for _k, _tok, _grp in (("path", "path", "garden_town__garden_paving"),
+                           ("edge", "pool_edge",
+                            "garden_town__garden_pool_coping")):
+        if resolve((_tok,), [_grp]).get(_tok) != _grp:
+            fails.append(f"_TREAD_SYNONYM[{_k!r}] does not resolve {_tok!r} "
+                         f"to {_grp!r} -- the entry is dead or the generator "
+                         f"renamed the group")
+        _gone = dict(_TREAD_SYNONYM)
+        try:
+            del _TREAD_SYNONYM[_k]
+            if resolve((_tok,), [_grp]).get(_tok) is not None:
+                fails.append(f"_TREAD_SYNONYM[{_k!r}] is redundant -- {_tok!r} "
+                             f"resolves without it")
+        finally:
+            _TREAD_SYNONYM.clear()
+            _TREAD_SYNONYM.update(_gone)
+
+    # AND IT STILL NEEDS EVERY OTHER SEGMENT. `pool_edge` may arrive as a
+    # coping, but only on a group that is about a pool -- otherwise the planter
+    # rim, the bed edge and the kerb are all "the pool edge".
+    if tread_alias_for("pool_edge", ["garden_bed_coping"]) is not None:
+        fails.append("the synonym pass matched on the synonym alone -- "
+                     "`pool` was not required")
+    # A REARRANGEMENT STILL BELONGS TO `alias_for`, WHICH RUNS FIRST. If the
+    # register's own word is present the synonym must not be consulted at all.
+    if resolve(("path",), ["garden_town__garden_path",
+                           "garden_town__garden_paving"]).get("path") \
+            != "garden_town__garden_path":
+        fails.append("a synonym took a group the register's own word matched")
 
     # -- `near_miss` matches on SEGMENTS, not substrings --------------------
     if near_miss("seat", ["npc_seated_4_npc_skin"]):
