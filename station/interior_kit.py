@@ -1208,6 +1208,26 @@ def luminaire(x0, x1, y0, y1, z0, z1, lens_group, face="+x",
     span = min(ext[i][1] - ext[i][0] for i in others)
     bz = max(0.0, min(bezel, span / 4.0))
     rc = max(0.0, min(recess, depth * 0.40))
+    # THE BOX IS THE LENS'S FOOTPRINT AND THE RIM IS ADDED OUTSIDE IT, and the
+    # first version of this function had that backwards with a consequence no
+    # closure or coverage gate could see. Insetting the lens inside the old
+    # envelope took the corridor's EMISSIVE AREA from 20.00 m2 a section to
+    # 14.25 m2 -- the downlight lens lost 69% of its surface -- and
+    # `materials.light_portal_head` and `light_pilaster_strip` carry emission
+    # energies SOLVED against an engine frame (0.51 and 0.23, chosen because
+    # 5.0 and 6.0 blew 4.64% of the frame where the show's corridor blows
+    # 0.000%). Changing the emitting area silently invalidates both, and this
+    # container cannot run that render while other agents are working. Growing
+    # the cross-section instead keeps the lens footprint EXACTLY -- measured
+    # byte-for-byte at 20.00 m2 either way -- and the fitting reads larger,
+    # which is what a lamp with a bezel on it actually is.
+    #
+    # It grows ACROSS the face only. The outward plane is untouched, because
+    # `collision.corridor_profile` measures the walkable lane off this geometry
+    # and `_selftest` asserts no fitting passes `pilaster_proj_m`.
+    for i in others:
+        ext[i][0] -= bz
+        ext[i][1] += bz
 
     # FOUR PLANES, IN ORDER OUT OF THE WALL, AND NOT ONE PAIR OF THEM IS
     # COINCIDENT. That is the whole difficulty of this shape. Two boxes that

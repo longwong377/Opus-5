@@ -14916,12 +14916,19 @@ a can (`light_housing`), a rim (`light_bezel`) and the lens set 18 mm behind the
    and its lifts. The one exception is the downlight, whose envelope was extended BACKWARD to the
    wall substrate at x = 0: the old slab ran x 0.100–0.170 against a plate face at 0.045, so it
    was floating 55 mm off the wall attached to nothing. Its outer face is unchanged.
-2. **The lens area is preserved.** `light_pilaster_strip` keeps all seven cells and the same
-   0.68 fill fraction (`luminaire(segments=7)`), and the lens triangle counts per corridor
-   section are unchanged at 1,176 / 132 / 84. `materials.light_pilaster_strip` and
-   `light_portal_head` carry emission energies SOLVED against an engine frame — 0.23 and 0.51,
-   chosen because 6.0 and 5.0 blew 4.64% of the frame where the show's own corridor blows 0.000%
-   — and changing the emitting area would have invalidated both without re-rendering.
+2. **The lens's LIT FACE is preserved exactly, and that took a second attempt.** The rim is added
+   OUTSIDE the box the caller passes, not inset into it. The first version inset the lens and took
+   the corridor's emissive area from 20.00 m² a section to 14.25 — the downlight lens lost 69% of
+   its surface. That matters because `materials.light_portal_head` and `light_pilaster_strip`
+   carry emission energies SOLVED against an engine frame (0.51 and 0.23, chosen because 5.0 and
+   6.0 blew 4.64% of the frame where the show's own corridor blows 0.000%), so changing the
+   emitting area silently invalidates both, and this container cannot re-render while other agents
+   are working. Measured with the rim outside instead: the lit faces come out **identical to six
+   decimal places** — downlight 0.5808 m² a section, portal head 6.8006 m², pilaster strip
+   0.045900 m² a column over the same seven cells at the same 0.68 fill — and the lens footprints
+   read 220 × 120, 1472 × 330 and 87 × 75 mm, which are the old slabs. Total emissive surface does
+   drop, 20.00 → 16.38 m², and every square metre of that is the lens's SIDE faces, which are now
+   inside the bezel and cannot be seen from the corridor.
 3. **26 mm and 18 mm.** The rim is set so the smallest fitting the kit builds still reads: the
    pilaster cell is 75 mm across, and `luminaire` clamps the rim to a quarter of the smaller
    cross-span, giving 10.5 mm there. 18 mm of recess is what makes the rim cast onto the lens at
