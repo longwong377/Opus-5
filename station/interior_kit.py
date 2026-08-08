@@ -1113,6 +1113,192 @@ def chamfered_aperture(width, height, chamfer, sill=0.0):
             (-hw, y1 - chamfer), (-hw, y0 + chamfer)]
 
 
+# ---------------------------------------------------------------------------
+# LUMINAIRES: A FITTING, NOT A LIT RECTANGLE
+# ---------------------------------------------------------------------------
+# WHAT WAS WRONG, MEASURED RATHER THAN FELT. Every luminaire in this kit was a
+# single call to `_slab` -- twelve triangles, one emissive material, no housing,
+# no bezel, no mount. `docs/AAA-STANDARD.md` defines CRAFT 1 as "a box primitive
+# standing in for a named object", and a lamp that IS its own lens is exactly
+# that. It is also the fitting a corridor player looks at most: `portal_frame`'s
+# head light is the largest emissive surface anyone ever stands under in this
+# kit (materials.light_portal_head says so in as many words) and there are 247
+# of them on one ring deck.
+#
+# AND THE MATERIAL LIBRARY HAD ALREADY WRITTEN DOWN THE CONSEQUENCE. Every room
+# fitting in `station/materials.py` carries an extrapolated "housing albedo",
+# justified as *"the geometry is the whole fitting, so an unlit lamp must not
+# read as a hole"*. That sentence is a description of this defect: the albedo
+# was being asked to stand in for a lamp body that did not exist, so an unlit
+# fitting was a dark rectangle and a lit one was a bright rectangle, and neither
+# was an object. Once the body is modelled the emission belongs to the LENS and
+# the albedo belongs to the HOUSING, which is what those two properties are.
+#
+# THE FORM IS A CAN, A BEZEL AND A LENS, in that order out of the wall:
+#
+#   light_housing   the can. Spans the whole envelope, drafted, and closed at
+#                   the back -- so the fitting is a solid object seen from any
+#                   angle and not a lit face floating off a wall.
+#   light_bezel     the rim, built as ONE SHELL through `_shell_from_pieces`
+#                   rather than four rails. Four rails is the obvious
+#                   construction and it is the one `portal_frame` was rebuilt
+#                   to stop doing: adjacent rails share an edge at every corner
+#                   and that edge carries four faces. `signage.board()` still
+#                   builds its frame that way and is not gated on it; this is,
+#                   by `_selftest`'s per-piece n-m assertion.
+#   <lens group>    the emissive, recessed behind the bezel by `LAMP_RECESS_M`,
+#                   inset from the envelope by the bezel width. It keeps the
+#                   caller's own group name, so nothing downstream -- materials,
+#                   `export_scene.FIXTURE_LIGHTING`, `directory.py`'s "does this
+#                   place have lighting" -- has to learn a new word for a lamp.
+#
+# THE ENVELOPE IS THE OLD SLAB'S, EXACTLY, and that is a hard constraint rather
+# than tidiness: `collision.corridor_profile` measures the corridor's clear half
+# width by ray casting the kit, so a fitting that grew 20 mm into the corridor
+# would narrow the walkable lane and no assertion in this file would say so. The
+# lens is inset INTO the old box and the housing is buried BEHIND it, so the
+# outermost surface of every fitting is where it already was.
+#
+# THE COST IS REAL AND IS STATED WHERE IT CAN BE CHECKED: `_selftest` prints the
+# per-fitting and per-lap triangle totals, and `tools/fittings_gate.py --cost`
+# reports them against the assembled corridor.
+LAMP_BEZEL_M = 0.026        # width of the rim around the lens
+LAMP_RECESS_M = 0.018       # how far the lens sits behind the bezel's face
+LAMP_BACK_M = 0.022         # depth of the can behind the lens
+
+
+def luminaire(x0, x1, y0, y1, z0, z1, lens_group, face="+x",
+              bezel=LAMP_BEZEL_M, recess=LAMP_RECESS_M, segments=1,
+              seg_fill=0.68):
+    """One light fitting inside the box the bare emissive slab used to occupy.
+
+    `(x0..x1, y0..y1, z0..z1)` is the ENVELOPE -- pass exactly the numbers the
+    old `_slab` call took. `face` names the lit direction, one of "+x", "-x",
+    "+y", "-y", "+z", "-z"; everything is measured inward from that face, so
+    the fitting never projects further than the slab it replaces.
+
+    `segments` breaks the lens into that many bars down the fitting's LONGER
+    cross axis, each `seg_fill` of the pitch. It exists because `pilaster`'s
+    strip is already segmented and its docstring says why -- *"a continuous
+    tube reads as a fluorescent batten; the segmentation is what makes it read
+    as B5"* -- so the channel has to be able to hold a run of cells rather than
+    one bar, or the housing pass would have quietly erased the one piece of
+    articulation that fitting already had.
+
+    Returns (verts, tris) with `light_housing`, `light_bezel` and `lens_group`
+    tagged inside it, so a caller merges it exactly as it merges a pilaster.
+    """
+    verts, tris = [], []
+    sign = -1.0 if face.startswith("-") else 1.0
+    ax = {"x": 0, "y": 1, "z": 2}[face[-1]]
+    ext = [[x0, x1], [y0, y1], [z0, z1]]
+    lo, hi = ext[ax]
+    outer = hi if sign > 0 else lo          # the lit plane
+    root = lo if sign > 0 else hi           # the plane against the mounting
+    depth = hi - lo
+    others = [i for i in (0, 1, 2) if i != ax]
+    u, w = others
+
+    # THE BEZEL MAY NEVER EAT THE LENS. A 26 mm rim on a 70 mm fitting leaves
+    # nothing lit, and a luminaire with no luminous surface is a worse defect
+    # than the one it replaces -- it would pass every closure and material gate
+    # while the corridor went dark. Clamped to a quarter of the smaller
+    # cross-span, and `--fittings` asserts the lens keeps at least a third of
+    # the envelope's lit area on the smallest fitting the kit builds.
+    span = min(ext[i][1] - ext[i][0] for i in others)
+    bz = max(0.0, min(bezel, span / 4.0))
+    rc = max(0.0, min(recess, depth * 0.40))
+
+    # FOUR PLANES, IN ORDER OUT OF THE WALL, AND NOT ONE PAIR OF THEM IS
+    # COINCIDENT. That is the whole difficulty of this shape. Two boxes that
+    # BUTT share a face and every edge of that face carries four triangles --
+    # `_selftest` asserts zero non-manifold edges per piece and would fire, and
+    # more to the point CLAUDE.md records this project paying for coincident
+    # faces three times (`portal_frame`, `_plate_with_hole`, `door_leaf`). So
+    # each layer LAPS into the next: the can runs 4 mm past the bezel's inner
+    # plane, and the lens starts 6 mm behind it, buried inside the can.
+    d_bez = rc + 0.012                                # how deep the rim is
+    p_bez = outer - sign * d_bez                      # bezel's inner plane
+    p_can = p_bez + sign * min(0.004, d_bez * 0.3)    # can front -- a lap
+    p_lens0 = p_bez - sign * min(0.006, (depth - d_bez) * 0.5)
+    p_lens1 = outer - sign * rc                       # the lit face itself
+
+    def box(o_a, o_b, inset, tagname, cut=None):
+        b = [list(e) for e in ext]
+        b[ax] = [min(o_a, o_b), max(o_a, o_b)]
+        for i in others:
+            b[i][0] += inset
+            b[i][1] -= inset
+        if cut is not None:
+            b[cut[0]] = [cut[1], cut[2]]
+        with tag(tagname):
+            _slab(verts, tris, b[0][0], b[0][1], b[1][0], b[1][1],
+                  b[2][0], b[2][1])
+
+    # 1. THE CAN, inset 1.5 mm from the envelope in cross-section. The inset is
+    #    not decoration: flush with the bezel's outer face the two would be
+    #    COPLANAR over the lap, which is a depth-sort coin toss on the surface a
+    #    player looks straight at. Set back, it reads as a bezel standing proud
+    #    of a lamp body, which is what a bezel is.
+    box(root, p_can, min(0.0015, span * 0.05), "light_housing")
+
+    # 2. THE LENS, recessed behind the bezel and inset from the envelope by the
+    #    rim. Its back is inside the can, so an unlit fitting is a dark object
+    #    with a pale diffuser in it rather than a hole.
+    if segments <= 1:
+        box(p_lens0, p_lens1, bz, lens_group)
+    else:
+        # Down the LONGER cross axis, because a run of cells down the short one
+        # would be a dotted line across a fitting rather than along it.
+        lg = max(others, key=lambda i: ext[i][1] - ext[i][0])
+        s0, s1 = ext[lg][0] + bz, ext[lg][1] - bz
+        pitch = (s1 - s0) / segments
+        for kseg in range(segments):
+            c0 = s0 + pitch * kseg
+            box(p_lens0, p_lens1, bz, lens_group,
+                cut=(lg, c0, c0 + pitch * seg_fill))
+
+    # 3. THE BEZEL, as ONE CLOSED SHELL round an aperture rather than as four
+    #    rails. Four rails is the obvious construction and it is the one this
+    #    kit has already been rebuilt twice to stop doing: two rails meeting at
+    #    a corner share an edge, and that edge carries four faces.
+    #
+    #    IT DOES NOT GO THROUGH `_plate_with_hole`, AND THE REASON IS A DEFECT
+    #    WORTH RECORDING RATHER THAN A PREFERENCE. That function peels the hole
+    #    out with `_polygon_difference`, which DISCARDS any piece under
+    #    **4e-3 in the units it is handed** -- 4 mm2 at door scale, where it is
+    #    correctly a sliver. A 26 mm rim on a 120 mm fitting is 0.0031 m2, so
+    #    the peel threw away TWO OF THE FOUR BANDS of the first bezel built
+    #    this way, and NOTHING FAILED: the rim step closes over the gap, so the
+    #    result was closed, manifold, correctly wound and missing half its
+    #    frame. Measured: the +x fitting's bezel spanned z -0.084..0.110 of an
+    #    envelope running -0.110..0.110. The four bands are enumerated here
+    #    instead, which is exact at any size, and `_shell_from_pieces` -- the
+    #    part that actually does the work -- is used directly.
+    a0, a1 = ext[u]
+    b0, b1 = ext[w]
+    bands = [
+        [(a0, b0), (a1, b0), (a1, b0 + bz), (a0, b0 + bz)],
+        [(a0, b1 - bz), (a1, b1 - bz), (a1, b1), (a0, b1)],
+        [(a0, b0 + bz), (a0 + bz, b0 + bz), (a0 + bz, b1 - bz), (a0, b1 - bz)],
+        [(a1 - bz, b0 + bz), (a1, b0 + bz), (a1, b1 - bz), (a1 - bz, b1 - bz)],
+    ]
+    bv, bt = [], []
+    _shell_from_pieces(bv, bt, bands, min(p_bez, outer), max(p_bez, outer))
+    # `_plate_with_hole` authors in (x, y) extruded along z. Map its local
+    # (a, b, c) onto (u, w, ax) of the fitting's frame. A cyclic permutation is
+    # a rotation and a transposition is not, so the odd ones are merged with
+    # `flip` -- the same rule `corridor_section` applies to a mirrored wall.
+    order = (u, w, ax)
+    perm = [order.index(k) for k in (0, 1, 2)]
+    odd = order not in ((0, 1, 2), (1, 2, 0), (2, 0, 1))
+    with tag("light_bezel"):
+        _merge(verts, tris, bv, bt,
+               lambda a, b, c, _p=perm: ((a, b, c)[_p[0]], (a, b, c)[_p[1]],
+                                         (a, b, c)[_p[2]]), flip=odd)
+    return verts, tris
+
+
 def portal_frame(width, height, p=None, head_light=True):
     """One structural rib resolved as a portal: a heavy band round the section.
 
@@ -1150,14 +1336,28 @@ def portal_frame(width, height, p=None, head_light=True):
     _shell_from_pieces(verts, tris, band, -depth / 2.0, depth / 2.0)
 
     if head_light:
-      with tag('light_portal_head'):
-          # A single long fitting in the soffit, the brightest thing in frame in
-          # `grey level 1.webp` and the reason the portals read as a receding
-          # rhythm rather than as a row of identical holes.
-          lw = (width / 2.0 - p["wall_chamfer_m"]) * 0.92
-          sw = p["portal_light_w_m"]
-          _slab(verts, tris, -lw, lw, height - sw * 1.9, height - sw * 0.5,
-                -depth * 0.30, depth * 0.30)
+        # A single long fitting in the soffit, the brightest thing in frame in
+        # `grey level 1.webp` and the reason the portals read as a receding
+        # rhythm rather than as a row of identical holes.
+        #
+        # IT WAS ONE `_slab` AND IT IS THE FITTING A PLAYER LOOKS AT MOST.
+        # `materials.light_portal_head` says of it, in its own note, that it is
+        # "the largest emissive surface a player ever stands under in this
+        # kit"; 247 of them are built on one ring deck; and until now every one
+        # was a bare lit rectangle hanging under the soffit with no housing,
+        # no rim and nothing holding it up. See `luminaire`.
+        #
+        # THE ENVELOPE REACHES UP PAST `height` ON PURPOSE. The old slab's top
+        # was 45 mm clear of the aperture head, so the fitting floated. Taking
+        # it 20 mm INTO the frame band above buries the can in the structure it
+        # is recessed into -- which is what a soffit luminaire is -- and avoids
+        # a top face exactly coplanar with the portal head's own underside,
+        # which would be a depth-sort coin toss on a surface in every frame.
+        lw = (width / 2.0 - p["wall_chamfer_m"]) * 0.92
+        sw = p["portal_light_w_m"]
+        _merge(verts, tris, *luminaire(
+            -lw, lw, height - sw * 1.9, height + 0.02,
+            -depth * 0.30, depth * 0.30, 'light_portal_head', face="-y"))
     return verts, tris
 
 
@@ -1189,18 +1389,25 @@ def pilaster(height, p=None, strip=True, segments=7):
         _merge(verts, tris, pv, pt, lambda x, y, z: (x, z, -y))
 
     if strip:
-      with tag('light_pilaster_strip'):
-          y0 = height * p["pilaster_strip_lo_frac"]
-          y1 = height * p["pilaster_strip_hi_frac"]
-          sw = p["pilaster_strip_w_m"] / 2.0
-          # Broken into short bars with gaps. A continuous tube reads as a
-          # fluorescent batten; the segmentation is what makes it read as B5.
-          bars = 7
-          pitch = (y1 - y0) / bars
-          for k in range(bars):
-              by = y0 + pitch * k
-              _slab(verts, tris, proj * 0.78, proj * 0.98,
-                    by, by + pitch * 0.68, -sw, sw)
+        y0 = height * p["pilaster_strip_lo_frac"]
+        y1 = height * p["pilaster_strip_hi_frac"]
+        sw = p["pilaster_strip_w_m"] / 2.0
+        # Broken into short bars with gaps. A continuous tube reads as a
+        # fluorescent batten; the segmentation is what makes it read as B5.
+        #
+        # THE SEVEN BARS ARE NOW CELLS IN A CHANNEL RATHER THAN SEVEN LOOSE
+        # BRICKS. One `luminaire` wraps the whole run -- one can behind it, one
+        # rim around it -- instead of one fitting per bar, and that is a
+        # decision about cost as much as about form: 494 pilasters a ring deck
+        # at seven fittings each would be 249,000 triangles for a light strip.
+        # `segments=7` keeps the exact cell count and gap fraction the strip
+        # already had, so the thing that made it read as B5 survives the
+        # housing pass. The envelope's outer face is `proj * 0.98` exactly as
+        # before: the fitting does not grow into the corridor.
+        _merge(verts, tris, *luminaire(
+            proj * 0.70, proj * 0.98, y0, y1, -sw, sw,
+            'light_pilaster_strip', face="+x",
+            bezel=sw * 0.28, segments=7, seg_fill=0.68))
     return verts, tris
 
 
@@ -1242,6 +1449,141 @@ WALL_STATION_STRIDE = 5
 # built through `plaque_at`, kept there rather than moved so the 4f control can
 # still reproduce 4f's single plaque exactly.
 WALL_STATION_KINDS = ("box", "hatch", "sign")
+
+
+# ---------------------------------------------------------------------------
+# WHAT THE CORRIDOR'S SIGNS SAY -- AND THE FINDING THAT THEY SAID NOTHING
+# ---------------------------------------------------------------------------
+# THE PANEL FINDING WAS "ZERO `sign_*` GROUPS IN THE CORRIDOR KIT" AND THAT IS
+# NOT WHAT IS WRONG. Measured on the PACKAGED build,
+# `dist/Babylon5/station/generated/scene/deck/blue_0_0_z7440.obj` carries
+# `sign_frame` 1,968 triangles and `sign_text` 1,968 -- the groups are there and
+# they always have been. Divide by twelve: **164 sign plates and 164 lettering
+# plates, every one of them a bare `_slab`**. The corridor has signs. Not one of
+# them has a word on it. 328 blank rectangles is a worse defect than none,
+# because it renders as signage and reads as a wall.
+#
+# AND THE MACHINERY TO FIX IT WAS ALREADY BUILT AND ALREADY HAD A CALLER
+# ELSEWHERE. `station/signage.py` carries a 5x7 face, run-length merged into
+# quads (`E` is 21 lit cells and 7 rectangles), `fit_cap_m` to size a block to
+# its own frame, `wrap`, and `door_text(place)` which composes a line from the
+# register. `deck.py::door_sign` calls it at every doorway. The corridor kit --
+# the 77% of a ring deck between the doorways -- called none of it.
+#
+# WHAT THESE SIGNS MAY HONESTLY SAY, WHICH IS THE HARD PART. The kit is
+# ADDRESSLESS by construction: `interior.ring_arc` builds a corridor with
+# `kit.corridor_section(seg_len, doors=..., start_portal=...)` and passes
+# neither the sector, the ring, the deck nor its own section index (see
+# `corridor_section`'s `seed`, and CLAUDE.md's note that "ring_arc cannot pass a
+# section index yet"). So nothing here can know it is in Blue 0-00, and a plate
+# that guessed would be the one thing worse than a blank one -- a sign that is
+# WRONG. The brief for this work says so in as many words: *"a sign that says
+# the wrong bay number is worse than no sign"*.
+#
+# What a corridor sign can say without an address is a NOTICE: true of any
+# pressurised corridor on this station, naming no place and pointing nowhere.
+# That is authority 5 and is logged as such. One row is not extrapolated at all
+# -- `STATION TIME IS / EARTH MEAN TIME` is `signage.ESTABLISHED["station_time"]`,
+# which comes off the authority-1 customs board in
+# `reference/01-station-exterior/welcome to babylon 5.webp` -- and `_selftest`
+# asserts the two agree, so the sign is a VIEW of that fact rather than a second
+# copy of it.
+#
+# WHAT WOULD REPLACE THIS TABLE: one line in `interior.ring_arc` handing
+# `corridor_section` the `(sector, ring, deck)` it already has in scope. Then
+# these plates carry `signage.door_text`'s own address grammar -- the same
+# `SECTOR RING-DECK BEARING` every door plaque and every register lookup uses --
+# and the notices move to the bays that do not carry wayfinding. That file is
+# not this change's to edit, and a `wayfinding=` parameter nothing passes would
+# be the tenth instance of the defect CLAUDE.md opens with.
+CORRIDOR_NOTICES = (
+    ("EMERGENCY", "AIR SUPPLY"),
+    ("IN CASE OF", "DECOMPRESSION", "SEAL SECTION"),
+    ("AUTHORISED", "PERSONNEL", "ONLY"),
+    ("SERVICE ACCESS", "NO ADMITTANCE"),
+    ("FIRE CONTROL", "STATION"),
+    ("PRESSURE SUITS", "WITHIN"),
+    ("STATION TIME IS", "EARTH MEAN TIME"),
+    ("KEEP CLEAR OF", "PRESSURE DOORS"),
+)
+
+
+# LETTERING IS A SINGLE-SIDED DECAL AND THEREFORE AN OPEN SURFACE, and that
+# collides with the strongest gate in this file. `_selftest` asserts every
+# piece the kit builds has ZERO edges used by one triangle, because "a hole in
+# geometry shows the background through it and the background is black" -- it
+# is the measurement that closed 1,572 open edges on a deck in session 3x. A
+# glyph quad has four such edges by construction and is not a hole.
+#
+# The exclusion is NAMED rather than the assertion loosened, and the half it
+# gives up is replaced rather than dropped: a decal cannot be tested for
+# closure, so it is tested for FACING instead -- every glyph triangle must
+# point along the surface's outward normal. That is the failure mode a decal
+# actually has, and it is the one CLAUDE.md records `dressing._cyl` having
+# ("wound 0/24 outward -- an object you look straight through"), which no
+# render can distinguish from a missing letter.
+DECAL_GROUPS = ("sign_text", "sign_text_head")
+
+
+def _solid_only(tris, spans):
+    """`tris` with every triangle owned by a `DECAL_GROUPS` span removed."""
+    owner = [None] * len(tris)
+    for name, lo, hi in spans:
+        for i in range(lo, min(hi, len(tris))):
+            owner[i] = name
+    return [t for i, t in enumerate(tris) if owner[i] not in DECAL_GROUPS]
+
+
+def notice_lines(*key):
+    """The lines one corridor sign carries, deterministic from `key`.
+
+    Same blake2b idiom `_pick` uses everywhere else in this kit, so a bay's
+    sign does not change between two runs of the generator and two adjacent
+    bays do not carry the same notice.
+    """
+    return _pick(CORRIDOR_NOTICES, *key)
+
+
+def sign_lettering(verts, tris, lines, x_face, cy, cz, face_w, face_h,
+                   header=1, proud=0.006):
+    """`signage.letter_mesh`, remapped into `wall_assembly`'s frame.
+
+    The kit authors a wall with its face in x = 0, +x into the corridor and the
+    run along +z; `signage` authors a board with +X across, +Y up and +Z out of
+    the face. The map is therefore (a, b, c) -> (c, b, a), which is a
+    TRANSPOSITION and so has determinant -1: merged without `flip` every glyph
+    would face into the wall, and lettering is a single-sided decal
+    (`signage._selftest` states that convention), so a back-facing glyph is an
+    invisible one rather than a wrongly-shaded one. `_selftest` asserts the
+    normals come out along +x.
+
+    Imported inside the function because the import graph runs
+    `signage -> interior -> interior_kit`, so a module-level import here would
+    close the cycle.
+    """
+    import signage as SG                                        # noqa: PLC0415
+    lv, lt, lg = SG.letter_mesh(lines, face_w, face_h, header=header,
+                                z=0.0, cx=0.0, cy=0.0)
+    if not lt:
+        return 0
+    # MERGED ONCE AND THEN SUB-TAGGED, not merged once per group. Merging a
+    # slice of `lt` re-appends the whole of `lv` each time, so a three-group
+    # block would carry three copies of every glyph vertex -- correct on screen
+    # and three times the memory, which is the sort of thing that only shows up
+    # as a budget number six sessions later.
+    tri0 = len(tris)
+    with tag('sign_text'):
+        _merge(verts, tris, lv, lt, lambda a, b, c: (c, b, a),
+               (x_face + proud, cy, cz), flip=True)
+    i = 0
+    while i < len(lg):
+        j = i
+        while j < len(lg) and lg[j] == lg[i]:
+            j += 1
+        if lg[i] != 'sign_text':
+            _record(tris, lg[i], tri0 + i, tri0 + j)
+        i = j
+    return len(lt)
 
 
 def wall_station(x_face, wall_h, length, kind, p, seed=()):
@@ -1322,14 +1664,27 @@ def wall_station(x_face, wall_h, length, kind, p, seed=()):
         # that plate since it was written, on bay 0 of one side, and emitted it
         # with no tag at all, so it took the wall's own kit_wall_plate and the
         # single piece of colour the reference corridor has rendered grey.
+        #
+        # AND THEN IT WAS A BLANK RECTANGLE FOR ANOTHER FOUR SESSIONS. The
+        # `sign_text` slab below used to be exactly that: one 0.60 x 0.25 m box
+        # of lit material with no lettering on it, 164 of them a ring deck. See
+        # `CORRIDOR_NOTICES` for what a sign here may honestly say and why it
+        # is a notice rather than an address.
         sy = wall_h * 0.60
         with tag('sign_frame'):
             _drafted_slab(verts, tris, x_face - bite, x_face + 0.022,
                           sy - 0.16, sy + 0.16, cz - 0.34, cz + 0.34,
                           draft=0.010)
-        with tag('sign_text'):
+        # `sign_field`, NOT `sign_text` -- the same distinction
+        # `signage.door_plaque` already draws. The FIELD is the dark lit panel;
+        # the TEXT is what is written on it. Binding the panel to the lettering
+        # material is why a blank plate could look finished: it rendered as the
+        # amber the reference measures, over its whole area, with nothing on it.
+        with tag('sign_field'):
             _slab(verts, tris, x_face + 0.020, x_face + 0.026,
                   sy - 0.125, sy + 0.125, cz - 0.30, cz + 0.30)
+        sign_lettering(verts, tris, notice_lines(seed, "notice", cz),
+                       x_face + 0.026, sy, cz, 0.60, 0.25, header=1)
     else:
         raise ValueError(f"unknown wall station {kind!r}; "
                          f"have {list(WALL_STATION_KINDS)}")
@@ -1546,23 +1901,47 @@ def wall_assembly(length, height, p=None, plaque_at=None, downlights=True,
             _drafted_slab(verts, tris, 0.0, 0.05, wall_h * 0.62, wall_h * 0.74,
                           pz - 0.30, pz + 0.30, draft=dr, face="+x")
         if on_4g("plaque"):
-            with tag('sign_text'):
+            # THE FIELD, then the LETTERING on it. This plate was a blank lit
+            # slab -- see `CORRIDOR_NOTICES`. The frame it is copied from shows
+            # a "Level ..." plate, which is an ADDRESS, and the kit does not
+            # have one; a notice is what can be written here truthfully.
+            with tag('sign_field'):
                 _slab(verts, tris, 0.048, 0.056, wall_h * 0.638,
                       wall_h * 0.722, pz - 0.255, pz + 0.255)
+            # THE FACE HEIGHT IS THE FIELD'S, IN METRES, and the first version
+            # of this line passed the FRACTION (0.084) instead. `letter_mesh`
+            # fits the block to the box it is given, so the plaque set at
+            # 16.1 mm caps -- legible, by `signage.legible_at_m`'s own rule, to
+            # 2.01 m across a 2.60 m corridor. `tools/fittings_gate.py` caught
+            # it; nothing else here could have, because a sign with tiny
+            # lettering on it is a sign with lettering on it.
+            sign_lettering(verts, tris,
+                           notice_lines("plaque", round(length, 3), pz),
+                           0.056, wall_h * 0.68, pz,
+                           0.51, wall_h * (0.722 - 0.638), header=1)
 
     if station:
         _merge(verts, tris, *wall_station(0.0, wall_h, length, station, p))
 
     if downlights:
-      with tag('light_downlight'):
-          # Warm fittings low on the wall, the only local light source between
-          # portals in the reference and the reason the deck is pooled rather
-          # than evenly lit.
-          n = max(1, int(length / (plate_l * 3.0)))
-          for i in range(n):
-              lz = length * (i + 0.5) / n
-              _slab(verts, tris, rail_proud, rail_proud + 0.07,
-                    dado_top - 0.16, dado_top - 0.04, lz - 0.11, lz + 0.11)
+        # Warm fittings low on the wall, the only local light source between
+        # portals in the reference and the reason the deck is pooled rather
+        # than evenly lit.
+        #
+        # AND IT WAS FLOATING. The old slab ran x 0.100..0.170 and the wall
+        # plate it hangs on has its face at `wall_plate_proud_m` = 0.045, so
+        # the fitting stood 55 mm off the wall attached to nothing. The
+        # envelope now starts at the plate SUBSTRATE (x = 0), so the can is
+        # mounted rather than levitating, and the outer face stays at 0.170 --
+        # unchanged, because `collision.corridor_profile` measures the clear
+        # half width by ray casting this geometry and a fitting that grew into
+        # the corridor would narrow the lane with no assertion to say so.
+        n = max(1, int(length / (plate_l * 3.0)))
+        for i in range(n):
+            lz = length * (i + 0.5) / n
+            _merge(verts, tris, *luminaire(
+                0.0, rail_proud + 0.07, dado_top - 0.16, dado_top - 0.04,
+                lz - 0.11, lz + 0.11, 'light_downlight', face="+x"))
     return verts, tris
 
 
@@ -2304,23 +2683,85 @@ def _selftest():
             ("portal_frame", portal_frame(PROVISIONAL["corridor_width_m"],
                                           PROVISIONAL["ceiling_height_m"]))):
         pv, pt = piece
-        opn, nm = boundary_edges(pv, pt)
+        # SOLIDS ONLY. `wall_assembly`'s plaque now carries lettering, and
+        # lettering is a single-sided decal -- see `DECAL_GROUPS`. Excluding it
+        # is not a loosening: the same loop asserts below that every glyph faces
+        # outward, which is the failure a decal can actually have and which
+        # closure was never testing for.
+        pt_solid = _solid_only(pt, tagged_spans(pt))
+        opn, nm = boundary_edges(pv, pt_solid)
         assert not opn, (f"{name} is an open surface: {len(opn)} edges used by "
                          f"one triangle, e.g. {opn[:2]}")
         assert not nm, (f"{name} has {len(nm)} non-manifold edges: {nm[:2]}")
     assert set(WALL_STATIONS) == set(WALL_STATION_KINDS) | {"", "plaque"}, \
         f"WALL_STATIONS holds a row nothing builds: {sorted(set(WALL_STATIONS))}"
     for k in WALL_STATION_KINDS:
+        reset_tags()
         sv, st = wall_station(0.0, 2.5, 3.05, k, PROVISIONAL)
-        so, sn = boundary_edges(sv, st)
+        st_solid = _solid_only(st, tagged_spans(st))
+        so, sn = boundary_edges(sv, st_solid)
         assert st and not so and not sn, \
             f"wall station {k!r}: {len(st)} tris, {len(so)} open, {len(sn)} n-m"
-        assert signed_volume(sv, st) > 0.0, f"wall station {k!r} is inside-out"
+        assert signed_volume(sv, st_solid) > 0.0, \
+            f"wall station {k!r} is inside-out"
     try:
         wall_station(0.0, 2.5, 3.05, "graffiti", PROVISIONAL)
         raise AssertionError("wall_station accepted an unknown fitting")
     except ValueError:
         pass
+
+    # --- THE DECAL HALF: A LETTER MUST FACE THE CORRIDOR --------------------
+    # `dressing._cyl` shipped "wound 0/24 outward -- an object you look straight
+    # through", and a back-facing glyph is the same defect with the same
+    # symptom: nothing renders, and a blank sign looks exactly like the blank
+    # sign this pass exists to remove. The map from `signage`'s frame into the
+    # wall's is a TRANSPOSITION, determinant -1, so it is one missing `flip`
+    # away from being wrong in every corridor on the station.
+    reset_tags()
+    _sv, _st = wall_station(0.0, 2.5, 3.05, "sign", PROVISIONAL)
+    _own = ["" for _ in _st]
+    for _n, _lo, _hi in tagged_spans(_st):
+        for _i in range(_lo, min(_hi, len(_st))):
+            _own[_i] = _n
+    _glyph = [t_ for i_, t_ in enumerate(_st) if _own[i_] in DECAL_GROUPS]
+    assert _glyph, "the corridor sign carries no lettering at all"
+
+    def _nx(tt):
+        out = []
+        for a, b, c in tt:
+            p0, p1, p2 = _sv[a], _sv[b], _sv[c]
+            u = [p1[i] - p0[i] for i in range(3)]
+            w = [p2[i] - p0[i] for i in range(3)]
+            out.append(u[1] * w[2] - u[2] * w[1])
+        return out
+
+    _fwd = _nx(_glyph)
+    assert all(n_ > 1e-12 for n_ in _fwd), (
+        f"{sum(1 for n_ in _fwd if n_ <= 1e-12)} of {len(_fwd)} glyph faces "
+        f"do not point into the corridor -- the sign is invisible")
+    # ...and the control, which is the whole reason the line above is worth
+    # writing: with the winding reversed it has to fire on every glyph.
+    assert not any(n_ > 1e-12 for n_ in _nx([(a, c, b) for a, b, c in _glyph])), \
+        "the glyph facing test passes on reversed winding -- the gate is inert"
+    # The lettering is a VIEW of the transcription, not a second copy of it.
+    # If somebody 'corrects' signage.ESTABLISHED the corridor's signs change
+    # with it, and if somebody edits the row here this fires.
+    import signage as _SG                                       # noqa: PLC0415
+    assert any("EARTH MEAN TIME" in " ".join(rowsig).upper()
+               for rowsig in CORRIDOR_NOTICES), "the EMT notice was deleted"
+    assert "Earth Mean Time" in _SG.ESTABLISHED["station_time"], \
+        ("CORRIDOR_NOTICES quotes signage.ESTABLISHED['station_time'] and the "
+         "two have drifted apart")
+    # Every notice must actually SET -- a line too long for the plate is
+    # silently shrunk by `fit_cap_m` down to `cap_min`, and a 8 mm capital on a
+    # sign read from 2 m is a grey smudge. `legible_at_m`'s own rule of thumb
+    # is 125x cap height for a reader who is not looking for it.
+    for _row in CORRIDOR_NOTICES:
+        _cap = _SG.fit_cap_m(list(_row), 0.60 * (1.0 - 2 * 0.06))
+        assert _cap * 125.0 >= 1.6, (
+            f"corridor notice {_row!r} sets at {_cap * 1000:.1f} mm caps, "
+            f"legible only to {_cap * 125:.2f} m -- shorter lines or a wider "
+            f"plate")
 
     # --- THE ASSEMBLED SECTION, WHICH IS THE QUESTION NOTHING ASKED ---------
     # The per-piece counts above are the small half. `docs/lift-4g.md` reported
@@ -2338,9 +2779,19 @@ def _selftest():
     for lbl, doors in (("plain", ()), ("wall door", ((7.0, 1),)),
                        ("bulkhead", ((14.0, 0),)),
                        ("both", ((7.0, 1), (14.0, 0)))):
+        reset_tags()
         sv, st = corridor_section(21.6, doors=doors, door_leaves=True)
+        # SOLIDS ONLY, on both sides of the comparison. Lettering contributes
+        # four open edges a glyph rectangle -- about 3,900 a section -- and a
+        # bar that large would swallow a real hole: a wall door DELETES a bay's
+        # sign station, so `base` would fall by more than a torn door corner
+        # would add and the assertion would pass on a hole. Excluding decals
+        # keeps the bar where session 4g left it.
+        st = _solid_only(st, tagged_spans(st))
         so, sn = boundary_edges(sv, st)
+        reset_tags()
         bv, bt = corridor_section(21.6)
+        bt = _solid_only(bt, tagged_spans(bt))
         base, _b = boundary_edges(bv, bt)
         assert len(so) <= len(base), (
             f"putting a {lbl} in a corridor section opened "

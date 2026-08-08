@@ -14896,3 +14896,90 @@ an impostor or LOD rung for the unloaded arcs rather than alone.
 level 0 today because `export_drum` bakes the drum at a uniform LOD (INV-1227). With rungs, the
 far half of the barrel could stay resident at a fraction of its triangles and neither cut would be
 needed.
+## INV-1255 — A corridor luminaire has a can, a bezel and a recessed lens
+
+**Authority 5.** `station/interior_kit.luminaire`, and the constants
+`LAMP_BEZEL_M = 0.026`, `LAMP_RECESS_M = 0.018`.
+
+**What is invented.** The FORM of a Babylon 5 corridor light fitting. Every luminaire in the
+kit was one call to `_slab` — an emissive box with no housing, no bezel and no mount. It is now
+a can (`light_housing`), a rim (`light_bezel`) and the lens set 18 mm behind the rim and inset
+26 mm from the fitting's outer edge.
+
+**What constrained it, and none of it is a free choice.**
+
+1. **The envelope is not invented.** Every fitting occupies exactly the box the bare slab
+   occupied, and the housing is built INWARD from it. `station/collision.py::corridor_profile`
+   measures the corridor's clear half width by ray casting this geometry and takes the narrowest
+   reading in the 0.072–1.822 m band, and `station/lift.py` sizes its car from the same number,
+   so a fitting that grew 20 mm into the corridor would silently narrow the station's corridors
+   and its lifts. The one exception is the downlight, whose envelope was extended BACKWARD to the
+   wall substrate at x = 0: the old slab ran x 0.100–0.170 against a plate face at 0.045, so it
+   was floating 55 mm off the wall attached to nothing. Its outer face is unchanged.
+2. **The lens area is preserved.** `light_pilaster_strip` keeps all seven cells and the same
+   0.68 fill fraction (`luminaire(segments=7)`), and the lens triangle counts per corridor
+   section are unchanged at 1,176 / 132 / 84. `materials.light_pilaster_strip` and
+   `light_portal_head` carry emission energies SOLVED against an engine frame — 0.23 and 0.51,
+   chosen because 6.0 and 5.0 blew 4.64% of the frame where the show's own corridor blows 0.000%
+   — and changing the emitting area would have invalidated both without re-rendering.
+3. **26 mm and 18 mm.** The rim is set so the smallest fitting the kit builds still reads: the
+   pilaster cell is 75 mm across, and `luminaire` clamps the rim to a quarter of the smaller
+   cross-span, giving 10.5 mm there. 18 mm of recess is what makes the rim cast onto the lens at
+   the grazing angle a corridor is seen at — the identical argument `signage.BOARD_INSET_M`
+   already makes for a backlit board ("the frame casts a shadow onto the face, and a decal
+   cannot").
+
+**What would overturn it.** Any Season 2–3 frame that resolves a corridor luminaire's body away
+from its own highlight. `reference/07-sector-grey/grey level 1.webp` does not: its downlight lens
+is about 25 × 40 px and clips at the core, so everything around it in that frame is bloom.
+
+**Cost, measured rather than estimated.** 60 triangles of body per fitting (12 can + 48 rim),
+against 12 for the bare slab it replaces. One corridor section of 21.6 m with a wall door and a
+bulkhead goes 7,112 → 10,794 triangles, of which 1,920 are lamp bodies and 754 are lettering
+(INV-1256). Over the fitting counts of the packaged deck
+`dist/Babylon5/station/generated/scene/deck/blue_0_0_z7440.obj` — 247 portal heads, 489
+downlights and 494 pilasters — that is roughly **+74,000 triangles a ring deck on 484,440,
+about +15%.** Gated by `python3 tools/fittings_gate.py`, whose `--legacy` control rebuilds the
+bare slabs and reports **0 of 32 lens bodies housed** against 116 of 116 after.
+
+## INV-1256 — What a corridor sign says when the corridor has no address
+
+**Authority 5, except one row which is authority 1.** `station/interior_kit.CORRIDOR_NOTICES`.
+
+**The finding first, because it is worth more than the invention.** The corridor kit's sign
+plates were BLANK. Measured on the packaged build,
+`dist/Babylon5/station/generated/scene/deck/blue_0_0_z7440.obj` carries `sign_frame` 1,968
+triangles and `sign_text` 1,968 — at twelve triangles a box that is **164 sign plates and 164
+lettering plates with not one word on any of them.** `station/signage.py` has carried a 5×7
+face, run-length merged glyph quads, an auto-fitter and `door_text(place)` since it was written,
+and `station/deck.py::door_sign` calls it at every doorway; the 77% of a ring deck between the
+doorways called none of it. This is the "finished machinery with no caller" pattern CLAUDE.md
+opens with, in its partial form: the machinery had a caller, and the largest surface that needed
+it was not one of them.
+
+**What is invented.** Eight two- and three-line notices. They are NOTICES rather than wayfinding,
+and that is forced rather than chosen: `interior.ring_arc` builds a corridor with
+`kit.corridor_section(seg_len, doors=…, start_portal=…)` and passes neither sector, ring, deck
+nor section index, so nothing in the kit can know where it is. A plate that guessed at a bay
+number would be a sign that is WRONG, which is worse than one that is blank. Each notice is true
+of any pressurised corridor on this station, names no place and points in no direction.
+
+**One row is not invented.** `STATION TIME IS / EARTH MEAN TIME` is
+`signage.ESTABLISHED["station_time"]`, which comes off the authority-1 customs board in
+`reference/01-station-exterior/welcome to babylon 5.webp`. `interior_kit._selftest` asserts the
+two agree, so the sign is a VIEW of that transcription rather than a second copy of it — the
+same discipline `signage._selftest` already applies to the board's two sic spellings.
+
+**What would overturn it, and it is one line rather than a frame.** Handing `corridor_section`
+the `(sector, ring, deck)` that `interior.ring_arc` already has in scope. These plates would then
+carry `signage.door_text`'s own `SECTOR RING-DECK BEARING` grammar — the same address every door
+plaque and every `directory.py` lookup uses — and the notices would move to the bays that do not
+carry wayfinding. That file was not this change's to edit, and a `wayfinding=` parameter nothing
+passes would have been the tenth instance of the defect above.
+
+**Sized against a reader, not against the plate.** `interior_kit._selftest` asserts every notice
+sets at a cap height whose `signage.legible_at_m` reach (125 × cap, the rule for a reader who is
+not looking for the sign) covers the 2.6 m corridor width. That assertion caught a real defect in
+this change: the eye-level plaque was handed the field height as a FRACTION rather than in metres
+and set at 16.1 mm caps, legible to 2.01 m. Nothing else could have caught it, because a sign with
+tiny lettering on it is still a sign with lettering on it.

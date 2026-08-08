@@ -1,4 +1,4 @@
-[gd_scene load_steps=226 format=3]
+[gd_scene load_steps=227 format=3]
 
 ; A room, from the inside.
 ;
@@ -259,6 +259,7 @@
 [ext_resource type="Material" path="res://materials/tram_saloon_wall.tres" id="m_tram_saloon_wall"]
 [ext_resource type="Material" path="res://materials/truss_lamp.tres" id="m_truss_lamp"]
 [ext_resource type="Material" path="res://materials/truss_steel.tres" id="m_truss_steel"]
+[ext_resource type="Material" path="res://materials/kit_lamp_housing.tres" id="m_kit_lamp_housing"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -695,6 +696,7 @@ material_rules = {
 "industrial_skirt": ExtResource("m_shell_wall_panel"),
 "industrial_wall": ExtResource("m_shell_wall_industrial"),
 "light_bar_backlight": ExtResource("m_sign_neon_venue"),
+"light_bezel": ExtResource("m_kit_lamp_housing"),
 "light_cage_lamp": ExtResource("m_light_ceiling_batten"),
 "light_ceiling_batten": ExtResource("m_light_ceiling_batten"),
 "light_dais_key": ExtResource("m_light_dais_key"),
@@ -702,6 +704,7 @@ material_rules = {
 "light_downlight": ExtResource("m_light_downlight"),
 "light_highbay": ExtResource("m_bay_floodlight"),
 "light_house_cove": ExtResource("m_light_house_cove"),
+"light_housing": ExtResource("m_kit_lamp_housing"),
 "light_indicator_red": ExtResource("m_light_indicator_red"),
 "light_market_pool": ExtResource("m_light_market_pool"),
 "light_pendant": ExtResource("m_bar_pendant_lamp"),

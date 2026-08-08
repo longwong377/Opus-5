@@ -1276,6 +1276,51 @@ def _build():
               "the right wall does not. It is the whole warm register of the "
               "station's interior in one object.")))
 
+    # ==================================================================
+    # THE LAMP BODY -- THE MATERIAL THAT EXISTED AS AN APOLOGY FIRST
+    # ==================================================================
+    # EVERY ROOM FITTING IN THIS FILE CARRIES AN EXTRAPOLATED "HOUSING ALBEDO",
+    # and the reason is written out at the head of the layer-4 block above:
+    # *"the geometry is the whole fitting, so an unlit lamp must not read as a
+    # hole"*. That sentence is a description of a GEOMETRY defect being paid for
+    # in MATERIAL. A luminaire in `interior_kit` was one `_slab` -- CRAFT 1 in
+    # `docs/AAA-STANDARD.md`, "a box primitive standing in for a named object"
+    # -- so the emissive material had to double as the lamp body, and the two
+    # jobs pull opposite ways: a lamp body wants a mid grey that reads as
+    # painted steel, and a lens wants a near-black unlit albedo so it does not
+    # look like a white tile with the power off.
+    #
+    # `interior_kit.luminaire` now builds a can and a bezel round every lens it
+    # emits, so the two jobs separate: `light_*` keeps the emission and this
+    # keeps the body. It binds NOTHING ELSE on purpose -- these two groups exist
+    # only where a fitting was built through that function, so the coverage of
+    # this material is exactly the coverage of the housing pass.
+    #
+    # THE VALUE IS EXTRAPOLATED AND SAYS SO. No held frame resolves a corridor
+    # lamp body: `grey level 1.webp`'s downlight lens is 25 x 40 px and clips at
+    # its core, so what surrounds it in that frame is bloom rather than housing.
+    # It is placed BETWEEN the two measured surfaces it sits against --
+    # `kit_wall_plate` (balanced V 0.295) and `kit_reveal` (0.140) -- at 0.190,
+    # because a fitting reads as an object bolted onto a wall when it is darker
+    # than the wall and lighter than the shadow gap beside it. Roughness 0.45
+    # and metallic 0.25 are `kit_rail_band`'s register moved one step matte:
+    # both are the same painted-and-handled fabricated metal. What would
+    # overturn it: any Season 2-3 frame that resolves a corridor luminaire's
+    # body away from its own highlight. See INV entries logged with this change.
+    a(Material(
+        "kit_lamp_housing", "Luminaire Body — the can and bezel a lens sits in",
+        albedo=(0.190, 0.186, 0.181), roughness=0.45, metallic=0.25,
+        specular=0.40,
+        binds=("light_housing", "light_bezel"), scenes=("interior",),
+        source="NOT A NEW MEASUREMENT, and stated as such. Bracketed by two materials in this file that ARE measured off grey level 1.webp: kit_wall_plate at balanced V 0.295 and kit_reveal at 0.140. The lamp body is set at 0.190, below the wall it is mounted on and above the reveal beside it.",
+        note=("The geometry this paints did not exist until interior_kit grew "
+              "`luminaire`. Before that every light in the corridor was its own "
+              "lens and the housing albedo was carried by the emissive material "
+              "-- see the layer-4 block above, which says so in as many words. "
+              "Deliberately narrow: two groups, both emitted only by that "
+              "function, so if the housing pass were reverted this material "
+              "would bind nothing and `unmatched_groups` would say so.")))
+
     # ---- layer 4: the fittings the 68 generated rooms are lit by ----------
     # `rooms.LIGHTS` maps each of the eleven archetypes onto MEASURED fittings
     # rather than inventing lamp colours per room type; these are the
