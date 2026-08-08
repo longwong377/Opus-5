@@ -222,7 +222,14 @@ def spawn_for_deck(dd, stem, scratch):
                          % (stem, dd))
     obj = os.path.join(scratch.path, stem + "_col.obj")
     g2o.write_obj(obj, g2o.read_glb(glb), rename=g2o.collision_group)
-    spawn, detail = boot.spawn_from_shell(obj)
+    # THE FLOOR RADIUS, WHERE THE DECK TABLE STATES ONE. `spawn_from_shell`
+    # takes the outermost radius as the floor, which is true of every ring deck
+    # and false in the habitat drum, where buildings stand ON the ground and
+    # reach 299.25 m against a floor at 278.3 m. Without this the drum raises
+    # "no floor triangle within 0.15 m of r=299.25" and gets no arrival sidecar.
+    _row = boot.deck_row_for(stem)
+    spawn, detail = boot.spawn_from_shell(
+        obj, _row.get("floor_r_m") if _row and _row.get("cells") == 0 else None)
     os.remove(obj)
     return spawn, detail
 

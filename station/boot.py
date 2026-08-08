@@ -205,16 +205,37 @@ def _obj_floor_tris(path):
     return tris
 
 
-def spawn_from_shell(col_obj):
+def spawn_from_shell(col_obj, floor_r_hint=None):
     """Where a body can stand, read off the collision shell.
 
     Returns (spawn, detail). Raises if the shell carries no floor group.
+
+    `floor_r_hint` OVERRIDES THE MAX-RADIUS RULE, AND THE DRUM IS WHY.
+
+    On a ring deck the outermost radius IS the floor: the shell is a closed
+    tube, down is outward, and nothing on the deck is further out than the deck
+    itself. That assumption is load-bearing for every one of the 70 ring decks
+    and it is exactly wrong in the habitat drum, which is an open barrel with
+    buildings, endcaps and a townscape standing ON its ground:
+
+        boot: no floor triangle within 0.15 m of r=299.25 in green_1_0_col.obj
+
+    299.25 m is the tallest thing in the Garden, not the Garden. The real floor
+    is `drum_ground.FLOOR_R` = 278.3 m, the radius at which the drum turns
+    1.000 g -- 21 m further in, so no triangle sits within the 0.15 m band of
+    the max and the derivation raises on a shell that is perfectly good.
+
+    So the caller may state the floor radius. It is a HINT AND NOT A
+    SUBSTITUTION: the answer is still the real floor triangle nearest the
+    target, measured off this mesh, never a copied number. What the hint
+    changes is which band of triangles counts as floor.
     """
     tris = _obj_floor_tris(col_obj)
     if not tris:
         raise SystemExit("boot: %s has no `%s` group -- is it a collision "
                          "shell?" % (col_obj, FLOOR_GROUP))
-    floor_r = max(math.hypot(p[0], p[1]) for t in tris for p in t)
+    floor_r = (float(floor_r_hint) if floor_r_hint
+               else max(math.hypot(p[0], p[1]) for t in tris for p in t))
 
     def centre(t):
         return tuple(sum(p[i] for p in t) / 3.0 for i in range(3))
@@ -715,6 +736,26 @@ def _crowd_ladder(stem, deck_dir=None):
     return {"crowd_ladder": ",".join(rungs), "crowd_glbs": ",".join(glbs)}
 
 
+def deck_row_for(stem):
+    """The cell_manifest deck_table row for `<sector>_<ring>_<deck>`, or {}.
+
+    Read by `build` so an open volume can state its floor radius to
+    `spawn_from_shell`. Keyed on the stem the deck files are named with rather
+    than on an index, because "the register's deck is a NAME, not an index" has
+    now cost this project three separate sessions.
+    """
+    try:
+        with open(os.path.join(ROOT, "station/generated/cell_manifest.json")) as f:
+            table = json.load(f).get("deck_table", [])
+    except (OSError, ValueError):
+        return {}
+    for r in table:
+        if "%s_%s_%s" % (r.get("sector"), r.get("ring_index"),
+                         r.get("deck_index")) == stem:
+            return r
+    return {}
+
+
 def build(stem=None, hour=None, deck_dir=None, single_deck=False):
     """The boot manifest for one deck, derived from what is on disk."""
     dd = deck_dir or preferred_deck_dir()
@@ -732,7 +773,12 @@ def build(stem=None, hour=None, deck_dir=None, single_deck=False):
                          % (stem, ", ".join(have)))
     # Both spellings, and the OBJ derived from the GLB if only the GLB exists.
     col_obj, col_glb = collision_shell(stem, dd)
-    spawn, detail = spawn_from_shell(col_obj)
+    # THE DECK TABLE KNOWS ITS OWN FLOOR RADIUS, so an open volume whose
+    # tallest feature is not its ground can still derive a spawn. Ring decks
+    # pass None and keep the max-radius rule they have always used.
+    _row = deck_row_for(stem)
+    spawn, detail = spawn_from_shell(
+        col_obj, _row.get("floor_r_m") if _row and _row.get("cells") == 0 else None)
     # WHICH PLACE THE SPAWN IS IN is read off the cast standing in it -- the
     # actors carry their own place key and their own position, so the nearest
     # one names the spot without a second table of room bounds. It is a LABEL
