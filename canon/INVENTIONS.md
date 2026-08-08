@@ -13900,3 +13900,108 @@ rungs and a walker occupies that tie for no frames. `<` was chosen because it is
 library and the whole snapping constraint; a crowd library baked at every rung of `lod_chain()`,
 which removes the constraint but not the two-derivations problem; or a corridor authored under
 8.33 m radius, which would turn this from latent into live.
+
+## INV-1233 — a `tread` token may resolve through a synonym; a pressable one may not
+
+**Authority 5 — extrapolation. Session 4t.**
+
+**What.** `station/interact.py` gains a third and last resolution pass, `tread_alias_for`,
+driven by a two-entry map `_TREAD_SYNONYM = {"path": ("paving",), "edge": ("coping",)}` and
+fenced to tokens whose verb is `tread`. It runs after exact matching and after `alias_for`, so
+a synonym can never take a group the register's own words would have matched.
+
+**Why the map exists at all.** `alias_for` catches a generator that used the register's words
+REARRANGED or EXTENDED — `customs_desk` for `customs_desk`, `bar_table` for `table`. It cannot
+catch a generator that used a DIFFERENT WORD for the same object. `garden_town` declares `path`
+and `pool_edge`; `station/garden.py:1499` builds *"Kerbed paths: one spine along the terrace"* as
+`garden_paving` and `station/garden.py:588` builds *"Reflecting pool: a coped basin with a water
+plane inside it"* as `garden_pool_coping`. Both objects are built, articulated, materialled and
+solid — `tools/export_drum.py::_dressing_solid` lists the coping as masonry a body cannot walk
+through. Nothing in this repository derives that paving is a path: not the mesh, not
+`rooms.PROP_KIND` (both tokens are kind `kerb`), not `interact._HEAD_VERB`. It is English, and
+the only honest options are to write it down or to rename the mesh.
+
+**Why not a rename, which is the obvious fix.** It is the more expensive one, measurably rather
+than aesthetically. `export_drum._dressing_solid` matches `garden_pool_coping` by exact string,
+so renaming that group silently removes the pool's edge from COLLISION — the same class of defect
+as dropping a group onto the fallback material, one layer deeper and equally invisible in a frame.
+`garden_paving` is bound by exact name in `station/materials.py` **and** in two GENERATED Godot
+artefacts, `godot/materials/material_rules.gen.txt` and `godot/scenes/drum.tscn`, which only
+`materials.py --export` rewrites. A rename therefore has to land in five files at once or it lands
+a surface on the fallback. It also inverts the dependency the module is built on: `alias_for`'s
+docstring says it reads the mesh precisely so a generator renaming a span cannot break it, and
+"rename the mesh until the resolver matches" is that rule run backwards.
+
+**Why the fence is `tread`, and why that is a derivation rather than a preference.** The risk of
+any synonym is a working prompt on the wrong object. `godot/scripts/interact.gd::_aim` opens with
+`if not it.pressable: continue`, and `tread` is the one verb outside `interact.PRESSABLE` — so a
+`tread` row can never become a prompt, a keypress or a reticle. The worst a wrong entry can do is
+mark the wrong ground as ground. The fence comes from the module's own verb table, so it moves if
+the table does.
+
+**And the fence is what refuses the third candidate.** `drum_tram` declares `tram_door` and the
+car emits `tram_port`, which reads like the same rearrangement. `station/tram.py:479` is explicit:
+*"Round ports along the dark valance"* — a 0.14 × 0.9 × 0.9 m vent on the UNDERSIDE of the car,
+below the waist rail, at `y_v = (level_y("waist") + level_y("under")) / 2`. `tram_door` is `open`
+and pressable, so it never reaches this pass. The same applies to `lift_door` and `spoke_portal`,
+which `station/interior.py:1039` builds as the pierced band where a guideway crosses a spoke.
+**The rule declines both, rather than a reviewer remembering to.**
+
+**What constrains the map.** `_selftest` asserts four things, each shown failing: every key is a
+segment of a token some place actually declares (a dead entry fails); every declared token
+carrying that segment is `tread` (adding a pressable `..._edge` token fails); deleting any entry
+loses a resolution (a redundant entry fails); and a synonym match still requires every OTHER
+segment, so `pool_edge` needs a group that is about a pool and `garden_bed_coping` is refused.
+The fence itself is an A/B with one variable — the same map shape and group shape, run once on
+`catwalk` (tread, matches) and once on `tram_door` (pressable, refused).
+
+**What would overturn it.** A canon frame or an owner ruling that `garden_paving` is not the
+Garden town's path, or that the reflecting pool's coping is not its edge. A `tread` verb that
+becomes pressable — the fence would then be load-bearing in the wrong direction and the entries
+would have to be re-argued. A generator rename, which the minimality assertion catches loudly. Or
+a mesh-derived rule for "the walkable ground of this place", which would replace the map entirely
+and is the better long-term answer.
+
+## INV-1234 — the drum's interactables must be resolved against the mesh the drum SHIPS
+
+**Authority 5 — extrapolation. Session 4t.**
+
+**What.** `tools/drum_interact.py` resolves the twelve drum locations' declared interactables
+against the mesh `tools/export_drum.py` actually writes, using `interact.resolve` — the same call
+`interact.sidecar` makes when `green_1_0_interact.json` is written. It exits non-zero while any
+declared interactable has no object behind it. Measured when written: **11 of 31**.
+
+**Why it is a separate gate from `interact.py --audit`, which reports 31 of 31 for the same
+twelve places.** Both numbers are correct and they are about different objects.
+`interact.resolve_place` builds through `deck.room_geometry`, which for a place with no bespoke
+builder falls back to `rooms.build` — a corridor-fed enclosed bay that emits `prop_bench`,
+`prop_path` and `prop_pool_edge`. That bay is real and resolves everything it declares. **The drum
+does not ship it.** `export_drum.py`'s own header states the omission and its reason: only
+`bespoke.NEAR_END` modules are composed, because *"dropping a sealed grey bay onto the Garden's
+lawn is worse than leaving the lawn"*. So the audit scored a room nobody can stand in.
+
+**The shape of the disagreement is the evidence, not the size of it.** Run side by side
+(`--vs-audit`), the two paths agree on exactly the two places built by the same code — `earharts`
+4/4 and `fresh_air` 3/3, the two `bespoke.NEAR_END` rooms — and disagree on all ten built
+differently. A number that fails 100% on one side of a line and 0% on the other is a structural
+fact rather than a list of jobs; this is CLAUDE.md's session-4d lesson arriving on a new subject.
+
+**Why in `tools/` beside the exporter.** A gate belongs to the thing that builds the artefact.
+It IMPORTS `export_drum`'s `place_boxes`, `_finder`, `attribute`, `PART_PLACE`, `uniform_dressing`,
+`drum_rooms` and `_merge` rather than restating them: a part added to the exporter and not to a
+private copy here would be a group the gate cannot see, which is precisely the blindness being
+fixed.
+
+**Three controls, all run.** Dropping the two composed rooms takes it 11 → 4, so it moves with the
+content rather than with the register. The shipped 280-patch ground at stride 1 (573,440 tri) and
+`export_scene.drum_parts`' eye-LOD ground (46,172 tri) resolve **identically**, which is what makes
+`--fast-ground` a legitimate shortcut and proves no `ground_*` group provides an interactable.
+And `--vs-audit` prints the other build path's answer beside its own, so the discrepancy cannot be
+rediscovered as a surprise.
+
+**What would overturn it.** A decision that the drum's open places SHOULD get composed rooms after
+all, which would make `deck.room_geometry` the right path and this gate redundant. A change to
+`export_drum`'s part list that this file's imports do not follow — the failure mode it is built to
+avoid, and the reason nothing here is a private copy. Or the register dropping the tokens the drum
+has no object for, which would close the gap by narrowing the claim rather than by building
+anything.
