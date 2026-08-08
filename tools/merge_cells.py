@@ -120,8 +120,40 @@ def merge(cells_dir=CELLS, out_path=OUT):
     biggest = max(sets, key=lambda sm: len(sm[1].get("cells", [])))
     by_deck_corr = {s: m.get("corridor", {}) for s, m in sets if m.get("corridor")}
 
+    # THE SOURCE BLOCK, WITHOUT WHICH THE PLAYER IS AT EARTH GRAVITY.
+    #
+    # A REGRESSION THIS FILE CAUSED, caught by launching the packaged build:
+    #
+    #   walk: gravity -- NO SPIN STATED -- this build names no deck, so the
+    #         body keeps mode=drum at 9.8100 m/s2 (the pre-4r field)
+    #
+    # against the 7.454 m/s2 (0.7602 g at r=211.55) the ring actually delivers.
+    # `walk.gd::_derive_omega2` has two ways to learn which deck it is on, and
+    # a STREAMED build can only use the first: `_stream.plan["source"]`. The
+    # second parses `<sector>_<ring>_<deck>` out of the collision filename, and
+    # a streamed build has no monolith path to parse. Every per-deck manifest
+    # carries `source`; the first cut of this merge did not, so the branch fell
+    # through to "names no deck" and the body fell at 9.81 down the wrong axis.
+    #
+    # ONE SOURCE FOR SEVENTY DECKS IS A REAL COMPROMISE, the same one the
+    # corridor block above makes and for the same reason: `plan` is global and
+    # gravity is per deck -- 0.7602 g at blue's r=211.55, different at grey's
+    # r=471.25. This takes the spawn deck's, so the deck a player starts on and
+    # spends most of its time on is exactly right and the others are wrong by
+    # the ratio of their radii.
+    #
+    # THE HONEST FIX IS AN ENGINE CHANGE, NOT A MANIFEST ONE, and it already
+    # has a precedent here: INV-451 made `ragdoll.gd` work its own gravity out
+    # from the body's world position rather than being told, precisely because
+    # a stated default that only one caller sets is an unset default.
+    # `_derive_omega2` runs once at setup and would need to re-derive as the
+    # player crosses rings. `source_by_deck` carries all 70 so that change needs
+    # no re-derivation; nothing reads it yet.
     man = {
         "cells": cells,
+        "source": biggest[1].get("source", {}),
+        "source_by_deck": {s: m.get("source", {})
+                           for s, m in sets if m.get("source")},
         "corridor": biggest[1].get("corridor", {}),
         "corridor_from": biggest[0],
         "corridor_by_deck": by_deck_corr,
