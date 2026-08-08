@@ -6,13 +6,12 @@
 # There are three things between a clone and a title screen, and this script
 # does all three so nobody has to know them:
 #
-#   1. THE ENGINE IS NOT A DOWNLOAD. The station is 8,047 m end to end and
-#      float32 jitters visibly at that scale, so the whole project is built
-#      against a Godot compiled with `precision=double`. Godot publishes no
-#      such binary -- every official build and every official export template
-#      is single precision. `vendor/godot/` therefore carries one, compiled by
-#      `tools/build_godot.sh`, for linux x86_64. On any other platform you
-#      compile it once; see PLATFORMS below.
+#   1. THE ENGINE. Stock Godot 4.4 runs this -- see the correction in PLAY.md;
+#      the double-precision claim this project carried for months was never
+#      tested and is wrong. A double build is vendored for linux x86_64 and is
+#      what this script uses because it is already here, not because it is
+#      needed. On any other platform: install Godot 4.4 normally and run
+#      `python tools/build_world.py`, then open `godot/` and press play.
 #
 #   2. THE WORLD IS GENERATED, NOT COMMITTED. 6.2 GB of meshes, collision,
 #      streaming cells, crowd bodies and audio come out of `station/*.py`.
@@ -51,22 +50,18 @@ echo "    $OS $ARCH"
 if [ "$OS" != "Linux" ] || [ "$ARCH" != "x86_64" ]; then
   cat <<PLATFORMS
 
-    The engine vendored here is linux x86_64 and this is not that.
+    The engine vendored here is linux x86_64 and this is not that -- but you
+    do NOT need to compile anything. Stock Godot 4.4 runs this project; the
+    double-precision requirement was never tested and is wrong (PLAY.md).
 
-    You need a Godot 4.4 built with precision=double for THIS platform.
-    Godot does not publish one -- the official downloads and the official
-    export templates are all single precision -- so it is compiled once:
+        1. install Godot 4.4 from godotengine.org  (the normal build)
+        2. pip install -r requirements.txt
+        3. python tools/build_world.py            (~45 min, once)
+        4. open the `godot/` folder in Godot and press play
 
-        git clone --depth 1 --branch 4.4-stable https://github.com/godotengine/godot.git
-        cd godot
-        scons platform=<macos|windows> target=editor precision=double
+    Or, if you would rather this script drove it:
 
-    Roughly an hour. `tools/build_godot.sh` is the linux version of exactly
-    that and is worth reading first; it is resumable and sets the same flags.
-
-    Then point this script at the result:
-
-        GODOT=/path/to/your/godot ./play.sh
+        GODOT=/path/to/godot ./play.sh
 
 PLATFORMS
   if [ -z "${GODOT:-}" ]; then exit 1; fi
