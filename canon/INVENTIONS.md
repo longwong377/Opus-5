@@ -13745,3 +13745,75 @@ because this task may not edit that file** — the fix is for `corridor_lod` to 
 **What would overturn it.** Runtime LOD swapping on `npc.gd` (which already holds each person's
 parts), which would make any bake-time choice provisional; or a crowd library baked at every rung
 of `lod_chain()`, which would remove the snapping constraint but not the domain error.
+
+## INV-1231 — where a sector's transit column stands in z, and why the angle does not move
+
+**Authority 5 (a placement rule derived from this project's own built geometry; the show
+establishes that Babylon 5's sectors have lift/transit cores, not where their axial station is).**
+`tools/column_site.py::site()`, consumed by `tools/export_station.py` and `tools/bake_columns.py`.
+
+A transit column is placed at a **pair**, `(angle, z)`. The angle is not invented here and does not
+move: `routes.transit_angle(sector)` is the angle lying inside the most of that sector's cluster
+arcs, and every deck spine is built to reach it — `export_station` passes it as `must_cover=`, so
+moving it would move the whole sector's circulation. **Only the z is chosen, and this entry is that
+choice.**
+
+**What it replaced, and why that was wrong.** `export_station.py` used
+`min(z for every cluster of the sector)` — the sector's lowest cluster. That is a defensible number
+about z and it knows nothing about the angle, so nothing anywhere asserted the sector had floor at
+the pair. Measured against the 817 baked deck cells, blue's column stood at 140°, z=6880 with the
+nearest blue geometry 80.1 m away in z; it joined **0 of its 18 landings**. Yellow joined 0 of 24.
+
+**What constrained the replacement.** Three things, and none of them is a free parameter:
+
+- **The candidate set** is `routes.clusters`' own z values for that sector — the same enumeration
+  `routes.column_z` walks and `export_station.work_list` builds from. A column standing where no
+  cluster does stands where the register never asked for floor, so there is nothing to search there.
+- **The score** is how many of the shaft's landings sit within **5.0 m** of a baked deck cell's
+  AABB. That radius is `bake_columns.NEAR_M`, imported rather than restated: a cell AABB bounds its
+  *content* and an `interior` portal is ~2.2 m wide, so a landing that opens onto a deck is a
+  doorway's worth from that deck's box. Move it and the verdict moves, visibly.
+- **The stack is recomputed at every candidate**, because `interior.decks_in_ring(z_m=)` returns a
+  different stack at different z — blue ring 0 has 6 decks at z=6880 and 10 at z=7120. A search
+  that fixed the stack and swept z would be scoring the wrong shaft at every candidate but one.
+
+Ordering is `(joined, joined/landings, -z)`: most decks served first, then fewest doors opening on
+nothing, then the lowest z so the answer is deterministic. Green separates the first two terms —
+z=4600 and z=4720 both join 8, and only the second leaves no dead door.
+
+**Measured, end to end through the real pipeline** (`spoke_way` → GLB → the Godot cell bake →
+`bake_columns.py --verify`), not predicted:
+
+| sector | angle | z was → is | landings on a deck | register decks served |
+|---|---|---|---|---|
+| blue | 140° | 6880 → **7520** | 0 of 18 → **21 of 21** | 0/16 → **15/16** |
+| green | 100° | 4000 → **4720** | 4 of 9 → **8 of 8** | 4/9 → **8/9** |
+| grey | 150° | 3600 (unchanged) | 23 of 23 | 19/19 |
+| red | 90° | 6600 (unchanged) | 12 of 58 | 8/17 |
+| yellow | 0° | 160 → **240** | 0 of 24 → **8 of 24** | 0/9 → **6/9** |
+
+Station-wide: **31 of 70 register decks could reach their sector's lift; 56 of 70 now can.**
+
+**What this rule cannot fix, stated so it is not read as covered.** Red's shaft crosses four rings
+and `ring_stack` opens a landing at every physical deck of the pressure hull — 58 of them — while
+the register carries only 17 (ring, deck) pairs in red. **41 of red's landings are doors at a level
+the station never builds geometry for, at any z.** Both z red can stand at were scored (6600 gives
+12 of 58, 6640 gives 5 of 47), so red is already at its best available placement. The remedy is
+`lift.lift_shaft`'s existing `landings=False` — *"a blind shaft, one that passes a deck without
+serving it, is a real thing a station has"* — applied per deck rather than per shaft, which is a
+change in `station/spoke_way.py`.
+
+**A divergence this entry does not close.** `routes.column_z` computes its own z for the
+circulation graph's lift edges, and it is not this function — it maximises how many register decks
+fall inside `decks_in_ring`'s stack, which never consults the transit angle. On blue it answers
+7120 where this answers 7520. Measured both ways, `routes.has_landing` totals **90 at `column_z`
+against 88 here**, while landings that actually meet floor go **39 → 72**; the weaker measure loses
+2 because it cannot see that blue's 23 "landings" at z=6880 were 80 m from any floor. The two
+should be one function — `routes.column_z` delegating to `site()` — and that file was not this
+task's to edit.
+
+**What would overturn it.** A z the register does not place a cluster at that nonetheless has
+floor at the transit angle (the candidate set is the assumption most likely to be too narrow); a
+change to `NEAR_M`; per-deck landings in `spoke_way`, which would change what "joined" is worth by
+removing the dead doors from the denominator; or a canon frame establishing where a sector's
+transit core actually sits along the axis, which would replace the whole derivation with a fact.

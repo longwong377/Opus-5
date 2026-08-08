@@ -83,24 +83,35 @@ way is provisional and the next bake's `--gate` says so.
 WHAT THIS DOES NOT FIX, MEASURED
 ===========================================================================
 
-**Red's shaft opens 41 doors onto deck levels the station never builds.** Red's
-column crosses four rings and `ring_stack` returns 58 landings — one at every
-physical deck of the pressure hull. `routes.clusters` carries only 17 (ring,
-deck) pairs in red, because only 17 of those levels hold a location. So 41 of
-the 58 landings are doors at a level with no content behind them, at ANY z, and
-no placement can change that. Decomposed by `--report --landings red`:
+**Red's shaft opens 41 doors onto deck levels the station never builds, and no
+z can close them.** Red's column crosses four rings and `ring_stack` returns 58
+landings — one at every physical deck of the pressure hull. `routes.clusters`
+carries only 17 (ring, deck) pairs in red, because only 17 of those levels hold
+a location, and `export_station.work_list` builds a deck only where the
+register carries one. So 41 of the 58 landings are doors at a level with no
+geometry behind them at ANY z. Decomposed by `--report --landings red`:
 
     12 joined, 37 at a (ring, deck) the register does not carry,
      9 at a (ring, deck) that IS built and still missed
 
-That second class is this file's defect and moves with the z. The first is
-`station/spoke_way.py`'s: `lift.lift_shaft` already takes `landings=False` and
-its docstring says why — *"a blind shaft, one that passes a deck without
-serving it, is a real thing a station has"* — and `spoke_way` passes landings
-for every deck in the stack regardless. Closing it means opening a landing only
-where the register carries a deck, which is a change in `station/spoke_way.py`.
+Only that second class is this file's defect, and both z red can stand at were
+measured: 6600 gives 12 of 58 and 6640 gives 5 of 47, so **red is already at
+its best available placement and does not move.** The first class belongs to
+`station/spoke_way.py`: `lift.lift_shaft` already takes `landings=False` and
+its own docstring says why — *"a blind shaft, one that passes a deck without
+serving it, is a real thing a station has"* — and `spoke_way` opens a landing
+at every deck in the stack regardless. Closing it means passing `landings` per
+deck rather than per shaft, which is a change in that file, not this one.
 
-`--report` prints that count for every sector so it cannot be quietly inherited.
+**SO THE REPORT CARRIES TWO NUMBERS AND THE SECOND IS THE HONEST ONE.**
+`joined` is geometric — how many landings meet floor. `register` is how many of
+the sector's own (ring, deck) pairs have a landing on them, which is the
+question a resident of that deck actually asks. Across the station:
+
+    register decks that can reach their sector's lift:  31 of 70  ->  56 of 70
+
+The 14 still unserved are red's 9 and green's and yellow's remainders, and they
+are enumerated per sector by `--report` so they cannot be quietly inherited.
 """
 
 import argparse
@@ -233,16 +244,32 @@ def site(schema, profile, nodes, sector, rings=None, boxes=None,
     dead doors they leave: green joins 8 either way and z=4720 leaves none
     while z=4600 leaves one. Lowest z last, so the answer is deterministic.
     """
+    import interior as IT                                        # noqa: PLC0415
     import routes as RT                                          # noqa: PLC0415
     import spoke_way as SW                                       # noqa: PLC0415
 
     if rings is None:
         rings = sorted({k[1] for k in nodes if k[0] == sector})
     angle = RT.transit_angle(sector, nodes)
+    # A GAZETTEER DECK NUMBER IS A NAME, NOT AN INDEX, and the first version of
+    # this function compared one to the other. `routes.clusters`' key carries
+    # the register's deck LABEL -- Grey names 24, 26, 30 … 80 on a ring that
+    # has 23 decks, and Yellow reaches 30 with 7 -- while `ring_stack` hands
+    # back `ring_deck_index`, a position in the built stack.
+    # `interior.deck_index_for` is the one translation both build paths already
+    # go through (`deck.deck_index` delegates to it), so it is used here rather
+    # than a fourth reading of the same table. Where the two coincide (Blue,
+    # Red, Green ring 0) the old code was accidentally right, which is exactly
+    # why it read as plausible on the sector it was developed against.
     reg = collections.defaultdict(set)
     for k in nodes:
-        if k[0] == sector:
-            reg[k[1]].add(k[2])
+        if k[0] != sector:
+            continue
+        try:
+            reg[k[1]].add(IT.deck_index_for(schema, profile, sector, k[1],
+                                            k[2]))
+        except (ValueError, KeyError, IndexError):
+            pass
 
     def _stack(z):
         try:
@@ -258,10 +285,15 @@ def site(schema, profile, nodes, sector, rings=None, boxes=None,
         # carry is a shaft passing an unbuilt level; one that misses at a deck
         # the register DOES carry is this file's defect.
         dead_unbuilt = dead_built = 0
+        served = set()
         for d, (_r, gap, _who) in zip(st, per):
+            pair = (d["ring_index"], d["ring_deck_index"])
+            carried = d["ring_deck_index"] in reg.get(d["ring_index"], ())
             if gap <= near_m:
+                if carried:
+                    served.add(pair)
                 continue
-            if d["ring_deck_index"] in reg.get(d["ring_index"], ()):
+            if carried:
                 dead_built += 1
             else:
                 dead_unbuilt += 1
@@ -269,6 +301,13 @@ def site(schema, profile, nodes, sector, rings=None, boxes=None,
             "sector": sector, "rings": list(rings), "angle_deg": angle,
             "z_m": float(z), "landings": len(st), "joined": joined,
             "dead_unbuilt": dead_unbuilt, "dead_built": dead_built,
+            # THE NUMBER A RESIDENT CARES ABOUT, and it is not `joined`. A
+            # landing can meet a deck cell at a level the register carries no
+            # location on -- that is floor, but nobody lives there. This counts
+            # the register's own (ring, deck) pairs that have a landing on
+            # them, which is "how many of this sector's decks can reach the
+            # lift". `joined` is the geometric question; this is the useful one.
+            "served_register": len(served),
             "in_register": sum(len(v) for v in reg.values()),
             "nearest_m": min((g for _r, g, _w in per), default=float("inf")),
             "worst_m": max((g for _r, g, _w in per), default=float("inf")),
@@ -365,19 +404,24 @@ def print_report(rows, near_m=NEAR_M, boxes_n=0, landings_for=()):
     print("\n  WHERE THE FIVE TRANSIT COLUMNS STAND — %d baked deck cells to "
           "measure against,\n  a landing counts as joined within %.1f m\n"
           % (boxes_n, near_m))
-    print("    %-7s %9s %8s %6s %7s   %-26s %s"
-          % ("sector", "angle", "z", "land", "joined", "dead doors", "verdict"))
+    print("    %-7s %9s %8s %6s %7s %9s  %-24s %s"
+          % ("sector", "angle", "z", "land", "joined", "register",
+             "dead doors", "verdict"))
     for r in rows:
-        print("    %-7s %9.2f %8.0f %6d %7s   %-26s %s"
+        print("    %-7s %9.2f %8.0f %6d %7s %9s  %-24s %s"
               % (r["sector"], r["angle_deg"], r["z_m"], r["landings"],
                  "%d" % r["joined"],
+                 "%d/%d" % (r["served_register"], r["in_register"]),
                  "%d unbuilt + %d built" % (r["dead_unbuilt"],
                                             r["dead_built"]),
                  "CONNECTS" if r["joined"] else "JOINS NOTHING"))
+    print("\n    'register' is how many of the sector's OWN (ring, deck) pairs "
+          "have a landing on them —\n    the question a resident asks. "
+          "'joined' is the geometric one.\n")
     for r in rows:
         print("      %-7s %s" % (r["sector"], r["source"]))
         print("      %-7s nearest landing %.2f m, worst %.2f m; register "
-              "carries %d (ring, deck) pairs of %d in the shaft"
+              "carries %d (ring, deck) pairs, the shaft has %d landings"
               % ("", r["nearest_m"], r["worst_m"], r["in_register"],
                  r["landings"]))
         if r["candidates_tried"]:
@@ -510,6 +554,35 @@ def _selftest():
     check("...and it is not uniformly zero, which is what an empty table gives",
           any(solo[k]["joined"] > 0 for k in solo),
           "grey %d, red %d" % (solo["grey"]["joined"], solo["red"]["joined"]))
+    # A GAZETTEER DECK NUMBER IS NOT A STACK INDEX, and the (A)/(B) split
+    # compared one to the other until this row was written. It must be checked
+    # on a sector where the two DIFFER, or it passes on the coincidence that
+    # makes Blue and Red right: Grey names decks 24…80 on a ring of 23.
+    moved = []
+    for sec in sorted(new):
+        for ring in sorted({k[1] for k in nodes if k[0] == sec}):
+            labs = {k[2] for k in nodes if k[0] == sec and k[1] == ring}
+            idxs = set()
+            for lb in labs:
+                try:
+                    idxs.add(it.deck_index_for(schema, profile, sec, ring, lb))
+                except (ValueError, KeyError, IndexError):
+                    pass
+            if labs != idxs and idxs:
+                moved.append("%s/%d" % (sec, ring))
+    check("some ring's deck LABELS differ from its stack INDICES, so the "
+          "translation is exercised", bool(moved), ", ".join(moved))
+    check("no sector claims to serve more register decks than it carries",
+          all(new[k]["served_register"] <= new[k]["in_register"] for k in new),
+          ", ".join("%s %d/%d" % (k, new[k]["served_register"],
+                                  new[k]["in_register"]) for k in sorted(new)))
+    check("more register decks reach their lift after the move than before",
+          sum(new[k]["served_register"] for k in new)
+          > sum(old[k]["served_register"] for k in old),
+          "%d -> %d of %d"
+          % (sum(old[k]["served_register"] for k in old),
+             sum(new[k]["served_register"] for k in new),
+             sum(new[k]["in_register"] for k in new)))
     # AND THE MEASUREMENT MUST BE ABLE TO SAY NO. A gate scored against an
     # empty floor table has to fail every column, or it is not measuring.
     empty = sites(schema, profile, nodes, cells_dir=os.devnull + "_nope")
