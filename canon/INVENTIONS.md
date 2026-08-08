@@ -14391,3 +14391,91 @@ headroom they did not know about.
 
 **What would overturn it.** A polyline generator that deliberately wants a run to wrap the drum
 more than once — none exists, and `unwrap_deg` would have to be given an explicit turn count.
+
+## INV-1246 — the drum is dressed from the interior table, and the interior table did not know the drum existed
+
+Session 4t. Not a dimension: a **rule about which material table reaches which geometry**, and it
+is recorded here because it reverses a partition that has been treated as structural since 3k.
+
+**What `Material.scenes` meant, and what it stopped meaning.** The library tags each material with
+the scene(s) it belongs to, and `station/materials.py --export` writes one `material_rules` block
+per `.tscn` from those tags. That was exactly right while a scene was a **shot**: three camera
+rigs, one table each, and the exterior shot genuinely cannot contain a bar table.
+
+**The shipped build is not a shot.** `godot/scripts/dress_scene.gd` holds one constant --
+`INTERIOR_SCENE := "res://scenes/interior.tscn"` -- and dresses **every streamed cell** from that
+one table. `stream.gd`, `walk.gd`, `main.gd` and `arrival.gd` all route through it. The only reader
+of `drum.tscn` anywhere in the project is `tools/export_scene.py --shot drum`. So `interior.tscn`
+quietly stopped being the interior shot's table and became **the station's table**, and nothing in
+the library said so.
+
+**Measured on the one cell where it bites.** `green_1_0` -- Green ring 1 deck 0, the habitat drum
+-- is the only cell on the station that mixes two material vocabularies. It carries the ground, the
+townscape, the core tube, the end caps, the trusses and the trams from the drum's own generators,
+and it carries `earharts` and `fresh_air`, two `hospitality` bar interiors standing on the drum
+floor. Its glTF holds **329 distinct node names over 177 distinct group tails**:
+
+| against the exported tables | tails |
+|---|---|
+| matched `drum` only | **124** |
+| matched `interior` only | **49** |
+| matched **both** | **4** -- and all four are substring accidents, below |
+| matched neither | **0** |
+
+Dressed from `interior.tscn`, which is what actually happens, **231 of the cell's 329 mesh
+instances matched no rule**. `interior.tscn` declares no `fallback_material`, so `_material_for`
+returns null, `dress_scene.bind` skips the mesh, and the glTF's own default survives: **white
+plastic**, across the whole drum floor, both end caps, the core tube, the trusses, the trams and
+the entire townscape.
+
+**The four overlaps were not a design.** `garden_pilaster` matched the corridor kit's `"pilaster"`
+and painted a garden colonnade in corridor steel; `tram_in_reveal` and `tram_in_skirt` matched
+`"reveal"` and `"skirt"` and painted a tram saloon in corridor trim. Longest-fragment-wins fixes
+all three as a side effect of widening, because the drum's own fragments are longer.
+
+**The extrapolation, and it is the asymmetry.** `materials.SCENE_VOLUME` declares which scene tags
+reach a scene's exported table. `interior` gains `drum`; **`drum` does not gain `interior`**, and
+that is a judgement rather than an oversight:
+
+1. **Substring matching means a bigger table is a weaker gate.** Pouring the interior's 561
+   fragments into `drum.tscn` would let a genuinely broken drum bind pass by colliding with an
+   interior fragment -- which is precisely how `garden_pilaster` "passed" for as long as it did.
+2. **The drum direction is already protected and the interior one was not.** `--shot drum` is
+   gated by `export_scene.check_material_coverage` against `drum_parts`' **real emitted group
+   list**, which is a tighter test than any vocabulary. If the shot ever grows the bars it fails
+   loudly on the real names. Nothing at all protected the shipped table, because the shipped table
+   has no group list until a cell is built and building one is minutes of CPU.
+
+The two scenes are not symmetric because **one is a shot and the other is the station**.
+
+**No material is duplicated and no `scenes=` tuple is edited.** `godot_rules()` and `resolve()`
+both derive from `SCENE_VOLUME`, so the Python resolver and `render_shot.gd::_material_for` cannot
+disagree -- which `resolve`'s own docstring has forbidden since it was written.
+
+**The gate, and why the existing one could not fail.** `materials._selftest` already asked "does
+the EXPORTED rules table cover every known group" -- against `all_rules`, the **union of all three
+scenes**. A group bound in `drum` and absent from `interior` is COVERED under that question, so the
+check went green throughout. `materials.hull_vocabulary()` now derives every group name an in-hull
+generator can emit -- `dressing.MACHINES`, `rooms.FIXTURES`/`PLACE_FIXTURES`/`PROPS`, the generator
+source scan and `GROUP_ALIASES` -- with no build and no artefact, and
+`export_scene.check_shipped_table()` asks it **per scene** from `build()`, beside
+`check_material_coverage`, so every shot passes through it.
+
+**Measured, with a one-variable control.** 338 derived names: **123 unmatched before, 0 after**,
+and the vocabulary is asserted identical across the two halves so the A/B cannot be vacuous. Asked
+of the engine instead of of Python -- Godot loading `interior.tscn` and calling the scene's own
+`_material_for` on the drum cell's 329 real node names -- it is **98/329 before and 329/329
+after**, with 561 -> 685 rules in the block.
+
+**The source scan gained the `garden` and `spoke` prefixes.** 46 of the 123 were `garden_*` -- the
+whole townscape, every tree, every hedge -- and `_scan_generator_groups` could not see one of them,
+because its prefix list was written when "the drum" meant ground, end caps, trusses, core and
+trams. `bar` was deliberately left out: those groups are already covered by the
+`dress_`/`fix_`/`prop_` families, and the prefix would only pull in `bar_counter` and `bar_unnamed`,
+an interact token and an economy key. Four names joined `NOT_GROUPS` for the same reason.
+
+**What would overturn it.** Either half of the asymmetry, and each has a different trigger. If
+`dress_scene.gd` ever learns to pick a table per cell -- or per group -- then `interior` need not
+carry the drum and `SCENE_VOLUME` collapses back to the identity. If `drum_parts` ever builds the
+bar interiors, `check_material_coverage` will fail on the real names and `drum` must gain
+`interior` at that point, accepting the weaker gate knowingly.
