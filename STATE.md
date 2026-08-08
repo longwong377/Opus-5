@@ -130,7 +130,53 @@ source tree right?*** Here it was not, for nine sessions.
   took **5**. Both numbers matter, because the reason this was never done was believed to be cost
   and it is not.
 
-- **BUILT IS NOT REACHABLE, AND THIS IS NOW THE TOP OPEN ITEM.** All 70 decks, 70 cell sets,
+- ~~**BUILT IS NOT REACHABLE**~~ — **CLOSED. `tools/reach_gate.py` reads 129/129.**
+
+  ```
+  reach gate -- 129 places in the register, manifest carries 76 deck(s)
+    LOADABLE            129   in a cell the shipped manifest streams
+    cell set not merged   0
+    no cell at all        0
+  ```
+
+  Three things closed it, in order. `tools/merge_cells.py` merged the 70 per-deck cell sets into
+  one manifest (**816 cells**) — sufficient with no engine change, because every deck was already
+  in one world frame, `configure()` reads a flat list resolved against one directory, and the
+  streamer loads by DISTANCE and never asks which deck a cell is. Then the habitat drum was built
+  (`tools/export_drum.py`, 1.54 M tri, worst ground slope 16.83° with 0 of 573,440 triangles over
+  Godot's 45° limit) and given the gravity row it had always lacked. Then the five transit columns
+  were cut into cells. **824 cells over 76 sets.**
+
+  **The 12 that were missing were one cause, not twelve jobs** — every one was `green/1/0`, and
+  `build_cell_manifest` emits no `deck_table` row for a ring whose kind is not `deck_stack`, so
+  `stream.gd::bake()` refused the drum outright.
+
+- **RING-TO-RING TRAVEL WORKS IN 3 SECTORS OF 5, AND THAT IS THE TOP OPEN ITEM.**
+  `tools/bake_columns.py --verify`:
+
+  | column | landings on a deck | |
+  |---|---|---|
+  | grey | 23 of 23 | CONNECTS (gap 0.00 m) |
+  | red | **12 of 58** | CONNECTS, but 46 doors open on nothing |
+  | green | — | CONNECTS (gap 0.00 m) — *and it did not until the drum existed* |
+  | blue | 0 of 18 | **STANDS CLEAR — 78.15 m** |
+  | yellow | 0 of 24 | **STANDS CLEAR — 18.00 m** |
+
+  `export_station.py` places a column at `(RT.transit_angle(sector), min(z_cluster))` — **two
+  independently computed numbers, with nothing asserting the sector has floor at that pair.**
+  Blue's column sits at 140°, z=6880; the nearest blue geometry is 79.8 m away at z=6960.
+
+  *Green is the instructive one: its column was reported as joining nothing, and building the drum
+  fixed it without anyone touching the column. A connectivity failure can be a missing neighbour
+  rather than a misplaced thing.*
+
+- **AND THE DISTINCTION THAT MATTERS MORE THAN EITHER NUMBER: LOADABLE IS NOT WALKABLE.**
+  `reach_gate` says every place is in a cell the build streams. It does **not** say a floor joins
+  them, and it says so in its own output. That is `--axial-gate`'s question and it has been run on
+  one deck. **Do not let 129/129 be quoted as "the station is walkable".** Collapsing those two is
+  exactly how "128 of 128" came to mean nothing.
+
+- **(HISTORY — the entry this replaced)** Built is not reachable: All 70 decks, 70 cell sets,
   1,596 cells and 5 transit columns are **in the package** — verified by listing the staged
   artefact, not by trusting the builder. **The game loads one of them.** `boot.json` names
   `blue_0_0` and mentions no column and no other deck, so 113 of the register's 129 places are
