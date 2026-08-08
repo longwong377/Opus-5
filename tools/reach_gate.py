@@ -90,15 +90,31 @@ def manifest_decks(path=MERGED):
     return stems
 
 
-def run(cells_dir=CELLS, manifest=MERGED, verbose=False):
+def run(cells_dir=CELLS, manifest=MERGED, verbose=False, allow_unbuilt=False):
     reg = register()
     cover = places_in_cells(cells_dir)
     stems = manifest_decks(manifest)
 
     if stems is None:
+        # CANNOT RUN IS NOT THE SAME AS FAILED, and conflating them would make
+        # this gate lie in the one place it is most likely to be read.
+        # `station/generated/` is gitignored -- 4.5 GB of derived geometry --
+        # so on a fresh CI checkout there is no manifest and no cells. A gate
+        # that returns 1 there reports "no place is reachable" on a tree where
+        # the question has not been asked, which is the opposite of the truth
+        # and trains everyone to ignore it. `station/boot.py --allow-unbaked`
+        # already carries this distinction for the same reason.
+        #
+        # A run that HAPPENS and finds places unreachable still returns 1 under
+        # every flag. Only the never-ran state is forgiven, and only when the
+        # caller asked for it.
         print("reach: NO MERGED MANIFEST at %s"
               % os.path.relpath(manifest, ROOT))
         print("       run: python3 tools/merge_cells.py")
+        if allow_unbuilt:
+            print("reach: --allow-unbuilt -- exiting 0 on a gate that NEVER"
+                  " RAN. This is NOT a pass and the line above says so.")
+            return 0
         return 1
 
     loadable, sidecar_only, absent = [], [], []
@@ -152,8 +168,12 @@ def main():
     ap.add_argument("--cells", default=CELLS)
     ap.add_argument("--manifest", default=MERGED)
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--allow-unbuilt", action="store_true",
+                    help="exit 0 when there is NO manifest to read -- for CI, "
+                         "where station/generated/ is gitignored. A run that "
+                         "happens and finds places unreachable still exits 1.")
     a = ap.parse_args()
-    return run(a.cells, a.manifest, a.verbose)
+    return run(a.cells, a.manifest, a.verbose, a.allow_unbuilt)
 
 
 if __name__ == "__main__":

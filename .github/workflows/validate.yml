@@ -1184,6 +1184,40 @@ jobs:
       # records its own outcome, and this step fails the job if any of
       # them failed -- so the build is exactly as red as before and the
       # other 34 answers are visible.
+      # =====================================================================
+      # THE WHOLE-STATION GATES WRITTEN IN SESSION 4t, AND WHY THEY ARE HERE.
+      #
+      # Six fixes landed this session and SIX ADVERSARIAL VERIFIERS all reported
+      # the same residual independently: the new gate has no CI caller. That is
+      # this project's signature defect wearing a different hat -- a gate nobody
+      # runs is machinery with no caller, and every one of these exists because
+      # something shipped broken while every EXISTING gate stayed green.
+      #
+      # TWO OF THEM TAKE AN --allow-* FLAG AND THE REASON IS NOT CONVENIENCE.
+      # `station/generated/` is gitignored (4.5 GB of derived geometry), so on a
+      # fresh CI checkout there are no cells. A coverage gate that returns 1 there
+      # reports "no place is reachable" on a tree where the question was never
+      # asked -- the opposite of the truth, which is worse than silence because it
+      # trains everyone to ignore the step. A run that HAPPENS and finds places
+      # unreachable still fails under every flag.
+      # =====================================================================
+      - name: Is every place in the register in a cell the build can load
+        id: sreach_gate
+        continue-on-error: true
+        run: python3 tools/reach_gate.py --allow-unbuilt
+
+      - name: Does every walker name a crowd library that was baked
+        id: slod_gate
+        continue-on-error: true
+        run: python3 station/populace.py --lod-gate
+
+      # Seconds, no bake, no GPU -- the verifier that broke the column guard
+      # specifically recommended this one for CI because it needs nothing built.
+      - name: Are the transit columns placed where the sector has floor
+        id: scolumn_site
+        continue-on-error: true
+        run: python3 tools/column_site.py --gate
+
       - name: Every gate ran -- did any of them fail?
         if: always()
         run: |
@@ -1212,6 +1246,12 @@ jobs:
             echo "FAILED: scommand_control"; fail=1; fi
           if [ "${{ steps.sinv_register.outcome }}" != "success" ]; then
             echo "FAILED: sinv_register"; fail=1; fi
+          if [ "${{ steps.sreach_gate.outcome }}" != "success" ]; then
+            echo "FAILED: sreach_gate -- a place the register names cannot be streamed"; fail=1; fi
+          if [ "${{ steps.slod_gate.outcome }}" != "success" ]; then
+            echo "FAILED: slod_gate -- a walker names a crowd library that was never baked"; fail=1; fi
+          if [ "${{ steps.scolumn_site.outcome }}" != "success" ]; then
+            echo "FAILED: scolumn_site -- a transit column stands where the sector has no floor"; fail=1; fi
           if [ "${{ steps.scirculation.outcome }}" != "success" ]; then
             echo "FAILED: scirculation"; fail=1; fi
           if [ "${{ steps.sperformance_budgets.outcome }}" != "success" ]; then
