@@ -151,6 +151,45 @@ source tree right?*** Here it was not, for nine sessions.
   `build_cell_manifest` emits no `deck_table` row for a ring whose kind is not `deck_stack`, so
   `stream.gd::bake()` refused the drum outright.
 
+### THE REBUILT ARTEFACT — ALL-GREEN, and the one number that is not
+
+`scratchpad/rebuild_all.sh` runs source → launched package in ten ordered steps. After the
+panel's findings and two fix rounds were integrated:
+
+```
+10/10 steps OK · 8/8 gates PASS · package DONE · launch exit 0
+stream: 907 cells, radius 98.9 m, budget 180,000 tri
+walk: gravity -- omega2=0.03523997, floor_g 0.7602 at r=211.55 m, period 33.470 s
+dialogue: 363 people can speak, of 363 in the cast
+MENUGATE ... fired=new_game world=Arrival player=true card=true
+           who=Michael_Chowdhury identicard_fields=9 verdict=PASS
+arrival: 8 of 11 steps are on this build      (WAS 0 of 11)
+```
+
+| | before | now |
+|---|---|---|
+| named places with floor under the body | **23 of 129** | **129 of 129** |
+| the streamer primes the cell the body is in | 170 of 787 | **785 of 787** |
+| interactables resolving | **0 of 419** | resolving (13 in the first room cell) |
+| arrival steps playable | **0 of 11** | **8 of 11** (3 honestly off-cluster) |
+| drum | 1 cell, 1,585,762 tri | **85 cells, worst 58,300, 0 over budget** |
+| residents with no name | 447 | **0** |
+| species with no name grammar | 7 of 14 | **0** |
+
+**THE REMAINING PERFORMANCE NUMBER, AND IT IS SYSTEMIC RATHER THAN A BUG.** 242 of 907 cells
+exceed the 60,000-triangle per-cell budget, worst **315,864 (5.3×)**, spread across **58 of 76
+decks** — `blue_0_0` 32 cells, `red_0_0` 20, `grey_0_75` 11. It is not one bad deck and no
+single cut fixes it: halving the band would roughly double the cell count and still leave the
+worst near 2.6×.
+
+*The drum is now the best-behaved part of the station* — 85 cells, 0 over — which is what says
+this is content density rather than a cutting defect.
+
+**AND NOTHING IN THIS CONTAINER CAN DECIDE IT.** There is no GPU, so whether 5.3× on one cell
+costs a frame on an RTX 4070 is unmeasurable here; `docs/AAA-STANDARD.md` says plainly what the
+rubric cannot judge. The honest options are a real LOD pass on room geometry, or **CAPPED with a
+written reason** under the standard's hard stop. That is an owner decision, not a gate's.
+
 ### THE FIX ROUND — six gaps closed, six adversarial verifiers, and what they caught
 
 **2 CONFIRMED, 4 PARTIAL, and every verifier proved the gate could fail.** The PARTIALs are the
