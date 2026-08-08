@@ -1,0 +1,147 @@
+# BUILD A WINDOWS COPY A PERSON CAN DOUBLE-CLICK.
+#
+# The owner is on Windows. Every build and every gate in this project has run on
+# Linux, in a container, and the one thing none of them ever checked was whether
+# the person who wanted to play it could start it. This workflow is that check,
+# and it is also the delivery: it produces a zip, and the zip is the game.
+#
+# WHY THIS EXISTS RATHER THAN A DOWNLOAD LINK FROM THE AGENT: the build is ~6.5
+# GB and the agent's container is ephemeral with a 30 MB attachment ceiling and
+# no release-upload tool. GitHub's runner has none of those limits, and this
+# repository is public, so Actions minutes and artifact storage are free.
+#
+# WHAT MAKES IT POSSIBLE AT ALL: stock export templates. Until session 4t this
+# project believed it required a Godot compiled with precision=double, which has
+# no published export template for any platform -- so no Windows build could
+# exist. That belief was never tested and is wrong (see PLAY.md); stock Godot
+# 4.4 runs this project, so the stock Windows template exports it.
+#
+# Run it from the Actions tab -> "windows build" -> Run workflow. About 90
+# minutes, nearly all of it generating the world.
+name: windows build
+
+# TWO TRIGGERS AND THE REASON FOR BOTH. `workflow_dispatch` alone is not enough:
+# GitHub only offers the "Run workflow" button for workflows that exist on the
+# DEFAULT branch, and this one lives on a feature branch. A `push` trigger has no
+# such restriction, so it is scoped to this branch and to changes in this file --
+# which starts a build when the recipe changes and not on every unrelated commit.
+on:
+  push:
+    branches: [claude/aaa-game-development-j6y2ml]
+    paths:
+      - ".github/workflows/windows-build.yml"
+      - "tools/build_world.py"
+      - "godot/export_presets.cfg"
+  workflow_dispatch:
+    inputs:
+      skip_gates:
+        description: "skip the eight verification gates (faster)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: "4.4-stable"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 350
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: python dependencies
+        run: pip install -r requirements.txt
+
+      # The runner has ~14 GB free and the world is ~6.2 GB, so it fits, but not
+      # with room to be careless. Report it rather than discover it at 80%.
+      - name: disk before
+        shell: pwsh
+        run: Get-PSDrive C | Select-Object Used, Free
+
+      - name: fetch godot and the stock export templates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $v = "${{ env.GODOT_VERSION }}"
+          $base = "https://github.com/godotengine/godot/releases/download/$v"
+
+          # The editor binary, which is what performs a headless export.
+          Invoke-WebRequest "$base/Godot_v${v}_win64.exe.zip" -OutFile godot.zip
+          Expand-Archive godot.zip -DestinationPath godot-bin
+          $exe = (Get-ChildItem godot-bin -Filter *.exe | Select-Object -First 1).FullName
+          echo "GODOT=$exe" >> $env:GITHUB_ENV
+
+          # Templates go in a version-named folder Godot looks up by itself.
+          # `.tpz` is a zip whose top-level folder is always `templates`.
+          Invoke-WebRequest "$base/Godot_v${v}_export_templates.tpz" -OutFile tpl.zip
+          Expand-Archive tpl.zip -DestinationPath tpl
+          $dest = "$env:APPDATA\Godot\export_templates\$($v -replace '-', '.')"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item "tpl\templates\*" $dest -Recurse -Force
+          Remove-Item godot.zip, tpl.zip -Force
+          & $exe --version
+
+      # THE LONG STEP. ~45 min here, and it is the same driver a person runs
+      # locally -- if this passes, PLAY.md's step 3 works on Windows, which no
+      # Linux gate in this repository could ever have told us.
+      - name: build the world
+        run: python tools/build_world.py ${{ inputs.skip_gates && '--skip-gates' || '' }}
+
+      - name: the world is actually there
+        run: python tools/build_world.py --check
+
+      # Godot needs one pass to import resources before it can export them;
+      # a cold project exports an empty pck without it.
+      - name: import resources
+        shell: pwsh
+        run: |
+          & $env:GODOT --headless --path godot --import
+          exit 0
+
+      - name: export the windows binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path dist/Babylon5-windows/game | Out-Null
+          & $env:GODOT --headless --path godot --export-release "Windows" `
+              ../dist/Babylon5-windows/game/Babylon5.exe
+          if (-not (Test-Path dist/Babylon5-windows/game/Babylon5.exe)) {
+            throw "no Babylon5.exe was produced"
+          }
+          Get-Item dist/Babylon5-windows/game/Babylon5.exe | Select-Object Length
+
+      # The world is read from disk at runtime and lives OUTSIDE res://, so it
+      # is staged beside the binary rather than packed into it. `main.gd::_root()`
+      # is globalize_path("res://") + "..", which resolves to the folder holding
+      # `game/` -- so this layout is the one the engine already expects.
+      - name: stage the world beside the binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $out = "dist/Babylon5-windows"
+          New-Item -ItemType Directory -Force -Path "$out/station" | Out-Null
+          Copy-Item station/generated "$out/station/generated" -Recurse -Force
+          Copy-Item PLAY.md "$out/PLAY.md" -Force
+          Copy-Item docs/windows-README.txt "$out/README.txt" -Force
+          Get-ChildItem $out
+
+      - name: disk after
+        shell: pwsh
+        run: Get-PSDrive C | Select-Object Used, Free
+
+      # One artifact, one download. `compression-level: 1` because the meshes are
+      # already the bulk and level 9 would spend twenty minutes to save little.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Babylon5-windows
+          path: dist/Babylon5-windows
+          compression-level: 1
+          retention-days: 30
