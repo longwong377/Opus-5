@@ -558,6 +558,29 @@ func _read_rows(path: String) -> Array:
 ## person twice in every report.
 var _actors: Array = []
 var _actors_occ: Array = []
+## WHICH DECK THE SIDECARS DESCRIBE, off their own file names. A sidecar is per
+## DECK -- `blue_0_0_crowd.json`, `blue_0_0_actors.json` -- while `cells_path` on
+## the shipped build is the MERGED manifest: 907 cells over 76 decks. So every
+## sidecar row this process holds belongs to exactly one of those decks, and a
+## row must never be bound into a cell of another one. See `_cell_is_ours`.
+##
+## Empty when no sidecar was named, or when their names do not agree on a deck.
+## Both cases disable the scoping rather than guessing, because a wrong deck name
+## here would silently empty the station -- the failure mode this file exists to
+## stop, not one to add.
+var _sidecar_deck := ""
+
+
+## The deck a sidecar path names, or "" -- `.../blue_0_0_crowd.json` -> blue_0_0.
+func _deck_of_sidecar(path: String) -> String:
+	if path == "":
+		return ""
+	var f := path.get_file()
+	for suffix in ["_crowd.json", "_actors.json", "_interact.json",
+			"_dialogue.json"]:
+		if f.ends_with(suffix):
+			return f.substr(0, f.length() - suffix.length())
+	return ""
 
 
 func _load_sidecars() -> void:
@@ -572,12 +595,92 @@ func _load_sidecars() -> void:
 			_actors.append(a)
 	_ix_rows = _read_rows(interact_path)
 	_crowd_rows = _read_rows(crowd_path)
+	_sidecar_deck = ""
+	for p in [crowd_path, actors_path, interact_path]:
+		var d := _deck_of_sidecar(String(p))
+		if d == "":
+			continue
+		if _sidecar_deck != "" and _sidecar_deck != d:
+			_sidecar_deck = ""
+			push_warning("walk: the sidecars name more than one deck -- "
+				+ "cross-deck scoping is OFF")
+			break
+		_sidecar_deck = d
 	if not _actors_occ.is_empty():
 		print("walk: cast of %d -- %d instanced occupant(s) with a timetable, "
 			% [all.size(), _actors_occ.size()]
 			+ "%d baked into the deck mesh" % _actors.size())
+	# SAY WHAT LOADED, ON EVERY RUN, INCLUDING WHEN NOTHING DID.
+	#
+	# THE LINE BELOW IS THE ONE THAT WAS MISSING AND IT COST A SESSION. A streamed
+	# launch printed `+wired <cell> -- doors now 0, 0 person(s), 0 walker(s),
+	# 0 interactable(s)` on every cell, and that zero has THREE different causes
+	# which the line could not tell apart: no sidecar was passed at all, the
+	# sidecars belong to another deck, or the cell is honestly empty. It was read
+	# as "the streamed path wires nobody" and the streamed path was fine -- the
+	# command had no `--actors/--crowd/--interact` on it, and the shipped spawn
+	# sits in five cells that genuinely contain nobody. A count with no
+	# denominator beside it is not a measurement.
+	print("walk: sidecars%s -- %d cast row(s) (%d with a timetable), "
+		% [("" if _sidecar_deck == "" else " for deck " + _sidecar_deck),
+			all.size(), _actors_occ.size()]
+		+ "%d crowd placement(s), %d interactable(s)"
+		% [_crowd_rows.size(), _ix_rows.size()]
+		+ ("" if not (all.is_empty() and _crowd_rows.is_empty()
+			and _ix_rows.is_empty())
+			else "  -- NOTHING IS LOADED, so no cell can ever wire anybody"))
 	if interact_path != "" and _ix_rows.is_empty():
 		push_error("walk: %s is not a JSON array" % interact_path)
+
+
+## Is this cell on the deck the sidecars describe?
+##
+## A CELL FROM ANOTHER DECK MUST NOT BE HANDED THIS DECK'S PEOPLE, and until this
+## existed it was. `stream.distance_to` is the BINNING rule and it is deliberately
+## radius-blind (see its own docstring) -- it tests ANGLE and Z and never radius,
+## because `bake()::_split` bins triangles that way and an identity test that
+## disagreed with the bake would lose content. That is right for "which cell is
+## this triangle in" and wrong on its own for "whose crowd is this", because the
+## decks of this station are concentric: `blue_1_0` sits at a different radius
+## behind the same arc and the same z as `blue_0_0`.
+##
+## MEASURED ON THE SHIPPED MANIFEST, not argued: of `blue_0_0_crowd.json`'s 444
+## placements, 88 are claimed by more than one cell and every one of those extra
+## claims -- 98 of them -- is a cell on one of six OTHER decks (blue_1_0 29,
+## blue_1_5 24, blue_0_2 19, blue_0_1 16, blue_0_5 6, blue_1_3 4). Within
+## blue_0_0 the sum over all 103 cells is exactly 444, so this filter cannot drop
+## a single row of its own deck. And it is live rather than theoretical:
+##
+##     walk: +wired blue_1_0_c05z12 -- doors now 0, 0 person(s), 10 walker(s), ...
+##
+## is ten of blue_0_0's corridor crowd standing inside a blue_1_0 cell, at
+## blue_0_0's radius, drawn a second time if both cells are ever resident at once.
+##
+## NOT A RADIAL BAND, AND THAT IS THE WHOLE POINT. `residency_distance` has one
+## and it is right for residency; used here it would be the binning rule with a
+## radius test bolted on, and the bake never binned by radius. Measured on this
+## deck's own crowd, 36 placements sit up to 2.36 m OUTBOARD of their deck floor
+## and 127 more than 3.6 m inboard, so a band would silently drop 163 of 444
+## people who are exactly where the generator put them. The deck NAME is exact,
+## costs a string compare, and cannot be off by a metre.
+##
+## DEGRADES TO THE OLD BEHAVIOUR RATHER THAN TO AN EMPTY STATION, twice over: no
+## sidecar deck (nobody named one) and no `deck` key on the cell (a per-deck
+## manifest such as `blue_0_0_cells.json`, where every cell is ours by
+## construction) both return true. `--no-deck-scope` is the control.
+func _cell_is_ours(c: Dictionary) -> bool:
+	if _sidecar_deck == "" or c.is_empty():
+		return true
+	var d := String(c.get("deck", ""))
+	if d == "":
+		return true
+	if d == _sidecar_deck:
+		return true
+	if _args().has("no-deck-scope"):
+		_say_once("walk: cross-deck scoping DISABLED (control) -- this deck's "
+			+ "people will be bound into other decks' cells")
+		return true
+	return false
 
 
 ## Give the deck its doors. `--no-doors` leaves them out, which is the NEGATIVE
@@ -672,6 +775,14 @@ func _wire_occupants(vis: Node, tag: String) -> int:
 		# `stream.gd` already owns, because after the rebuild there will be no
 		# mesh to find. Same question as `_rows_in_cell` asks of a walker.
 		rows = []
+		# AND THE SAME DECK GUARD, for the same reason. `cell_at` picks ONE cell
+		# out of all 907 by nearest floor radius, so an occupant is far less
+		# exposed than a walker -- measured, all 363 of this deck's cast land on a
+		# blue_0_0 cell today. That is a property of the current content, not of
+		# the code: the winning cell is chosen station-wide and nothing in that
+		# choice knows which deck's cast list is loaded.
+		if not _cell_is_ours(_stream.cell_by_id(tag) if _stream != null else {}):
+			return 0
 		for r in _actors_occ:
 			var p := Vector3(float((r as Dictionary).get("x", 0.0)),
 				float((r as Dictionary).get("y", 0.0)),
@@ -876,8 +987,57 @@ func wire_cell(id: String, vis: Node, col: Node) -> void:
 		ni = _interact.collect(vis, _ix_rows, id)
 	if _interact != null and _player != null:
 		_interact.watch(_player)
+	_wired_people += np
+	_wired_walkers += nc
+	_wired_ix += ni
 	print("walk: +wired %s -- doors now %d, %d person(s), %d walker(s), "
-		% [id, nd, np, nc] + "%d interactable(s)" % ni)
+		% [id, nd, np, nc] + "%d interactable(s)" % ni
+		+ ("" if nd + np + nc + ni > 0 else "  -- " + _empty_reason(id)))
+
+
+## Counters so the LEVEL can be asked the question, not only a cell. A streamed
+## build has no moment at which everything is loaded, so the monolithic path's
+## one-line totals have no equivalent here; these are what a log can be grepped
+## for to answer "is anybody home on this station".
+##
+## CUMULATIVE, NOT LIVE, and the line that prints them says so. `npc.gd::release`
+## returns people and walkers as one number, so a live figure would need this file
+## to keep a second tally of who is in which cell -- a second description of what
+## `npc.gd` already knows, which is the defect hard rule 4 exists to stop. What
+## these answer is "has this build ever wired anybody", which is the question that
+## was open.
+var _wired_people := 0
+var _wired_walkers := 0
+var _wired_ix := 0
+
+
+## WHY THIS CELL WIRED NOTHING -- and there are three different answers.
+##
+## Session 4t was spent on the wrong one. `+wired ... 0, 0, 0, 0` on every cell
+## was read as "the streamed path wires nobody"; the streamed path was correct
+## and the cause was that the launch had no sidecar arguments on it. The second
+## launch, with them, wired 4 walkers into the same cells. A count that cannot say
+## which zero it is turns a five-minute check into a session.
+func _empty_reason(id: String) -> String:
+	if _actors.is_empty() and _actors_occ.is_empty() and _crowd_rows.is_empty() \
+			and _ix_rows.is_empty():
+		return ("NOTHING IS LOADED: no cast list, no crowd list and no "
+			+ "interactables list, so NO cell can ever wire anybody. Pass "
+			+ "--actors= --crowd= --interact= (main.gd takes them off boot.json)")
+	var c: Dictionary = ({} if _stream == null else _stream.cell_by_id(id))
+	if not _cell_is_ours(c):
+		return ("this cell is on deck %s and the only sidecars loaded are %s's "
+			% [String(c.get("deck", "?")), _sidecar_deck]
+			+ "-- the shipped build loads ONE deck's cast for a manifest of "
+			+ "%d cells, so every other deck is empty by construction"
+			% (0 if _stream == null else _stream.cells.size()))
+	return ("this cell is honestly EMPTY -- the deck's sidecars hold %d cast, "
+		% (_actors.size() + _actors_occ.size())
+		+ "%d crowd and %d interactable(s), and none of them are in this arc"
+		% [_crowd_rows.size(), _ix_rows.size()]
+		+ " (this level has wired %d person(s), %d walker(s), %d interactable(s) "
+		% [_wired_people, _wired_walkers, _wired_ix]
+		+ "so far, over %d resident cell(s))" % _wired_cells.size())
 
 
 func unwire_cell(id: String) -> void:
@@ -917,6 +1077,12 @@ func _rows_in_cell(id: String) -> Array:
 		return _crowd_rows
 	var c: Dictionary = _stream.cell_by_id(id)
 	if c.is_empty():
+		return out
+	# WHOSE CROWD IS THIS. The test below is radius-blind on purpose and therefore
+	# cannot tell one deck from the deck concentric with it; `_cell_is_ours` is
+	# what makes it a question about THIS deck. Measured: 98 of these 444 rows are
+	# claimed by a cell on another deck.
+	if not _cell_is_ours(c):
 		return out
 	for r in _crowd_rows:
 		var p := Vector3(float(r.get("x", 0.0)), float(r.get("y", 0.0)),
