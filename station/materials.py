@@ -5581,7 +5581,7 @@ def _fastener_field(size, D, inset_px, pitch_px, r_px):
 def gen_plate_sheet(size, seed, nx, ny, base_rough, base_metal,
                     seam_px, wear_px, jitter, streaks, weld=False,
                     seam_darken=0.35, fasteners=None, grain_h=0.06,
-                    grain_base=8):
+                    grain_base=8, rough_var=0.0):
     """The workhorse: an irregular rectangular plate lattice.
 
     This is the shape the reference actually shows and the shape the existing
@@ -5638,8 +5638,43 @@ def gen_plate_sheet(size, seed, nx, ny, base_rough, base_metal,
     # what makes it read at 1 m -- a height bump alone under diffuse light is
     # nearly invisible, which is the same lesson `kit_deck`'s own note records
     # about the studs ("the brightness is the highlights").
+    # ROUGHNESS ACROSS THE FACE OF A PLATE, WHICH IS WHAT "PLASTIC" MEANS.
+    #
+    # A blind craft audit called the corridor wall "smooth plastic", and that is
+    # a roughness signature rather than a shape one: a surface whose specular
+    # response is identical everywhere reads as moulded, whatever its albedo.
+    # Measured over one sheet, p5-p95 spread as a fraction of the mean:
+    #
+    #     deck (floor)  76.7%      wall  11.6%      hull  15.8%
+    #
+    # and the cause is visible in the line below. Every term in it is EDGE-LOCAL
+    # or SPARSE: `seam` is zero except in the ~10% of texels near a seam, `wear`
+    # is gated to a third of plates and only near their edges, `dirt` is a few
+    # dozen streaks. Across the FACE of a plate -- which is nine tenths of the
+    # wall a player looks at -- the only term left is `grain` at +/-0.04, so the
+    # face varies by 7% of its own mean and lights identically everywhere.
+    #
+    # `rough_var` couples roughness to the two fields that ALREADY vary the
+    # albedo over the same areas -- `blotch` at plate scale and `cluster` over
+    # runs of plates -- because they are the same physical cause seen twice: a
+    # patch that has been cleaned, handled or oxidised differently is both a
+    # different value AND a different finish. Deriving it from the existing
+    # fields rather than adding a third noise means the discolouration and the
+    # sheen cannot drift apart, which is what makes it read as one surface.
+    #
+    # THE FIELDS ARE CENTRED ON THEIR OWN MEANS, NOT ON 0.5, so this adds
+    # variance and does not move the material's roughness. `_fbm` is not
+    # centred at 0.5 and subtracting the constant drifted the wall from the
+    # 0.564 measured off `grey level 1.webp` to 0.605 -- which would have been
+    # a reference value quietly changed by a texture edit, the exact thing
+    # every "source=" field in this file exists to prevent.
+    #
+    # Default 0.0, so the hull, deck-plate and truss sheets are byte-identical
+    # and this A/B is one sheet against itself with one argument added.
     rough = np.clip(base_rough + seam * 0.18 + dirt * 0.22 - wear * 0.20
-                    + (grain - 0.5) * 0.08 - fast * 0.26, 0.04, 1.0)
+                    + (grain - 0.5) * 0.08 - fast * 0.26
+                    + (blotch - blotch.mean()) * rough_var
+                    + (cluster - cluster.mean()) * rough_var * 0.75, 0.04, 1.0)
     metal = np.clip(base_metal + wear * 0.35 - dirt * 0.15 + fast * 0.45,
                     0.0, 1.0)
     ao = np.clip(1.0 - seam * 0.65 - dirt * 0.15, 0.0, 1.0)
@@ -6382,7 +6417,8 @@ def build_texture(name):
                                          seam_darken=0.62,
                                          fasteners=(size * 0.040 / 4.0,
                                                     size * 0.160 / 4.0,
-                                                    size * 0.013 / 4.0))
+                                                    size * 0.013 / 4.0),
+                                         rough_var=0.34)
         base = np.array([1.0, 1.0, 1.0], dtype=np.float32)
     elif name == "deck_plate":
         v, r, m, ao, h = gen_plate_sheet(size, "deckplate", 4, 3, 0.62, 0.20,
