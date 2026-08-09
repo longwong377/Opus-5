@@ -488,7 +488,9 @@ def hem_allowance(token, lod):
     """
     if (token, lod) in _HEM_CACHE:
         return _HEM_CACHE[(token, lod)]
-    sys.path.insert(0, os.path.join(ROOT, "station", "npc"))
+    npcdir = os.path.join(ROOT, "station", "npc")
+    if npcdir not in sys.path:
+        sys.path.insert(0, npcdir)
     import populace as P                                         # noqa: PLC0415
     import animation as A                                        # noqa: PLC0415
     import costume as C                                          # noqa: PLC0415
