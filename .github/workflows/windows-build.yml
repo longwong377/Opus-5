@@ -31,7 +31,12 @@ on:
     paths:
       - ".github/workflows/windows-build.yml"
       - "tools/build_world.py"
+      - "tools/export_station.py"
+      - "tools/export_drum.py"
       - "godot/export_presets.cfg"
+      # Deliberately NOT "station/**". A 90-minute Windows build on every commit
+      # to a generator would be a tax on ordinary work; these are the files that
+      # decide WHAT gets built and in what order, which is what has broken so far.
   workflow_dispatch:
     inputs:
       skip_gates:

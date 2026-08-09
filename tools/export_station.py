@@ -61,6 +61,11 @@ import routes as RT                                             # noqa: E402
 
 OUT = os.path.join(ROOT, "station/generated/scene/station")
 
+# The habitat drum's address, owned by `tools/export_drum.py` (STEM green_1_0).
+# Kept as three names rather than a literal so the two files can be grepped
+# together when the drum moves.
+DRUM_SECTOR, DRUM_RING, DRUM_DECK = "green", 1, 0
+
 
 def work_list():
     """Every deck that carries a location, and every ring that needs a column.
@@ -72,6 +77,28 @@ def work_list():
     nodes = RT.clusters()
     decks = collections.defaultdict(list)
     for k in nodes:
+        # THE DRUM IS NOT OURS TO BUILD, AND DECLINING IT WAS COSTING A RED RUN
+        # EVERY TIME. `station/deck.py` raises for green ring 1 -- "not a ring
+        # deck: the habitat drum ... an open 8 km barrel, no ring corridor" --
+        # and that refusal is CORRECT: the drum is not a ring of rooms off a
+        # corridor. `tools/export_drum.py` builds it instead, writes the same
+        # five files under the same `green_1_0` stem, and says so in its own
+        # docstring, quoting this very traceback.
+        #
+        # But this function enumerates from `routes.clusters()`, which is every
+        # deck that CARRIES A LOCATION -- and the drum carries twelve of them,
+        # the Garden among them. So the drum arrived here, raised, and left the
+        # run at "BUILT 70 of 71 decks" with exit 1 while every artefact it
+        # needed was already on disk from export_drum. Under the old bash chain
+        # that non-zero exit was recorded and stepped over, so the build went on
+        # to succeed and nobody read the line. It only became visible when the
+        # new driver started stopping at the first failure.
+        #
+        # Skipping it here is the honest version of what the pipeline already
+        # did, and it keeps export_drum's rule intact: nothing downstream needs
+        # to know the drum was built by a different route.
+        if k[:3] == (DRUM_SECTOR, DRUM_RING, DRUM_DECK):
+            continue
         decks[k[:3]].append(k[3])
     rings = sorted({k[:2] for k in nodes})
     ang = {s: RT.transit_angle(s, nodes)
