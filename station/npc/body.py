@@ -701,6 +701,23 @@ class Individual:
     # arguments. "" means no hair mesh at all, which is what every species
     # without "hair" in its feature list gets.
     hair_style: str = ""
+    # PROPORTION, session 4u, and it is the one axis of a body that did not vary
+    # at all. `stature_m` spreads 18.2% over 24 residents, `build` 28.8%,
+    # `shoulder_k` 20.1% -- measured, not estimated -- so a crowd already
+    # differed in SIZE and in GIRTH. It did not differ in SHAPE: every human on
+    # the station had their hip at exactly 0.520 of their own height, so two
+    # people of the same stature were the same figure scaled, and the eye reads
+    # that as one model repeated. `leg_k` scales the hip height (and with it the
+    # torso's lowest ring, which `_leg_params` derives) so a long-legged
+    # resident and a long-bodied one are different people at the same height.
+    #
+    # sigma 0.028, clamped at 2.5 sigma by `_gauss`, so the extremes are +/-7%
+    # of leg length -- about +/-33 mm on a 1.75 m human, which is roughly the
+    # real adult spread of sitting-height-over-stature. `animation.KNEE_F` is a
+    # FRACTION of the built leg (0.558), so the knee follows the hip and the
+    # joint stays on the loft's own pinned ring: this cannot reproduce the
+    # session-4h defect where a belly landed on a joint.
+    leg_k: float = 1.0
 
 
 def individual(species: str, npc_id: str) -> Individual:
@@ -753,10 +770,15 @@ def individual(species: str, npc_id: str) -> Individual:
     # not shift when a species gains or loses one -- the same reason `crest` is
     # drawn for every individual and used by one species.
     hair = hair_style_for(seed, sex) if "hair" in features else ""
+    # Salt-keyed, so adding a draw shifts nothing already drawn -- `_gauss`
+    # hashes `(seed, salt)` rather than advancing a stream, which is why the
+    # `hair` note above about "the digest stream" is about the FEATURE LIST and
+    # not about ordering.
+    leg = 1.0 + _gauss(seed, "legk", 0.028)
     return Individual(species, npc_id, stature, build, shoulder, head, cran,
                       max(0.4, crest), max(0.0, stoop), sex,
                       int(_u(seed, "tone") * len(sp.surface.tones)),
-                      int(_u(seed, "pat") * (1 << 24)), features, hair)
+                      int(_u(seed, "pat") * (1 << 24)), features, hair, leg)
 
 
 # ---------------------------------------------------------------------------
@@ -1280,7 +1302,7 @@ def _leg_params(ind: Individual, sp: SpeciesBody):
     is rule 4 of CLAUDE.md applied to a body instead of to a hull.
     """
     b = ind.build
-    return (FIGURE["hip"] * sp.leg_k,
+    return (FIGURE["hip"] * sp.leg_k * getattr(ind, "leg_k", 1.0),
             FIGURE["hip_w"] * 0.5 * 0.55,
             0.048 * b,
             0.026 * b)
@@ -1827,6 +1849,7 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
         sec["squash_front"] = 1.08 * sec.get("squash_front", 1.0)
         rings.append(_ring(0.0, fy * H, 0.0, w * H, d * H, seg, **sec))
     rings = _stride(rings, ring_stride)
+    torso_rings = rings
     m.add(*_loft(rings), "npc_%s_torso" % sp.surface.kind, "torso")
 
     # --- neck and head ----------------------------------------------------
@@ -1904,8 +1927,39 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
     # clear of the coat, FACTIONS 5.4's political signal) was the first thing
     # to fail when the pelvis section stopped being an ellipse. At 1.02 the
     # band reads 50% clear against 46% before any of this session's work.
-    ax_in, ax = sw_h * 0.44, sw_h * 1.02
+    #
+    # AND 0.44 PUT THE WHOLE UPPER ARM INSIDE THE TORSO, which is session 4u's
+    # measurement and the panel's finding. Counted with `contains()` against the
+    # torso's own solid, 39 of 56 arm vertices at seg 16 were INSIDE it, and the
+    # three that mattered are the deltoid ring: the torso's half-width at that
+    # height is 0.2033 m and the arm's outer surface reached 0.1702 m, so the
+    # shoulder mass sat 33 mm under the skin. The arm's surface did not break
+    # the torso until y = 1.21 m, which is mid-humerus -- so what a render shows
+    # is a shelf of shoulder with a stick coming out of it below the coat hem,
+    # and that is exactly what the panel wrote down.
+    #
+    # The old comment above is still right about WHY the root is inboard, and
+    # this does not undo it: the root RING is still buried (0.62 of the
+    # half-width against a torso that is 0.90 of it there), so there is still no
+    # lit disc at the shoulder. What moved is the DELTOID -- outboard, and
+    # bigger, so the muscle breaks the surface instead of hiding under it.
+    # `_selftest` asserts both halves against the built mesh: the root ring
+    # entirely inside, the deltoid ring's outer vertex outside and proud.
     r_up, r_wr = 0.028 * H * b, 0.022 * H * b
+    # MEASURED OFF THE TORSO THAT WAS JUST BUILT, not written down -- hard rule
+    # 4 at the scale of a shoulder, and the same argument `collision.py` makes
+    # for ray-casting the corridor shell rather than restating its profile.
+    # `sw_h` is the BIACROMIAL half-width, which is a skeletal number; what the
+    # arm root has to stay inside is the torso's own SURFACE at that height,
+    # and the two differ by every lobe and superellipse exponent
+    # `_torso_profile` applies. Taking 0.62 of `sw_h` flat put the Grome's root
+    # ring 2 vertices outside its own torso -- `_selftest`'s floating-shoulder
+    # check, which fired on the first build, exactly as it is meant to.
+    _root_y = arm_top * H
+    _near = min(torso_rings, key=lambda r: abs(r[0][1] - _root_y))
+    t_hw = max(abs(p[0]) for p in _near)
+    ax_in = max(sw_h * 0.44, min(sw_h * 0.638, t_hw - r_up * 1.35))
+    ax = sw_h * 1.02
     lseg = max(4, seg // 2)
     for side in (-1, 1):
         # An arm is not a cone of revolution either: the section is wider across
@@ -1928,7 +1982,7 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
         # forearm is not built with a shoulder's section.
         arm = _limb((side * ax_in, arm_top * H, 0.0),
                     (side * ax, (arm_top - span) * H, 0.0),
-                    r_up, r_wr, lseg, bulge=1.30, bulge_at=0.19,
+                    r_up, r_wr, lseg, bulge=1.45, bulge_at=0.19,
                     section={"power": 2.3, "squash_front": 0.94},
                     depth_k=0.90, form=body_form,
                     sections=((0.19, {"power": 2.7,
@@ -1968,15 +2022,35 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
         # span -- which is both where the muscle is and clear of the joint, and
         # it takes the fit back to 10.7 mm. A number checked by a second
         # module's gate, which is the point of having one.
-        leg = _limb((side * lx, hip_y * H, 0.0), (side * lx, ank_y * H, 0.0),
-                    r_th, r_an, lseg, bulge=1.10, bulge_at=0.62,
+        # WHERE THE LEG ENDS DEPENDS ON WHETHER THERE IS A FOOT, and until
+        # session 4u it did not. `feet` is an `extremity` and
+        # `_feature_filter("identity_only")` culls it, so at `lod7`/`lod8` --
+        # the rung `populace.crowd_ladder()` puts on the 45-400 m band, which is
+        # most of a drum or a Zocalo -- the leg simply stopped at the ANKLE and
+        # the whole figure hung in the air. Measured off the shipped
+        # `crowd_lod8.glb`: 157 of 168 baked bodies had their lowest vertex
+        # above 2 cm, median **79.0 mm**, which is `FIGURE["ankle"] * H` almost
+        # exactly. It is not scatter and it is not the decimation -- it is a
+        # missing foot, and a body whose origin is the deck floats by the height
+        # of the part that was culled.
+        #
+        # A cull must remove DETAIL, never LENGTH. So past the foot the shin
+        # runs to the deck and widens into a sole: zero extra triangles, the
+        # silhouette is a leg in a boot rather than a leg in the air, and
+        # `animation._bind` already has the matching rule ("past the extremity
+        # cull the shin's last ring IS the sole").
+        shod = "feet" in keep and "feet" in ind.features
+        leg_end = ank_y if shod else 0.0
+        leg_r_end = r_an if shod else r_an * 1.16
+        leg = _limb((side * lx, hip_y * H, 0.0), (side * lx, leg_end * H, 0.0),
+                    r_th, leg_r_end, lseg, bulge=1.10, bulge_at=0.62,
                     section={"power": 2.2, "lobes": ((270.0, 70.0, 0.10),)},
                     depth_k=1.06, form=body_form,
                     sections=((0.14, {"power": 2.4,
                                       "lobes": ((90.0, 60.0, 0.05),)}),))
         leg = _stride(leg, ring_stride)
         m.add(*_loft(leg), "npc_%s_leg" % sp.surface.kind, "leg")
-        if "feet" in keep and "feet" in ind.features:
+        if shod:
             # A foot is narrow at the heel, widest across the ball, and its
             # toe box is a wedge rather than a cone -- so the forward rings are
             # squarer AND offset forward, which is what puts the instep in.
@@ -1993,13 +2067,49 @@ def build_humanoid(ind: Individual, sp: SpeciesBody, seg=16, ring_stride=1,
             # The comment 20 lines up already stated the rule -- "rooted a
             # little ABOVE ... so the two solids overlap" -- and the ankle was
             # the one joint in the figure that did not follow it.
-            foot = [_ring(side * lx, (ank_y + 0.020) * H, 0.0, r_an * 0.94,
-                          r_an * 0.94, lseg, power=2.2),
-                    _ring(side * lx, 0.012 * H, 0.020 * H, r_an * 1.05,
-                          r_an * 1.9, lseg, power=2.5,
-                          lobes=((90.0, 60.0, 0.06),)),
-                    _ring(side * lx, 0.006 * H, 0.045 * H, r_an * 0.9,
-                          r_an * 2.4, lseg, power=3.0)]
+            #
+            # FIVE RINGS AND THE SOLE IS AT ZERO, session 4u. Three things were
+            # wrong with the three-ring wedge and all three are visible in a
+            # frame before they are measurable:
+            #
+            #  * the lowest ring sat at `0.006 * H` -- 10.5 mm on a human -- so
+            #    EVERY body in the shipped library floated a centimetre over its
+            #    own origin. That is the 0.0106 m median `bake_crowd --stats`
+            #    reports for lod2 and lod4, and it is arithmetic rather than
+            #    pose: the walk clip's planted foot is at the bind pose's sole.
+            #    A sole is the plane a person stands on and it belongs at y = 0.
+            #  * there was no ANKLE. One ring at `ank_y + 0.020` of the shin's
+            #    own radius, then straight to the ball: the malleoli, the
+            #    narrowest part of the whole leg, did not exist, so the shin ran
+            #    into the shoe as one tapering column. That is the panel's "no
+            #    knee, no ankle".
+            #  * there was no HEEL. All three rings were offset FORWARD, so the
+            #    foot was a wedge pointing ahead of the leg with nothing behind
+            #    the ankle -- which is why the silhouette read as a flat cut.
+            #
+            # The z offsets are fractions of the ankle radius and the shape is
+            # standard adult foot proportion, EXTRAPOLATED at authority 5 like
+            # the rest of `FIGURE`'s soft tissue: foot length ~0.152 of stature,
+            # heel behind the ankle ~0.25 of that length, ball at ~0.72, the
+            # widest section across the metatarsal heads. What would overturn
+            # it: any frame that shows a boot at a stated scale.
+            foot = [
+                # the malleolar ring -- the narrowest section on the leg
+                _ring(side * lx, (ank_y + 0.055) * H, 0.0,
+                      r_an * 0.86, r_an * 0.98, lseg, power=2.2),
+                # the ankle proper, already spreading back over the heel
+                _ring(side * lx, (ank_y - 0.010) * H, -0.010 * H,
+                      r_an * 0.92, r_an * 1.45, lseg, power=2.3,
+                      lobes=((270.0, 55.0, 0.10),)),
+                # the instep and the heel, at the widest section
+                _ring(side * lx, 0.022 * H, 0.018 * H,
+                      r_an * 1.10, r_an * 2.05, lseg, power=2.6,
+                      lobes=((90.0, 55.0, 0.05), (270.0, 45.0, 0.06))),
+                # the sole. ON THE DECK, and the reason is three comments up.
+                _ring(side * lx, 0.0, 0.028 * H,
+                      r_an * 1.00, r_an * 2.30, lseg, power=3.2,
+                      lobes=((90.0, 50.0, 0.04),)),
+            ]
             m.add(*_loft(foot), "npc_%s_foot" % sp.surface.kind, "foot")
 
     # --- species attachments ----------------------------------------------
@@ -2237,6 +2347,29 @@ def _f_hair(m, ind, sp, seg, chin_y, head_h, hw, hd):
 #   "none"     no nose at all: the pak'ma'ra face is four tendrils and a maw
 FACE_PLANS = ("humanoid", "ridged", "flat", "none")
 
+# THE RECOGNITION FLOOR. See the note in `_face` beside `fseg`: a facial part is
+# sized to be identifiable rather than to be round, and six is the coarsest
+# prism that still has a left, a right, a top and a front.
+FACE_MIN_SEG = 6
+
+# The supraorbital bar, the lips and the ear lobule, in fractions of head
+# height / head depth. EXTRAPOLATED, authority 5, same class and same
+# constraint as `_head_profile`'s craniofacial proportions: standard adult
+# soft-tissue anthropometry -- brow ridge 8 mm of relief over a 55 mm span
+# either side of the midline, oral fissure 50 mm wide, vermilion 8 mm (upper)
+# and 10 mm (lower) tall standing 4 mm proud of the philtrum. On a 231 mm head
+# those are the fractions below. What would overturn them: one square-on
+# portrait at a stated scale, which `reference/15-races-and-makeup/` has for
+# G'Kar and for nobody else -- the same sentence `_head_profile` ends on.
+BROW_BAR_T = 0.545          # head-height of the supraorbital bar's centre
+BROW_BAR_HALF_W_F = 0.30    # of the head's own half-width, per side
+BROW_BAR_PROJ_F = 0.055     # of head depth, proud of the skull at the bar
+MOUTH_T = 0.205             # head-height of the oral fissure
+MOUTH_HALF_W_F = 0.108      # of head height
+LIP_UPPER_H_F = 0.035
+LIP_LOWER_H_F = 0.043
+LIP_PROJ_F = 0.030          # of head depth, proud of the skull at the lip
+
 
 def _face(m, ind, sp, seg, chin_y, head_h, hw, hd, ch):
     """A nose and a pair of ears, placed off the skull's own interpolated shape.
@@ -2264,7 +2397,26 @@ def _face(m, ind, sp, seg, chin_y, head_h, hw, hd, ch):
     # exactly where those two distances fall. 4 divides 8, so the strict-subset
     # property survives the switch. It is 136 triangles a figure at seg 16, and
     # that is the band a crowded Zocalo spends most of its budget in.
-    fseg = max(4, min(8, seg // 4))
+    #
+    # AND THAT ARGUMENT IS RIGHT ABOUT ROUNDNESS AND WRONG ABOUT RECOGNITION,
+    # which is the session-4u correction and the reason `seg // 4` is now
+    # `seg // 2` with a floor of 6. A sagitta rule asks "is this cylinder round
+    # enough to match the error the torso already carries". A nose's job is not
+    # to be round: it is to be a NOSE, and a four-sided prism 20 mm proud of a
+    # skull is a tetrahedral spike from every angle except dead ahead. The
+    # panel's frame is the evidence -- at three-quarters the head read as "a
+    # smooth ovoid with no nose, mouth, ears, brow or eye sockets", and the nose
+    # was in the mesh the whole time at four segments.
+    #
+    # It is the same class of error as `feature_schedule` pricing hair by the
+    # bounding box (see FEATURE_TIER): an instrument that cannot see the thing
+    # the feature is for. So the face's parts take a RECOGNITION floor, stated
+    # here and nowhere else: six sides is the coarsest prism that still has a
+    # left, a right, a top and a front, and at seg 16 -- the level the shipped
+    # crowd library is baked at, 0-18 m, the band a player converses in -- it
+    # gives eight. Cost, measured rather than estimated: nose 44 -> 92, ear
+    # 20 -> 44 each, on a 1,752-triangle figure.
+    fseg = max(FACE_MIN_SEG, min(12, seg // 2))
     small = plan == "flat"
 
     # --- nose --------------------------------------------------------------
@@ -2316,16 +2468,132 @@ def _face(m, ind, sp, seg, chin_y, head_h, hw, hd, ch):
                            lobes=_mirror(0.0, 62.0, alae) if alae else ()))
     m.add(*_loft(rings), "npc_%s_nose" % sp.surface.kind, "nose")
 
+    # --- the supraorbital bar and the lips, AS SOLIDS ------------------------
+    # WHY THESE ARE SOLIDS AND NOT RING RELIEF, and it is the whole of session
+    # 4u's face work. `_head_profile` already carries a supraorbital rim, a
+    # mentolabial sulcus, an upper and a lower vermilion and a philtrum -- as
+    # `zoff` windows on FACE-tier rings. Those rings are dropped by
+    # `_form_for` at `radial_segments < FACE_FORM_MIN_SEG`, i.e. at seg 16,
+    # which is `lod2`, which is the ONE rung `populace.crowd_ladder()` puts on
+    # the 0-18 m band -- the band a player stands and talks in. So every piece
+    # of mouth and brow anatomy in this module existed only at lod0 and lod1,
+    # levels the shipped crowd library never bakes.
+    #
+    # That is this repository's signature defect in miniature: finished, tested
+    # machinery with no caller on the path that ships. A separate solid is
+    # gated by the FEATURE tier ("face", kept out to lod2) instead of by the
+    # FORM tier, it is sampled at its own `fseg` rather than at the head's, and
+    # it survives decimation because it is present-or-gone. 8 mm of brow relief
+    # and a 10 mm lower lip are what make an eye socket read as a socket
+    # instead of as a scratch.
+    #
+    # Buried, for the reason the nose and the eyes are buried: the back of each
+    # bar sits inside the skull so the crossing with a curved surface is a
+    # short steep curve rather than a grazing tangency over the whole footprint.
+    # BUILT AS A BURIED DISC WHOSE FRONT EMERGES, which is `_f_brow`'s idiom
+    # and not a new one: a horizontal ellipse centred on the midline, pushed
+    # forward until its front arc stands past the face plane, and narrower than
+    # the skull so it re-enters at the temples. Stacking those in y is a loft
+    # with `_loft`'s own ascending-y winding, so the winding argument that took
+    # four subsystems inside-out does not have to be made a second time.
+    if plan != "none":
+        bseg = max(FACE_MIN_SEG, min(10, seg // 2))
+        small_f = 0.74 if small else 1.0
+
+        # --- the supraorbital bar ---
+        # The nasion notch is a NEGATIVE lobe at the midline, so the pair reads
+        # as two arches with a dip between them rather than as one shelf. It is
+        # the same mechanism `_head_profile` cuts the nasion with, one solid up.
+        _bx, by0, bz0 = _face_point(ind, sp, BROW_BAR_T, 0.0,
+                                    chin_y, head_h, hw, hd, ch)
+        # HOW WIDE THE DISC MAY BE IS A CONSTRAINT AND NOT A TASTE, and getting
+        # it wrong is visible before it is measurable: the first cut of this was
+        # 0.72 of the skull's half-width and the render showed a tab of brow
+        # standing out past the head's OUTLINE at three-quarters, because a disc
+        # pushed forward emerges at its widest point too. A disc scaled to `s`
+        # of the skull's own section and pushed forward by `d` of its depth
+        # stays inside at the sides while emerging at the midline exactly when
+        # `d < (1 - s^p)^(1/p)`, and `_selftest` asserts the built result rather
+        # than this inequality -- no vertex of either solid may lie outside the
+        # skull at more than the stated fraction of its half-width.
+        bk, bzo = _head_at(ind, BROW_BAR_T)
+        b_jk = sp.jaw_k + (1.0 - sp.jaw_k) * min(1.0, BROW_BAR_T / 0.34)
+        brx_s, brz_s = hw * bk * b_jk, hd * bk * b_jk
+        # 0.62 OF THE SKULL'S OWN SECTION DEPTH, AND A FLATTER DISC WAS TRIED
+        # AND IS WORSE -- written down because a negative result nobody records
+        # is a thing the next context builds again. At 0.86 the arc hugs the
+        # face, which is what the visible outline at 1 m seemed to ask for; but
+        # a flatter disc reaches further forward at its WIDEST point too, and
+        # the engine frame came back with the bar's ends standing out past the
+        # temples on both sides -- a flange on the silhouette, which is worse
+        # than a seam on a surface. The projection and the end-ring widths were
+        # moved with it and the pair could not be separated. Reverted whole.
+        brz = brz_s * 0.62
+        bcz = bz0 + hd * BROW_BAR_PROJ_F * small_f - brz
+        bhy = head_h * 0.030
+        rings = []
+        for dy, wk, pk in ((-1.00, 0.86, 0.55), (-0.25, 1.00, 1.00),
+                           (+0.55, 0.94, 0.80), (+1.15, 0.66, 0.20)):
+            rings.append(_ring(0.0, by0 + bhy * dy, bcz + brz * (1.0 - pk),
+                               brx_s * BROW_BAR_HALF_W_F * 2.1 * wk, brz * wk,
+                               bseg, power=2.4,
+                               lobes=((90.0, 15.0, -0.075),)))
+        # PART `"head"`, GROUP `npc_<skin>_brow_bar`, and the two are different
+        # questions. The group is the MATERIAL and it resolves on the `npc_skin`
+        # fragment like every other face part. The part is what
+        # `animation.PART_CHAINS` skins along, and it refuses -- loudly, by
+        # design -- to bind a part it has no row for: adding one would be a
+        # change to a module this session does not own, and a brow ridge IS
+        # rigid to the skull, so the head bone is not a workaround but the
+        # correct chain. The same reason `nose` and `ear` take it.
+        m.add(*_loft(rings), "npc_%s_brow_bar" % sp.surface.kind, "head")
+
+        # --- the lips ---
+        # Five rings over 18 mm: below the lower lip, the lower vermilion, the
+        # oral fissure, the upper vermilion, above it. The two vermilions are
+        # PROUD and the fissure between them is pulled BACK -- that pair of sign
+        # changes over 9 mm is what a mouth is, and it is the same sentence
+        # `_head_profile` writes about the rings this solid replaces at lod2.
+        _mx, my0, mz0 = _face_point(ind, sp, MOUTH_T, 0.0,
+                                    chin_y, head_h, hw, hd, ch)
+        mk, _mzo = _head_at(ind, MOUTH_T)
+        m_jk = sp.jaw_k + (1.0 - sp.jaw_k) * min(1.0, MOUTH_T / 0.34)
+        mrz_s = hd * mk * m_jk
+        mrz = mrz_s * 0.50
+        mcz = mz0 + hd * LIP_PROJ_F * small_f - mrz
+        mw = head_h * MOUTH_HALF_W_F * small_f
+        rings = []
+        for dy, wk, pk in ((-1.35, 0.52, 0.10), (-0.62, 1.00, 0.92),
+                           (0.00, 0.94, 0.55), (+0.62, 0.96, 1.00),
+                           (+1.30, 0.58, 0.14)):
+            rings.append(_ring(
+                0.0, my0 + head_h * LIP_LOWER_H_F * dy,
+                mcz + mrz * (1.0 - pk),
+                mw * 1.25 * wk, mrz * wk, bseg, power=2.5,
+                # The philtrum, on the upper vermilion only: a narrow negative
+                # window at the midline, so the tubercle either side of it is
+                # the widest part of the lip.
+                lobes=((90.0, 9.0, -0.05),) if dy > 0.3 else ()))
+        m.add(*_loft(rings), "npc_%s_lip" % sp.surface.kind, "head")
+
     if plan != "humanoid":
         return
     # --- ears --------------------------------------------------------------
     # Behind the widest point of the head and set slightly back, which is where
     # a pinna is; thin across x, broad fore-aft, and swept out at the top.
+    #
+    # STANDING PROUD RATHER THAN FLUSH, session 4u. `xk` was 0.90-1.00 of the
+    # skull's own radius scale at that height, so the ear's centre sat ON the
+    # surface and half the solid was inside the head: 20 triangles that changed
+    # the outline by nothing. A pinna stands about 12 mm off the mastoid and
+    # `rxk` is what carries it, so both moved together -- and a fourth ring
+    # gives it a lobule, which is the part of an ear a silhouette can see.
     for side in (-1, 1):
         rings = []
-        for t, xk, rxk, rzk, zk in ((0.34, 0.90, 0.05, 0.09, -0.10),
-                                    (0.44, 1.00, 0.075, 0.17, -0.12),
-                                    (0.55, 0.93, 0.05, 0.11, -0.15)):
+        for t, xk, rxk, rzk, zk in ((0.30, 0.95, 0.045, 0.075, -0.08),
+                                    (0.36, 1.04, 0.075, 0.115, -0.10),
+                                    (0.45, 1.10, 0.095, 0.19, -0.12),
+                                    (0.55, 1.02, 0.062, 0.12, -0.15)):
             k, zo = _head_at(ind, t)
             rings.append(_ring(side * hw * k * xk,
                                chin_y + head_h * ch * t,
@@ -2789,8 +3057,16 @@ def build_encounter_suit(ind: Individual, sp: SpeciesBody, seg=16,
         m.add(*_loft(arm), g, "suit_arm")
     lx = FIGURE["hip_w"] * 0.5 * H * 0.60
     for side in (-1, 1):
+        # THE BOOT ENDS ON THE DECK, session 4u. It ended at `0.010 * H` --
+        # 18.4 mm on a Gaim -- so every Gaim in the shipped crowd library
+        # hovered by that much, which is what `bake_crowd.py --stats` reports
+        # as the last 10 of 140 floating bodies once the humanoid sole was
+        # fixed. The rule is the same one `build_humanoid` states for the foot:
+        # a sole is the plane a person stands on, and a body whose origin is
+        # the deck must start at zero. The z offset stays -- the toe is forward
+        # of the ankle -- and only the height moves.
         leg = _limb((side * lx, (FIGURE["hip"] - 0.02) * H, 0.0),
-                    (side * lx, 0.010 * H, 0.010 * H),
+                    (side * lx, 0.0, 0.010 * H),
                     0.052 * H * b, 0.040 * H * b, lseg, bulge=1.02, bulge_at=0.5)
         leg = _stride(leg, ring_stride)
         m.add(*_loft(leg), g, "suit_leg")

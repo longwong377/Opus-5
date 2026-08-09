@@ -46,11 +46,52 @@ never going to write. Nothing in the runtime errors on that -- `npc.gd`'s
 `_place_crowd` finds no bucket for the key and the walker is quietly not drawn.
 `--selftest` now reads the `*_crowd.json` beside the libraries and asserts the
 two sets agree in BOTH directions.
+
+AND WHY THIS FILE NOW WRITES THE GLB ITSELF, session 4u. It used to hand the
+OBJ to `station/export_gltf.py`, whose own docstring says what it does:
+"flat-shaded normals computed per face, since the hull is faceted by design".
+That is the right answer for an 8 km hull with plating steps and the wrong one
+for a person. A body in this project is a stack of superellipse RINGS -- a
+surface of revolution by construction -- and at the level the shipped library is
+baked at those rings are 16-sided, so per-face normals put a 22.5-degree shading
+step down every column of a torso, a limb and a skull. The panel's words for it
+were "the ~12-sided torso cone is UNSMOOTHED -- hard facet edges across the
+whole body", and it was never a modelling defect: the geometry was always
+smooth-shadeable and the exporter threw the information away.
+
+So the normals are computed here, per vertex, ANGLE-WEIGHTED and SPLIT AT A
+CREASE. Three properties matter and each is a decision:
+
+  * angle-weighted, not face-area-weighted: a ring cap is one big triangle fan
+    and an area weight lets it dominate the rim vertices it shares with the
+    band, tipping the rim's shading toward the cap's plane.
+  * split at 60 degrees. A 16-gon ring turns 22.5 degrees per facet and a
+    silhouette that reads as a cylinder must smooth those; a ring-to-cap joint
+    and a boot sole turn about 90 and must NOT. 60 also leaves the 8-gon rings
+    of lod4 smooth (45 degrees) and creases the 4-gon rings of lod8 (90), which
+    is the right answer at both ends -- a 400 m figure has no curvature to
+    preserve and a hard facet costs nothing there.
+  * split by VERTEX INDEX, never by position. Parts in this module are separate
+    closed shells that interpenetrate on purpose -- an arm root sits inside the
+    torso -- so a position-keyed weld would smooth a nose into a skull and a
+    hand into a sleeve. `_loft` already shares indices exactly where a surface
+    is continuous, including the ring seam, so the index IS the smoothing
+    group and no threshold is involved.
+
+The same pass INDEXES the mesh, which the old path could not: un-indexing to
+flat shading writes three vertices per triangle and shares nothing. Measured on
+the shipped rungs, lod2 went 35.54 MB -> 16.36 MB while GAINING 9.4% more
+triangles, and the mesh COUNT is unchanged at 864 -- so `npc.gd` allocates the
+same MultiMesh buckets and the draw-call story does not move.
 """
 
 import argparse
+import json
+import math
 import os
+import struct
 import sys
+from collections import defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "station"))
@@ -58,46 +99,470 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 DECKDIR = os.path.join(ROOT, "station", "generated", "scene", "deck")
 
+# The dihedral angle above which two faces sharing a vertex do NOT share a
+# normal. See the module docstring for why it is 60 and not a rounder number.
+CREASE_DEG = 60.0
 
-def _glb(obj_path, glb_path):
-    """OBJ -> GLB. Same converter `walkable.py` uses, for the same reason."""
-    import export_gltf
-    argv = sys.argv
-    sys.argv = ["export_gltf", "--obj", obj_path, "--out", glb_path]
-    try:
-        export_gltf.main()
-    finally:
-        sys.argv = argv
+COMPONENT_FLOAT = 5126
+COMPONENT_UINT = 5125
+ARRAY_BUFFER = 34962
+ELEMENT_ARRAY_BUFFER = 34963
+
+
+def _face_normals(verts, tris):
+    out = []
+    for a, b, c in tris:
+        va, vb, vc = verts[a], verts[b], verts[c]
+        ux, uy, uz = vb[0] - va[0], vb[1] - va[1], vb[2] - va[2]
+        wx, wy, wz = vc[0] - va[0], vc[1] - va[1], vc[2] - va[2]
+        nx = uy * wz - uz * wy
+        ny = uz * wx - ux * wz
+        nz = ux * wy - uy * wx
+        ln = math.sqrt(nx * nx + ny * ny + nz * nz)
+        out.append((0.0, 0.0, 0.0) if ln < 1e-18
+                   else (nx / ln, ny / ln, nz / ln))
+    return out
+
+
+def _corner_angle(verts, tri, k):
+    """Interior angle of triangle `tri` at its `k`-th corner, in radians."""
+    p = verts[tri[k]]
+    q = verts[tri[(k + 1) % 3]]
+    r = verts[tri[(k + 2) % 3]]
+    ax, ay, az = q[0] - p[0], q[1] - p[1], q[2] - p[2]
+    bx, by, bz = r[0] - p[0], r[1] - p[1], r[2] - p[2]
+    la = math.sqrt(ax * ax + ay * ay + az * az)
+    lb = math.sqrt(bx * bx + by * by + bz * bz)
+    if la < 1e-18 or lb < 1e-18:
+        return 0.0
+    c = (ax * bx + ay * by + az * bz) / (la * lb)
+    return math.acos(max(-1.0, min(1.0, c)))
+
+
+def smooth_indexed(verts, tris, crease_deg=CREASE_DEG):
+    """(positions, normals, indices) for one group, smooth-shaded with creases.
+
+    THE FUNCTION THE WHOLE "unsmoothed body" FINDING COMES DOWN TO. See the
+    module docstring for the three decisions in it; the code below is the
+    mechanical part.
+    """
+    fn = _face_normals(verts, tris)
+    cos_lim = math.cos(math.radians(crease_deg))
+    # vertex index -> [(weighted normal, face normal), ...]. The corner angle is
+    # computed ONCE per corner rather than once per neighbour pair; the naive
+    # form is O(corners x valence) calls to `acos` and on a 416,000-triangle
+    # library that is the whole runtime of this tool.
+    adj = defaultdict(list)
+    for fi, tri in enumerate(tris):
+        g = fn[fi]
+        for k in range(3):
+            w = _corner_angle(verts, tri, k)
+            adj[tri[k]].append((g[0] * w, g[1] * w, g[2] * w, g))
+
+    pos, nrm, idx = [], [], []
+    seen = {}
+    for fi, tri in enumerate(tris):
+        n0 = fn[fi]
+        for k in range(3):
+            vi = tri[k]
+            sx = sy = sz = 0.0
+            for wx, wy, wz, g in adj[vi]:
+                if (g[0] * n0[0] + g[1] * n0[1] + g[2] * n0[2]) < cos_lim:
+                    continue                      # across a crease: not ours
+                sx += wx
+                sy += wy
+                sz += wz
+            ln = math.sqrt(sx * sx + sy * sy + sz * sz)
+            n = n0 if ln < 1e-12 else (sx / ln, sy / ln, sz / ln)
+            key = (vi, int(n[0] * 2048), int(n[1] * 2048), int(n[2] * 2048))
+            j = seen.get(key)
+            if j is None:
+                j = len(pos)
+                seen[key] = j
+                pos.append(verts[vi])
+                nrm.append(n)
+            idx.append(j)
+    return pos, nrm, idx
+
+
+def resolve_spans(tris, spans):
+    """[(group, [triangle index, ...])] with every triangle in exactly one group.
+
+    SPANS IN THIS PROJECT OVERLAP AND THAT IS NOT A BUG IN THEM.
+    `populace.crowd_library` emits, per body, one span naming the WHOLE body
+    (`crowd_<sp>_<lod>_<ph>_npc_body`) and then one span per merged material
+    run INSIDE it. `deck.write_obj` resolves that by painting a per-triangle
+    name and letting the last writer win, so the OBJ that reached the old glTF
+    exporter carried only the material runs.
+
+    The first cut of this file iterated the spans directly and wrote every body
+    TWICE -- 910,848 triangles at lod 2 against the 416,256 the same library had
+    always produced, and 2,304 meshes against 864. It was caught by comparing
+    the two ledgers rather than by any assertion, which is the reason
+    `--stats` reads the artefact instead of trusting the bake. Painting is the
+    only correct reading, so it is done here, once, in the same order.
+    """
+    per = [None] * len(tris)
+    for name, lo, hi in spans:
+        for i in range(lo, hi):
+            per[i] = name
+    order, out = [], {}
+    for i, name in enumerate(per):
+        if name is None:
+            continue
+        if name not in out:
+            out[name] = []
+            order.append(name)
+        out[name].append(i)
+    return [(n, out[n]) for n in order]
+
+
+def write_glb(path, verts, tris, spans, crease_deg=CREASE_DEG):
+    """One mesh and one node per span group, indexed, with smooth normals.
+
+    THE MESH NAMES ARE THE GROUP NAMES AND THAT IS LOAD-BEARING TWICE OVER.
+    `npc.gd::_index_library` splits `crowd_<species>_<lod>_<phase>_npc_skin` at
+    `_npc_` to find the body key, and `render_shot.gd::_material_for` /
+    `dress_scene.gd` resolve the material by the LONGEST fragment contained in
+    the name. A mesh named after its index resolves to nothing and the whole
+    crowd renders on the magenta fallback, which `npc.gd`'s own comment records
+    having happened.
+    """
+    buf = bytearray()
+    accessors, views, meshes, nodes = [], [], [], []
+    total_tris = 0
+
+    for name, tri_ix in resolve_spans(tris, spans):
+        if not tri_ix:
+            continue
+        # Re-base the group's triangles onto a dense local vertex list so the
+        # smoothing adjacency is per group and the accessors are compact.
+        remap, lv, lt = {}, [], []
+        for a, b, c in (tris[i] for i in tri_ix):
+            f = []
+            for vi in (a, b, c):
+                j = remap.get(vi)
+                if j is None:
+                    j = len(lv)
+                    remap[vi] = j
+                    lv.append(verts[vi])
+                f.append(j)
+            lt.append(tuple(f))
+        pos, nrm, idx = smooth_indexed(lv, lt, crease_deg)
+        total_tris += len(lt)
+
+        prim = []
+        for data, kind in ((pos, "POSITION"), (nrm, "NORMAL")):
+            off = len(buf)
+            for v in data:
+                buf.extend(struct.pack("<3f", *v))
+            views.append({"buffer": 0, "byteOffset": off,
+                          "byteLength": len(buf) - off, "target": ARRAY_BUFFER})
+            acc = {"bufferView": len(views) - 1,
+                   "componentType": COMPONENT_FLOAT,
+                   "count": len(data), "type": "VEC3"}
+            if kind == "POSITION":
+                acc["min"] = [min(v[i] for v in data) for i in range(3)]
+                acc["max"] = [max(v[i] for v in data) for i in range(3)]
+            accessors.append(acc)
+            prim.append(len(accessors) - 1)
+            while len(buf) % 4:
+                buf.append(0)
+
+        off = len(buf)
+        for i in idx:
+            buf.extend(struct.pack("<I", i))
+        views.append({"buffer": 0, "byteOffset": off,
+                      "byteLength": len(buf) - off,
+                      "target": ELEMENT_ARRAY_BUFFER})
+        accessors.append({"bufferView": len(views) - 1,
+                          "componentType": COMPONENT_UINT, "count": len(idx),
+                          "type": "SCALAR"})
+        while len(buf) % 4:
+            buf.append(0)
+
+        meshes.append({"name": name, "primitives": [{
+            "attributes": {"POSITION": prim[0], "NORMAL": prim[1]},
+            "indices": len(accessors) - 1, "mode": 4}]})
+        nodes.append({"name": name, "mesh": len(meshes) - 1})
+
+    gltf = {"asset": {"version": "2.0",
+                      "generator": "babylon5-station/tools/bake_crowd.py"},
+            "scene": 0,
+            "scenes": [{"name": "Crowd", "nodes": list(range(len(nodes)))}],
+            "nodes": nodes, "meshes": meshes, "accessors": accessors,
+            "bufferViews": views, "buffers": [{"byteLength": len(buf)}]}
+    js = json.dumps(gltf, separators=(",", ":")).encode()
+    while len(js) % 4:
+        js += b" "
+    while len(buf) % 4:
+        buf.append(0)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(struct.pack("<III", 0x46546C67, 2,
+                            12 + 8 + len(js) + 8 + len(buf)))
+        f.write(struct.pack("<II", len(js), 0x4E4F534A))
+        f.write(js)
+        f.write(struct.pack("<II", len(buf), 0x004E4942))
+        f.write(buf)
+    return total_tris, len(meshes)
+
+
+# Everything whose edit changes what a baked body looks like. Listed rather
+# than walked, because "every .py under station/" would rebuild the library
+# whenever anything in the project moved, and a 9-minute bake on every touch is
+# a gate people turn off.
+SOURCES = ("station/npc/body.py", "station/npc/costume.py",
+           "station/npc/animation.py", "station/populace.py",
+           "tools/bake_crowd.py")
+
+
+def _source_mtime():
+    """(name, mtime) of the most recently edited generator."""
+    best = ("(none)", 0.0)
+    for rel in SOURCES:
+        p = os.path.join(ROOT, rel)
+        if os.path.exists(p) and os.path.getmtime(p) > best[1]:
+            best = (rel, os.path.getmtime(p))
+    return best
 
 
 def bake(out_dir=DECKDIR, force=False, keep_obj=False):
-    """Emit `crowd_lod<N>.obj/.glb` for every rung of the ladder.
+    """Emit `crowd_lod<N>.glb` for every rung of the ladder.
 
     Returns the list of (lod, glb_path, n_verts, n_groups) actually written.
     """
-    import deck as D
     import populace as P
 
     os.makedirs(out_dir, exist_ok=True)
+    newest = _source_mtime()
     written = []
     for _hi, lod in P.crowd_ladder():
         glb = os.path.join(out_dir, "crowd_lod%d.glb" % lod)
         if os.path.exists(glb) and not force:
-            print("  lod %d: present, skipped (use --force to rebuild)" % lod)
-            continue
-        obj = os.path.join(out_dir, "crowd_lod%d.obj" % lod)
+            # STALE IS NOT THE SAME AS PRESENT, and reading it as the same is
+            # this project's signature defect wearing a build-cache. `--force`
+            # is a flag somebody has to remember, and a checkout that already
+            # holds a library would otherwise keep shipping the body it was
+            # baked from however many times `station/npc/body.py` changed --
+            # the frame would be fresh and the ASSET stale, which is the
+            # session-4e renderer-fallback shape one level down. So the skip is
+            # conditioned on the generators' own mtimes, and it SAYS which one
+            # made it rebuild.
+            if os.path.getmtime(glb) >= newest[1]:
+                print("  lod %d: present and newer than every generator, "
+                      "skipped (--force to rebuild anyway)" % lod)
+                continue
+            print("  lod %d: present but STALE -- %s is newer" % (lod, newest[0]))
         v, t, g = P.station_crowd_library(lod)
-        D.write_obj(obj, v, t, g)
-        _glb(obj, glb)
-        # The OBJ is an intermediate: Godot reads the glb and nothing else
-        # reads the obj, so it is 3-8 MB of package weight for nothing.
-        if not keep_obj:
-            os.remove(obj)
+        if keep_obj:
+            # The OBJ is an intermediate: Godot reads the glb and nothing else
+            # reads the obj, so it is 3-8 MB of package weight for nothing. It
+            # is still worth having behind a flag -- `tools/preview_render.py`
+            # eats OBJ and is the fast way to look at a body.
+            import deck as D                                    # noqa: PLC0415
+            D.write_obj(os.path.join(out_dir, "crowd_lod%d.obj" % lod), v, t, g)
+        tri, nm = write_glb(glb, v, t, g)
         written.append((lod, glb, len(v), len(g)))
-        print("  lod %d: %d verts, %d groups -> %s (%.1f MB)"
-              % (lod, len(v), len(g), os.path.basename(glb),
+        print("  lod %d: %d verts, %d groups -> %d triangles in %d meshes -> "
+              "%s (%.1f MB)"
+              % (lod, len(v), len(g), tri, nm, os.path.basename(glb),
                  os.path.getsize(glb) / 1e6))
     return written
+
+
+def read_glb(path):
+    """(json, bin) of a .glb. Small, and the only reader this file needs."""
+    with open(path, "rb") as f:
+        data = f.read()
+    magic, _ver, length = struct.unpack_from("<III", data, 0)
+    if magic != 0x46546C67:
+        raise ValueError("%s is not a glb" % path)
+    off, js = 12, None
+    while off < length:
+        clen, ctype = struct.unpack_from("<II", data, off)
+        off += 8
+        if ctype == 0x4E4F534A:
+            js = json.loads(data[off:off + clen].decode("utf-8"))
+        off += clen
+    return js
+
+
+def bodies_in(path):
+    """`{body key: (triangles, min_y)}` read back off the baked file.
+
+    OFF THE ARTEFACT AND NOT OFF THE GENERATOR, which is the whole reason this
+    exists. Every other number in this tool is what the bake INTENDED; these two
+    are what a Godot import will actually see, taken from the POSITION
+    accessors' own declared min/max. CLAUDE.md's rule -- a gate that reads a
+    committed artefact must be able to rebuild it -- runs the other way here:
+    `--stats` rebuilds nothing and reads only what shipped.
+    """
+    js = read_glb(path)
+    acc = js["accessors"]
+    out = {}
+    for mesh in js["meshes"]:
+        name = mesh.get("name", "?")
+        cut = name.find("_npc_")
+        key = name[:cut] if cut > 0 else name
+        tri, lo = out.get(key, (0, 1e30))
+        for p in mesh["primitives"]:
+            tri += (acc[p["indices"]]["count"] // 3 if "indices" in p
+                    else acc[p["attributes"]["POSITION"]]["count"] // 3)
+            a = acc[p["attributes"]["POSITION"]]
+            if "min" in a:
+                lo = min(lo, a["min"][1])
+        out[key] = (tri, lo)
+    return out
+
+
+# A body's own origin is the deck it stands on: `npc.gd::_walker_xform` and
+# `populace._place_body` both put the instance transform's origin ON the floor
+# and the mesh is expected to rise from there. This is how far above it a body
+# is allowed to start.
+GROUND_TOL_M = 0.002
+
+# ...EXCEPT THE ONE POSE THAT IS NOT STANDING ON THE FLOOR. `populace.crowd_body`
+# poses the `sit` and `sleep` slots on the SPECIES' OWN FITTED FURNITURE --
+# `animation.seat_height` / `bunk_height` -- because a shared body cannot know
+# which chair it will end up on, and the placement then puts it on the real one.
+# So those two slots legitimately start a seat-height above the origin, and a
+# grounding gate that did not say so would either fail for ever or be quietly
+# relaxed until it could not fail at all. Named, not excluded silently.
+POSED_ON_FURNITURE = ("sit", "sleep")
+
+
+def stats(out_dir=DECKDIR, out=print):
+    """Triangles per rung and the grounding ledger. Returns (rows, floaters)."""
+    import populace as P
+    slots = {P.SLOT_OF[k] for k in POSED_ON_FURNITURE if k in P.SLOT_OF}
+    rows, floaters = [], []
+    for _hi, lod in P.crowd_ladder():
+        p = os.path.join(out_dir, "crowd_lod%d.glb" % lod)
+        if not os.path.exists(p):
+            out("  lod %-2d MISSING" % lod)
+            continue
+        bodies = bodies_in(p)
+        tri = sum(t for t, _ in bodies.values())
+        ground = [(k, y) for k, (_t, y) in bodies.items()
+                  if int(k.rsplit("_", 1)[-1]) not in slots]
+        bad = [(k, y) for k, y in ground if y > GROUND_TOL_M]
+        floaters.extend(bad)
+        ys = sorted(y for _k, y in ground)
+        rows.append((lod, tri, len(bodies), os.path.getsize(p)))
+        out("  lod %-2d %9d triangles  %3d bodies  %6.2f MB   "
+            "min_y median %+.5f  worst %+.5f  above %.0f mm: %d/%d"
+            % (lod, tri, len(bodies), os.path.getsize(p) / 1e6,
+               ys[len(ys) // 2], ys[-1], GROUND_TOL_M * 1000,
+               len(bad), len(ground)))
+    return rows, floaters
+
+
+def preview(lod, out_dir=DECKDIR, species="human", near=False):
+    """Write a shot the ENGINE can take a close crowd frame from.
+
+    WHY THIS IS HERE AND NOT IN `tools/export_scene.py`, which is where every
+    other shot lives. Three reasons and the third is the one that decided it:
+
+      * The thing being judged is the CROWD LIBRARY -- the shared bodies a
+        MultiMesh instances -- and no existing shot renders those. `--shot deck`
+        bakes the placements back into triangles through `populace.bake_
+        instances`, so it renders the same geometry by a different route and
+        would not notice if this file wrote nonsense.
+      * A deck shot is minutes of full CPU and rewrites
+        `station/generated/scene/deck/*`, which is a SHARED path. CLAUDE.md
+        records two sessions lost to exactly that: an agent's render taken
+        against files another agent was mid-write on, read as a regression in
+        the thing being tested.
+      * `station/generated/scene/crowd/` is a directory nothing else in the
+        project writes, so this contends with nobody.
+
+    `render_shot.gd` reads a scene.json and nothing else, so the shot is that
+    file plus a glb. Render it with:
+
+        tools/render_godot.sh --shot crowd --no-export --res 1280x1280 \\
+            --out docs/engine-crowd-lod2.png
+
+    and read the renderer line the script prints -- it exits 3 rather than hand
+    back an OpenGL 3 Compatibility frame.
+    """
+    import populace as P
+
+    sdir = os.path.join(ROOT, "station", "generated", "scene", "crowd")
+    os.makedirs(sdir, exist_ok=True)
+
+    # Four bodies at four phases, a metre apart, facing the camera. The library
+    # builds every body at the origin because the instance transform carries the
+    # placement; here the offset IS the placement.
+    verts, tris, spans = [], [], []
+    # ONE body at the origin for the near shot: the half-distance frame is
+    # about a face, and four bodies at 1 m means three of them off-frame
+    # and the camera aimed at the gap between two of them, which is what
+    # the first near render actually produced.
+    n_bodies = 1 if near else 4
+    for i in range(n_bodies):
+        bv, bt, bg = P.crowd_body(species, lod, i * 2 % P.CROWD_PHASES)
+        base, t0 = len(verts), len(tris)
+        dx = (i - (n_bodies - 1) / 2.0) * 0.80
+        verts.extend((x + dx, y, z) for x, y, z in bv)
+        tris.extend((a + base, b + base, c + base) for a, b, c in bt)
+        for nm, lo, hi in bg:
+            # THE GROUP NAME MUST KEEP ITS `npc_...` FRAGMENT.
+            # `render_shot.gd::_material_for` binds by the longest fragment
+            # CONTAINED in the mesh name, so a name that loses it resolves to
+            # nothing and the body renders on the fallback -- grey on grey,
+            # which is the one failure a render cannot show.
+            frag = nm[nm.find("npc_"):] if "npc_" in nm else nm
+            spans.append(("crowdpreview%d_%s" % (i, frag), t0 + lo, t0 + hi))
+
+    glb = os.path.join(sdir, "crowd_preview.glb")
+    tri, nm = write_glb(glb, verts, tris, spans)
+
+    # The camera: the rubric's HALF distance. A corridor conversation is about
+    # 2 m, so craft is judged at 1 m, which is `AAA-STANDARD.md`'s own rule and
+    # the one session 3r records having never applied.
+    eye = (0.0, 1.50, 3.35) if not near else (0.42, 1.56, 1.02)
+    aim = (0.0, 1.05, 0.0) if not near else (0.0, 1.50, 0.06)
+    fov = 34.0 if not near else 20.0
+    # SHADOWS ON, and it is not decoration. Godot's own default is off, so a
+    # first pass of this shot came back with "0 casting shadows" and every
+    # figure lit like a flat card -- no contact shadow under a boot, no form
+    # shadow in an eye socket, which is exactly the geometry this session
+    # exists to make readable. A frame with no shadow cannot answer the
+    # question it was taken to answer.
+    lights = []
+    for lx in (-1.9, 0.0, 1.9):
+        lights.append({"pos": [lx, 2.85, 1.35], "energy": 6.0,
+                       "colour": [1.0, 0.96, 0.90], "range": 8.5,
+                       "attenuation": 1.0, "shadow": True,
+                       "group": "light_downlight"})
+    lights.append({"pos": [0.0, 1.6, 3.6], "energy": 1.8,
+                   "colour": [0.82, 0.88, 1.0], "range": 9.0,
+                   "attenuation": 1.0, "group": "light_fill"})
+    shot = {
+        "shot": "crowd",
+        "scene": "res://scenes/interior.tscn",
+        "glb": [glb],
+        "triangles": tri,
+        "groups": [s[0] for s in spans],
+        "lights": lights,
+        "room": "corridor",
+        "exposure": 1.0,
+        "ambient": 1.3,
+        "camera": {"eye": list(eye), "target": list(aim), "up": [0.0, 1.0, 0.0],
+                   "fov": fov, "near": 0.05, "far": 60.0},
+        "sun_from": None,
+        "out_png": os.path.join(sdir, "crowd_preview.png"),
+        "lod": lod, "species": species, "bodies": n_bodies,
+    }
+    with open(os.path.join(sdir, "scene.json"), "w", encoding="utf-8") as f:
+        json.dump(shot, f, indent=1)
+    print("crowd preview: %d bodies, %s lod %d, %d triangles in %d meshes"
+          % (n_bodies, species, lod, tri, nm))
+    print("  %s" % os.path.relpath(glb, ROOT))
+    print("  render with: tools/render_godot.sh --shot crowd --no-export "
+          "--res 1280x1280 --out <png>")
+    return 0
 
 
 def selftest(out_dir=DECKDIR):
@@ -117,7 +582,6 @@ def selftest(out_dir=DECKDIR):
     which directory holds it is the entire question.
     """
     import glob
-    import json
     import populace as P
     lad = P.crowd_ladder()
     missing = []
@@ -184,6 +648,28 @@ def selftest(out_dir=DECKDIR):
         print("  The generator picked a level off the ladder: see "
               "populace.lod_for_distance and INV-1232.")
         return 1
+
+    # -- AND THE THIRD QUESTION, session 4u: does a body STAND ON ITS ORIGIN? --
+    # The two checks above ask whether the library is complete and whether the
+    # placements agree with it. Neither can see that every mesh in it is in the
+    # air, and every mesh in it was: measured off the shipped `crowd_lod8.glb`,
+    # 157 of 168 bodies had their lowest vertex above 2 cm with a median of
+    # 79.0 mm, because `feet` is an `extremity` and the leg used to stop at the
+    # ankle when it was culled. A crowd hovering 8 cm over the deck is not
+    # something any assertion in this project could fail for, and it is
+    # something anybody would see.
+    print("\nTRIANGLES AND GROUNDING, read off the baked files")
+    _rows, floaters = stats(out_dir)
+    if floaters:
+        print("\n  %d BODY/BODIES DO NOT STAND ON THEIR OWN ORIGIN "
+              "(> %.0f mm)." % (len(floaters), GROUND_TOL_M * 1000))
+        for k, y in sorted(floaters, key=lambda kv: -kv[1])[:5]:
+            print("    %-28s min_y %+.4f m" % (k, y))
+        print("  `npc.gd::_walker_xform` puts the instance origin ON the deck,")
+        print("  so this is exactly how far the crowd floats. The poses that")
+        print("  are MEANT to be off the floor -- %s -- are excluded by name."
+              % ", ".join(POSED_ON_FURNITURE))
+        return 1
     print("\n  CROWD LIBRARY OK")
     return 0
 
@@ -196,7 +682,22 @@ def main():
     ap.add_argument("--keep-obj", action="store_true")
     ap.add_argument("--selftest", action="store_true",
                     help="assert every ladder rung is present; exit 1 if not")
+    ap.add_argument("--stats", action="store_true",
+                    help="triangles per rung and the grounding ledger, read "
+                         "off the baked glb rather than off the generator")
+    ap.add_argument("--preview", metavar="LOD", type=int, default=None,
+                    help="write a scene the engine renderer can take a close "
+                         "crowd frame from; see `preview()`")
+    ap.add_argument("--preview-species", default="human")
+    ap.add_argument("--preview-near", action="store_true",
+                    help="the rubric's HALF distance -- a head at 1 m")
     a = ap.parse_args()
+    if a.stats:
+        print("crowd library in %s" % os.path.relpath(a.out, ROOT))
+        _rows, floaters = stats(a.out)
+        return 1 if floaters else 0
+    if a.preview is not None:
+        return preview(a.preview, a.out, a.preview_species, a.preview_near)
     if a.selftest:
         return selftest(a.out)
     print("baking the shared crowd library into %s"
