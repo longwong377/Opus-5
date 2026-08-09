@@ -331,7 +331,25 @@ def main(argv=None):
             # by construction and the wiring work had nothing to act on.
             side = _sidecars(stem, V, T, G, st)
             joins = [j for j in st.get("joins", ()) if j.get("built")]
-            row = {"key": stem, "clusters": len(st["clusters"]),
+            # A SHELL B DECK HAS NO CLUSTERS AND THIS LINE ASSUMED IT DID.
+            # `len(st["clusters"])` is an unconditional subscript, and
+            # `shell_b.build_deck` returns blocks and slots rather than the
+            # z-clusters a landmark deck is assembled from -- so EVERY Shell B
+            # deck raised KeyError here, in the same commit that added the
+            # branch six lines above. Run 9's step 1 lost 40 red decks that way,
+            # exactly the 40 `work_list()` marks Shell B.
+            #
+            # The geometry was never at risk: render, collision and sidecars are
+            # all written before this point, which is why the bake still found
+            # 1,576 cells. What was lost is the manifest row and the exit code.
+            #
+            # Reported per shell rather than coerced: a Shell B deck says how
+            # many residential blocks it carries, because pushing an empty
+            # `clusters: []` into it would put a Shell A concept inside Shell B.
+            row = {"key": stem, "clusters": len(st.get("clusters", ())),
+                   "blocks": st.get("blocks", 0),
+                   "units": st.get("units", 0),
+                   "shell": "B" if not decks[k] else "A",
                    "rooms": st.get("rooms", 0), "tris": len(T),
                    "groups": len(G), "joins": len(joins),
                    "join_m": round(sum(j.get("length_m", 0) for j in joins), 1),

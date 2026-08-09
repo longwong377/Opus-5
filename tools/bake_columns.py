@@ -14,10 +14,14 @@ time in this project; this file is the caller.
     python3 tools/bake_columns.py                 # all five, skip what is done
     python3 tools/bake_columns.py --sector blue --force
     python3 tools/bake_columns.py --verify        # measure, bake nothing
+    python3 tools/bake_columns.py --check-mesh    # seconds: is the mesh on
+                                                  # disk where its manifest
+                                                  # says, and still where it
+                                                  # would be built today?
     python3 tools/bake_columns.py --selftest
 
 ===========================================================================
-FOUR THINGS ABOUT A COLUMN THAT ARE NOT TRUE OF A DECK
+FIVE THINGS ABOUT A COLUMN THAT ARE NOT TRUE OF A DECK
 ===========================================================================
 
 **1. A COLUMN RISES THROUGH RADIUS, NOT THROUGH Z.** This is the fact the whole

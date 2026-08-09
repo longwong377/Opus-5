@@ -76,6 +76,14 @@ GATES: list[list[str]] = [
     ["station/populace.py", "--lod-gate"],
     ["tools/bake_sidecars.py", "--check"],
     ["tools/merge_cells.py", "--selftest"],
+    # SECONDS, NO GODOT, NO BAKE -- and it is the check that would have caught
+    # run 9's column failure before 45 minutes of export. It asserts every
+    # column mesh sits where its manifest says, which is exactly the mismatch
+    # that made the yellow shaft refuse: `column_site(rule="floor")` measures
+    # against baked deck cells ON DISK, and step 1 runs two steps before those
+    # cells exist, so the export placed the columns provisionally and step 5
+    # re-derived them 80 m away.
+    ["tools/bake_columns.py", "--check-mesh"],
 ]
 
 
