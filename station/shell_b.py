@@ -80,8 +80,8 @@ module's `integration_note()`, which prints it.
 
 Run: python3 station/shell_b.py --selftest
      python3 station/shell_b.py --plan
-     python3 station/shell_b.py --deck red/1/5
-     python3 station/shell_b.py --deck red/1/5 --obj /tmp/shb.obj
+     python3 station/shell_b.py --deck red/1/8
+     python3 station/shell_b.py --deck red/1/8 --obj /tmp/shb.obj
 """
 import argparse
 import hashlib
@@ -594,6 +594,7 @@ _RING_STACK = {}          # (id(schema), sector, ring) -> the deck list in use
 _SECTOR_Z = {}            # (id(schema), sector) -> (z probed, depth it came from)
 _SETTLING = set()         # sectors whose fixed point is running right now
 _CAPPED = {}              # (belt id, sector, ring) -> (wanted, kept, why)
+_INDEXED = {}             # (sector, ring) -> why a rung could not be resolved
 _SETTLE_PASSES = 5
 
 
@@ -716,6 +717,72 @@ def _settle_sector(schema, profile, sector):
         _BELT_INDEX.pop(key, None)
 
 
+def stack_entry(schema, profile, sector, ring, deck):
+    """The deck stack row a Shell B deck NUMBER names. Never a clamp.
+
+    A Shell B deck number is a register LABEL where the register claims that
+    rung and the canonical RUNG where it does not (`belt_decks` / `_address`),
+    and the two sets are disjoint by construction, so this is a lookup and not
+    a subscript. It used to read `stack[min(deck, len - 1)]`, which is the
+    clamp that put fifteen decks of this module's own plan at a radius another
+    deck already had.
+
+    ONE PLACE IT CANNOT BE A RUNG, AND IT IS NAMED RATHER THAN CLAMPED
+    SILENTLY. `ring_radii` re-partitions the whole cross-section at every axial
+    station, so a ring INDEX does not always name the same ring at two z. On
+    yellow it does not: the sector's belt settles at z 0.0, where `ring_1` has
+    closed up entirely and index 0 therefore names `ring_2`. SHB-09's node deck
+    is addressed by the register -- ring index 0 of yellow, meaning `ring_1` --
+    and no rung of `ring_2` is that deck. There is no mapping between the two
+    ladders because they are different rings; the module keeps its pre-4w
+    positional resolution there so the row still accounts for its 12,000 m²,
+    and records it in `indexed()` so it is never silent. `--plan` prints it.
+
+    Everywhere else -- 83 of the plan's 84 decks -- the rung resolves exactly
+    and a miss raises, because a miss there is a bug in `belt_decks`' cap.
+    """
+    stack = ring_stack(schema, profile, sector, ring)
+    if _LEGACY:
+        # THE CONTROL IS THE CLAMP ITSELF. `--selftest --legacy` withholds the
+        # cap and restores `min(deck, len - 1)`, which is what this module
+        # shipped, so claim 12 is shown failing on the behaviour it was written
+        # against rather than only passing on the behaviour that replaced it.
+        return stack[min(deck, len(stack) - 1)]
+    claimed = it.claimed_rungs(schema, profile, sector, ring)
+    want = {lab: j for j, lab in claimed.items()}.get(deck, deck)
+    for d in stack:
+        if d["rung"] == want:
+            return d
+    canon = it.ring_radii(schema, profile, sector)
+    z = _SECTOR_Z.get((id(schema), sector), (None, 0.0))[0]
+    here = it.ring_radii(schema, profile, sector, z_m=z)
+    a = canon[ring]["id"] if ring < len(canon) else "(none)"
+    b = here[ring]["id"] if ring < len(here) else "(none)"
+    if a != b and stack:
+        _INDEXED[(sector, ring)] = (
+            "ring index %d is %s at the sector's widest and %s at z %.1f m, so "
+            "a register rung of %s has no counterpart in %s -- deck %d resolved "
+            "POSITIONALLY to rung %d, r %.2f m"
+            % (ring, a, b, z or 0.0, a, b, deck,
+               stack[min(deck, len(stack) - 1)]["rung"],
+               stack[min(deck, len(stack) - 1)]["floor_r_m"]))
+        return stack[min(deck, len(stack) - 1)]
+    raise ValueError(
+        "shell_b: %s ring %d has no rung %d -- the hull leaves rungs %s over "
+        "%.0f m of z, and belt_decks hands out rungs, not positions"
+        % (sector, ring, deck, [d["rung"] for d in stack] or "none",
+           _SECTOR_Z.get((id(schema), sector), (0, 0.0))[1]))
+
+
+def indexed():
+    """(sector, ring) -> why a Shell B deck there is a position and not a rung.
+
+    Empty is the healthy state. A row here is an address this module cannot
+    make unambiguous on its own; see `stack_entry`.
+    """
+    return dict(_INDEXED)
+
+
 def reset_stacks():
     """Drop every cached stack. `--selftest` calls it when `_LEGACY` flips.
 
@@ -726,6 +793,7 @@ def reset_stacks():
     _RING_STACK.clear()
     _SECTOR_Z.clear()
     _CAPPED.clear()
+    _INDEXED.clear()
     _BELT_INDEX.clear()
 
 
@@ -775,20 +843,70 @@ def _note_cap(belt, sector, ring, wanted, kept, why):
 # WHICH DECKS A BELT OWNS
 # --------------------------------------------------------------------------
 def belt_decks(schema, profile, belt):
-    """`[(sector, ring, deck_index)]` for one belt, from the live ring stacks.
+    """`[(sector, ring, rung)]` for one belt, from the live ring stacks.
+
+    A SHELL B DECK NUMBER IS A CANONICAL RUNG. `interior.decks_in_ring` returns
+    two numbers per deck: `deck_index`, its POSITION in the list the hull leaves
+    at this z, and `rung`, its number on the ring's one canonical ladder. This
+    module used to hand out positions, and a position means nothing outside the
+    z it was taken at -- grey ring 0 stacks 23 rungs and the hull leaves 11 over
+    SHB-08's own z, so Shell B's "deck 10" was **rung 22**, while
+    `cell_manifest.json`'s deck_table -- built z-blind, so its `deck_index` IS
+    the rung -- reads deck 10 as rung 10, 43.2 m outboard. Rungs are the same
+    number in both places by construction, so the ambiguity ends here rather
+    than being translated somewhere downstream.
 
     Three rules, in order, and each is the row's own words rather than a
     default:
 
-      1. the row states `decks N–M` — take those, and RAISE if the ring does
-         not stack that far. `shb.py::_claim_decks` already checks the same
-         thing from the spec side; a builder that clamped instead would build a
-         belt into decks that do not exist and report success.
+      1. the row states `decks N–M` — take the rungs of that range the hull
+         leaves, and RAISE if the ring does not stack that far at its widest.
+         `shb.py::_claim_decks` already checks the same thing from the spec
+         side; a builder that clamped instead would build a belt into decks
+         that do not exist and report success.
       2. the row names worked nodes (SHB-09) — resolve the PLC ids it cites to
          register rows and take the decks they land on. No ring range is stated
          because the belt is not a stack, and inventing one would be the
          `_claim_decks` failure this file's own harness declines to make.
-      3. otherwise — every deck of every ring the heading names.
+      3. otherwise — every rung of the ring the hull leaves over the belt's
+         own z.
+
+    AND A RUNG THE REGISTER HAS ALREADY CLAIMED IS ADDRESSED BY THE REGISTER'S
+    OWN LABEL FOR IT. That one line is the whole fix and it is worth stating
+    why it is not the other obvious one.
+
+    Grey ring 0 stacks 23 rungs, the register puts 19 places on them, and this
+    rule used to read `range(n_hull)` -- POSITIONS in the hull-narrowed stack,
+    so `deck 1` was rung 13 while Shell A called that same deck `grey_0_55`.
+    Two names, one radius, and `tools/merge_cells.py::deck_headroom` refused
+    the export over the resulting 0.000 m bands. It was right.
+
+    THE FIRST FIX TRIED WAS `interior.free_rungs` ALONE -- give Shell B only
+    the rungs no register place claims -- AND IT IS MEASURABLY WRONG. It takes
+    SHB-04 from 32 decks of red rings 1-2 to the 18 the register leaves free,
+    and the annex's own arithmetic assumes 32: 3,706,900 m² over 32 decks is
+    the ~115,800 m²/deck `block_plan` is checked against. At 18 the belt needs
+    **399.7 m of axial depth against red's 369 m** and pushes red ring 1 deck 8
+    1.6 m outside the pressure hull -- claims 5 and 6 of `_selftest`, both
+    failing, both real. The belts and the register genuinely SHARE decks: a
+    landmark occupies part of a ring and housing occupies the rest, which is
+    what `tools/export_station.py::work_list`'s `decks.setdefault` has always
+    said ("38 of them at an address Shell A already owns").
+
+    So sharing is kept and the NAMING is fixed. A claimed rung is addressed by
+    `interior.claimed_rungs()[rung]` -- the register's own deck number for it --
+    so the two shells produce ONE key for one deck and merge, instead of two
+    keys 0.000 m apart. A free rung is addressed by the rung itself.
+
+    ONE RESIDUE, DROPPED LOUDLY RATHER THAN LEFT AMBIGUOUS. The two addressing
+    systems share the `sector_ring_deck` namespace, so a free rung whose NUMBER
+    is also a register label elsewhere on the ring cannot be named: grey ring 0
+    leaves rungs 19-22 free and carries places labelled 20 and 22 (at rungs 5
+    and 6). Those two Shell B decks are refused, with the reason recorded in
+    `caps()` and printed by `--plan`, because keeping them means a key that
+    names two radii -- the exact defect this rule exists to end. Disambiguating
+    the namespace itself belongs to `tools/export_station.py` and the manifest,
+    which this module does not own.
 
     AND THEN CAPPED AT WHAT THE HULL LEAVES, WHICH IS A DIFFERENT QUESTION
     FROM RULE 1. Rule 1 asks the ring at the sector's widest cylinder and is
@@ -818,34 +936,86 @@ def belt_decks(schema, profile, belt):
                 "%s houses on decks %d-%d and %s ring %d stacks %d (0..%d)"
                 % (belt["id"], belt["deck_lo"], belt["deck_hi"], sec,
                    rings[0], n, n - 1))
-        n_hull = n if _LEGACY else len(ring_stack(schema, profile, sec,
-                                                  rings[0]))
-        hi = min(belt["deck_hi"], n_hull - 1)
-        if hi < belt["deck_lo"]:
-            # NOT CLAMPABLE AND NOT BUILDABLE. The belt's first deck is already
+        if _LEGACY:
+            hi = min(belt["deck_hi"], n - 1)
+            return [(sec, rings[0], d) for d in range(belt["deck_lo"], hi + 1)]
+        # THE ROW'S `decks N–M` ARE RUNGS, NOT POSITIONS. On every ring a row
+        # states a range for (blue 0-1, green 0) the register's own deck labels
+        # are already valid indices, so `deck_index_for` returns them unchanged
+        # and label == rung. Intersecting the range with the rungs the hull
+        # leaves is therefore the row's own words and the ship's own shape,
+        # with nothing in between: `min(deck_hi, n_hull - 1)` counted DECKS
+        # against a range of NAMES and handed out `decks 2..4` of blue ring 0
+        # while building rungs 7, 8 and 9.
+        stack = ring_stack(schema, profile, sec, rings[0])
+        keep, _drop = _address(schema, profile, sec, rings[0],
+                              [d["rung"] for d in stack
+                               if belt["deck_lo"] <= d["rung"]
+                               <= belt["deck_hi"]])
+        if not keep:
+            # NOT CLAMPABLE AND NOT BUILDABLE. Every deck the belt names is
             # outside what the hull leaves, so there is nothing to redistribute
             # over. Say it with numbers.
             raise ValueError(
                 "%s houses on decks %d-%d of %s ring %d and the hull leaves "
-                "only %d deck(s) (0..%d) over the belt's own %.0f m of z -- "
-                "no deck of this belt can be built"
+                "rungs %s over the belt's own %.0f m of z -- no deck of this "
+                "belt can be built"
                 % (belt["id"], belt["deck_lo"], belt["deck_hi"], sec, rings[0],
-                   n_hull, n_hull - 1,
+                   [d["rung"] for d in stack] or "none",
                    _SECTOR_Z.get((id(schema), sec), (0, 0.0))[1]))
         _note_cap(belt, sec, rings[0], belt["deck_hi"] - belt["deck_lo"] + 1,
-                  hi - belt["deck_lo"] + 1,
-                  "ring stacks %d at its widest, %d over the belt's z span"
-                  % (n, n_hull))
-        return [(sec, rings[0], d) for d in range(belt["deck_lo"], hi + 1)]
+                  len(keep),
+                  "ring stacks %d at its widest, rungs %d-%d over the belt's "
+                  "z span" % (n, stack[0]["rung"], stack[-1]["rung"]))
+        return [(sec, rings[0], j) for j in keep]
     out = []
     for r in rings:
         wide = len(it.decks_in_ring(schema, profile, sec, r))
-        n_hull = wide if _LEGACY else len(ring_stack(schema, profile, sec, r))
-        _note_cap(belt, sec, r, wide, n_hull,
+        if _LEGACY:
+            out += [(sec, r, d) for d in range(wide)]
+            _note_cap(belt, sec, r, wide, wide, "legacy: every deck of the "
+                                                "ring at its widest")
+            continue
+        stack = ring_stack(schema, profile, sec, r)
+        keep, drop = _address(schema, profile, sec, r,
+                             [d["rung"] for d in stack])
+        _note_cap(belt, sec, r, wide, len(keep),
                   "ring stacks %d at its widest, %d over the belt's z span"
-                  % (wide, n_hull))
-        out += [(sec, r, d) for d in range(n_hull)]
+                  % (wide, len(stack))
+                  + ("" if not drop else
+                     "; rung(s) %s refused -- the number is a register label "
+                     "elsewhere on this ring and one key cannot name two radii"
+                     % (drop,)))
+        out += [(sec, r, j) for j in keep]
     return out
+
+
+def _address(schema, profile, sector, ring, rungs):
+    """`([address], [refused rung])` for a list of rungs of one ring.
+
+    THE ONE PLACE THE TWO NAMING SYSTEMS MEET. Shell A addresses a deck by the
+    register's own number for it; Shell B addresses one by its rung on the
+    canonical ladder; both go into the same `sector_ring_deck` key. So a rung
+    the register claims takes the register's name -- which is what makes the
+    two shells MERGE on a shared deck instead of producing two keys at one
+    radius -- and a free rung takes its own number.
+
+    A free rung whose number is a register label of some OTHER rung on the same
+    ring is refused rather than emitted, because there is no third name
+    available and either choice would be a key that means two things. It is
+    returned so the caller can record it; nothing here is silent.
+    """
+    claimed = it.claimed_rungs(schema, profile, sector, ring)   # rung -> label
+    labels = set(claimed.values())
+    keep, drop = [], []
+    for j in rungs:
+        if j in claimed:
+            keep.append(claimed[j])
+        elif j in labels:
+            drop.append(j)
+        else:
+            keep.append(j)
+    return keep, drop
 
 
 def _node_decks(belt):
@@ -1308,22 +1478,7 @@ def deck_slots(schema, profile, sector, ring, deck):
     # had -- see `ring_stack`. There is no clamp here now: `belt_decks` has
     # already capped the belt to what the stack holds, so an index past its end
     # is a bug in the cap and raises rather than resolving to a neighbour.
-    stack = ring_stack(schema, profile, sector, ring)
-    at = deck
-    if _LEGACY:
-        # THE CONTROL IS THE CLAMP ITSELF. `--selftest --legacy` withholds the
-        # cap and restores `min(deck, len - 1)`, which is what this module
-        # shipped, so claim 12 is shown failing on the behaviour it was written
-        # against rather than only passing on the behaviour that replaced it.
-        at = min(deck, len(stack) - 1)
-    elif deck >= len(stack):
-        raise ValueError(
-            "shell_b: %s ring %d deck %d, and the ring's stack holds %d "
-            "(0..%d) over %.0f m of z -- belt_decks caps to the stack and "
-            "must not have handed this deck out"
-            % (sector, ring, deck, len(stack), len(stack) - 1,
-               _SECTOR_Z.get((id(schema), sector), (0, 0.0))[1]))
-    d = stack[at]
+    d = stack_entry(schema, profile, sector, ring, deck)
     r = d["floor_r_m"]
     circ = 2 * math.pi * r
     ids = "+".join(o["belt"]["id"] for o in owners)
@@ -1536,6 +1691,11 @@ def deck_slots(schema, profile, sector, ring, deck):
     built = block_m2 + room_m2 + ring_m2
     return {
         "belt": ids, "sector": sector, "ring": ring, "deck": deck,
+        # THE ADDRESS AND THE LADDER NUMBER, BOTH, because they are not
+        # always the same integer and every consumer needs to know which
+        # it is holding. `deck` is the streaming key; `rung` is the one
+        # number `cell_manifest.json`'s z-blind `deck_index` also is.
+        "rung": d["rung"],
         "radius_m": r, "circumference_m": circ, "use": d["use"],
         "gravity_g": d["floor_g"],
         "z0": ex["z0"], "z_span_m": z_span, "bands": bands, "depth_m": depth,
@@ -1658,7 +1818,13 @@ def build_deck(schema, profile, sector, ring, deck, lod=1, cells=None,
         return [], [], [], {"built": False, "why": "no belt owns this deck"}
     import deck as DK                                            # noqa: PLC0415
     r = plan["radius_m"]
-    cellplan = it.ring_cells(schema, profile, sector, ring, deck)
+    # THE CELL PLAN IS ASKED FOR BY RUNG, NOT BY ADDRESS. `ring_cells`
+    # subscripts the ring's z-blind stack, where index == rung, and it
+    # RAISES for a register deck NUMBER -- `grey_0_50` is a name. The
+    # address is one or the other (`_address`), so the rung is taken from
+    # the stack row rather than from the key.
+    cellplan = it.ring_cells(schema, profile, sector, ring,
+                             plan["rung"])
     want = None if cells is None else set(cells)
 
     V, T, Gs = [], [], []
@@ -1873,7 +2039,13 @@ def deck_collision(schema, profile, sector, ring, deck, cells=None):
     r = plan["radius_m"]
     meta = {"floor_r_m": r - prof["floor_y"], "door_w_m": DOOR_W_M,
             "door_h_m": DOOR_H_M}
-    cellplan = it.ring_cells(schema, profile, sector, ring, deck)
+    # THE CELL PLAN IS ASKED FOR BY RUNG, NOT BY ADDRESS. `ring_cells`
+    # subscripts the ring's z-blind stack, where index == rung, and it
+    # RAISES for a register deck NUMBER -- `grey_0_50` is a name. The
+    # address is one or the other (`_address`), so the rung is taken from
+    # the stack row rather than from the key.
+    cellplan = it.ring_cells(schema, profile, sector, ring,
+                             plan["rung"])
     want = None if cells is None else set(cells)
     V, T, groups = [], [], []
     for s in plan["slots"]:
@@ -2174,9 +2346,23 @@ def _selftest(out=print, legacy=False, quick=False):
              prof["ceil_y"], prof["samples"]))
 
     # 8. no two decks are the same deck.
-    sample = [("red", 1, d) for d in range(0, 6)] + \
-             [("red", 2, d) for d in range(0, 3)] + \
-             [("blue", 0, d) for d in range(2, 5)]
+    # THE SAMPLE IS TAKEN FROM THE PLAN, NOT WRITTEN DOWN, and that is a
+    # correctness requirement rather than tidiness. It used to name
+    # `red/1/0..5` and `blue/0/2..4` as literals; a Shell B deck number is now
+    # a canonical rung, red ring 1's free rungs start at 8, and every one of
+    # those literals resolves to no belt at all -- twelve empty meshes, twelve
+    # identical hashes, and a degeneracy claim that fails for the one reason it
+    # is not about. Derived, it can only ever name decks that exist, and the
+    # spread is asserted below so it cannot quietly shrink to one ring.
+    sample = []
+    for k in sorted({(p["sector"], p["ring"]) for p in prows}):
+        sample += [(p["sector"], p["ring"], p["deck"]) for p in prows
+                   if (p["sector"], p["ring"]) == k][:3]
+    sample = sample[:12]
+    n_rings = len({(s, r) for s, r, _d in sample})
+    thin_sample = "" if (len(sample) >= 10 and n_rings >= 3) else \
+        "; SAMPLE TOO THIN to be a degeneracy test: %d decks over %d rings" \
+        % (len(sample), n_rings)
     hashes = {}
     for sec, ring, dk in sample:
         # `rings=False` AND `place=False`, and both exclusions are the point.
@@ -2191,11 +2377,11 @@ def _selftest(out=print, legacy=False, quick=False):
                                   rings=False)
         hashes.setdefault(geometry_hash(V, T), []).append((sec, ring, dk))
     dupes = {h: v for h, v in hashes.items() if len(v) > 1}
-    claim("no two decks hash the same", not dupes,
-          "%d decks, %d distinct content geometries%s"
-          % (len(sample), len(hashes),
+    claim("no two decks hash the same", not dupes and not thin_sample,
+          "%d decks over %d rings, %d distinct content geometries%s%s"
+          % (len(sample), n_rings, len(hashes),
              ("; COLLIDING: " + str(list(dupes.values())[:3])) if dupes
-             else ""))
+             else "", thin_sample))
 
     # 9. you cannot see the background from inside a block.
     #
@@ -2220,7 +2406,14 @@ def _selftest(out=print, legacy=False, quick=False):
     # question the degeneracy rule actually asks is whether two things that
     # should be different ARE, so it compares two blocks of identical class and
     # unit count on one deck -- which can only differ through their seeds.
-    pl = deck_slots(schema, profile, "red", 1, 5)
+    # THE DECK IS THE PLAN'S BUSIEST, NOT A LITERAL, for the reason claim 8's
+    # sample is derived: `red/1/5` is no longer a Shell B address at all now
+    # that a deck number is a rung, and a hard-coded one that has stopped
+    # existing turns a claim into a crash.
+    busiest = max(prows, key=lambda p: p["blocks"])
+    pl = deck_slots(schema, profile, busiest["sector"], busiest["ring"],
+                    busiest["deck"])
+    where = "%s/%d/%d" % (busiest["sector"], busiest["ring"], busiest["deck"])
     same = {}
     for s in pl["slots"]:
         if s["kind"] != "block":
@@ -2230,9 +2423,9 @@ def _selftest(out=print, legacy=False, quick=False):
     hs = [geometry_hash(*block(x["area_m2"], x["units"], x["seed"],
                                plan=x["plan"])[:2]) for x in pair]
     claim("two like blocks are not one block", hs[0] != hs[1],
-          "%d blocks of %g m² x %d on red/1/5, two of them hash %s / %s"
+          "%d blocks of %g m² x %d on %s, two of them hash %s / %s"
           % (len(max(same.values(), key=len)), pair[0]["area_m2"],
-             pair[0]["units"], hs[0][:8], hs[1][:8]))
+             pair[0]["units"], where, hs[0][:8], hs[1][:8]))
 
     # 12. no two decks of a ring stand at one radius.
     #
@@ -2401,6 +2594,14 @@ def _cli(argv=None):
                                           key=lambda t: t[0][1]):
             print("  %-6s stacks taken at z %.1f m (belt depth %.0f m)"
                   % (sec, z, dep))
+        # AN ADDRESS THIS MODULE CANNOT MAKE UNAMBIGUOUS IS PRINTED, NOT
+        # SWALLOWED. See `stack_entry`.
+        ix = indexed()
+        print("")
+        if not ix:
+            print("  every Shell B deck number is a canonical rung")
+        for (sec, ring), why in sorted(ix.items()):
+            print("  POSITIONAL  %s ring %d: %s" % (sec, ring, why))
         return 0
 
     if a.deck:
