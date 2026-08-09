@@ -566,7 +566,49 @@ class Director extends Node3D:
 			% [actors.size(), _n_stroller,
 				("" if _crowd != null else
 					" (NO CROWD RUNTIME IN THIS BUILD -- baked meshes only)")])
+		if _people.size() != _probed_n:
+			_probed_n = _people.size()
+			probe_two_hours()
 		return _people.size()
+
+
+	## WHERE THE 03:00 / 13:00 CLAIM HAS TO BE MADE, and it is here rather than
+	## in the caller. `main.gd::_start_clock` makes it once, guarded by
+	## `if n > 0`, on the frame the world finishes loading -- and in a STREAMED
+	## build that frame has one cell resident and nobody in it. The shipped log
+	## read `present_0300=-1 present_1300=-1` for exactly that reason: the
+	## measurement was taken before the people arrived. The cast arrives with
+	## the cells, so the claim belongs where the binding happens.
+	##
+	## THE VIEWER IS WITHHELD FOR THE DURATION, deliberately and reversibly:
+	## `_may_pop` holds a change back within `hold_radius_m` of the player's
+	## eye, which is right in front of a person and wrong for a measurement.
+	## `main.gd` makes the same choice by ordering (`watch` is called after);
+	## this has to make it explicitly because a rebind happens mid-session.
+	##
+	## The clock's own hour is re-applied before returning, so this leaves the
+	## station exactly as it found it -- which is only true because every
+	## position here is a pure function of (person, hour). An integrating
+	## runtime could not offer this measurement at all.
+	const PROBE_MAX := 8
+	var _probed_n: int = -1
+	var _probes: int = 0
+
+	func probe_two_hours(a: float = 3.0, b: float = 13.0) -> void:
+		if _people.is_empty() or _probes >= PROBE_MAX:
+			return
+		_probes += 1
+		var was := _viewer
+		_viewer = null
+		apply(a)
+		var n_a := _visible_n
+		apply(b)
+		var n_b := _visible_n
+		_viewer = was
+		apply(clock.hour() if clock != null else BAKE_HOUR)
+		print("life: %05.2f -> %d present, %05.2f -> %d present, of %d bound "
+			% [a, n_a, b, n_b, _people.size()]
+			+ "(the same cast, read at two hours) [%s]" % bind_report())
 
 
 	## `npc.gd`, or null. BY CAPABILITY, and `walker_list` is the capability

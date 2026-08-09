@@ -3845,6 +3845,163 @@ def lod_gate(out=print, dirs=None):
     return 1 if fail else 0
 
 
+def variant_gate(out=print, legacy=False):
+    """Is the shipped crowd more than one person per species, and does a body
+    this module cannot pose STOP the build rather than stand to attention?
+
+    THE TWO SESSION-4v DEFECTS, EACH WITH A CONTROL THAT FIRES. `--legacy`
+    withdraws the fix -- K = 1, which is what shipped -- and every part below
+    that is about variety must fail on it. A gate whose control cannot be
+    constructed is a gate that does not exist, and this file has said so about
+    other people's gates often enough.
+
+    Cheap: no deck, no render, no GPU, ~20 s at one rung. Safe to run while
+    other agents work.
+    """
+    k = 1 if legacy else CROWD_VARIANTS
+    fail = 0
+    out(f"THE CROWD LIBRARY, K = {k}"
+        + ("   (LEGACY CONTROL -- the fix withdrawn)" if legacy else ""))
+
+    # -- 1. K distinct bodies per species, by IDENTITY ----------------------
+    # THE CRITERION IS ABSOLUTE, NOT RELATIVE TO K. "Are the K bodies distinct"
+    # is trivially true at K = 1, so that form of the question passes on
+    # EXACTLY the content this session exists to fix -- CLAUDE.md's rule that a
+    # criterion which cannot fail on the current content is measuring the wrong
+    # thing. What is asserted is that a species has MORE THAN ONE body.
+    out("\n1. are the shared bodies of one species different bodies?")
+    out(f"   {'species':<10}{'variants':>9}{'distinct':>10}  "
+        f"{'height spread':>14}  {'triangles':>10}")
+    for sp in sorted(_sched.STATION_MIX):
+        meshes, hs, hi = [], [], []
+        for v in range(k):
+            m = crowd_body(variant_species(sp, v), 4, 0)
+            meshes.append(m)
+            hs.append(_geom_hash(m))
+            hi.append(max(q[1] for q in m[0]))
+        d = len(set(hs))
+        spread = (max(hi) - min(hi)) * 1000.0
+        bad = d < max(2, k) or spread < 1.0
+        fail += int(bad)
+        out(f"   {sp:<10}{k:>9}{d:>10}  {spread:>11.0f} mm  "
+            f"{sum(len(m[1]) for m in meshes):>10,}"
+            + ("   <-- ONE BODY PER SPECIES IS ONE PERSON PER SPECIES"
+               if bad else ""))
+
+    # -- 2. the key survives the two parsers that read it -------------------
+    out("\n2. does every key still parse the way its readers parse it?")
+    sample = crowd_key(variant_species("human", k - 1), 4, CROWD_SLOTS - 1)
+    bits = sample.split("_")
+    ok = len(bits) == 4 and int(bits[-1]) == CROWD_SLOTS - 1
+    ok = ok and int(sample.rsplit("_", 1)[-1]) == CROWD_SLOTS - 1
+    fail += int(not ok)
+    out(f"   {sample!r}")
+    out(f"     npc.gd::_index_library  split('_') -> {bits}, slot = "
+        f"{bits[-1]}   {'ok' if ok else 'BROKEN'}")
+    out(f"     bake_crowd.stats        rsplit('_', 1)[-1] = "
+        f"{sample.rsplit('_', 1)[-1]}   {'ok' if ok else 'BROKEN'}")
+    out(f"     round trip              split_variant('{bits[1]}') = "
+        f"{split_variant(bits[1])}")
+    bad_sp = [s for s in _body.SPECIES if s and s[-1].isdigit()]
+    fail += int(bool(bad_sp))
+    out(f"     species ending in a digit (would be ambiguous): "
+        f"{bad_sp or 'none'}")
+
+    # -- 3. the crowd actually draws on them --------------------------------
+    out("\n3. does a real corridor use all of them?")
+    _v, _t, _g, st = populate_corridor(
+        "variantgate/blue", 211.478, 1.3, 344.0, 8.0, 7121.3,
+        served=("customs_north", "arrival_concourse", "customs_south"),
+        hour=13.0, instanced=True)
+    used = {}
+    for r in st["instances"]:
+        b, vv = split_variant(r["species"])
+        used.setdefault(b, set()).add(vv)
+    tot = sorted({v for s in used.values() for v in s})
+    ok3 = tot == list(range(k)) and len(tot) >= 2
+    fail += int(not ok3)
+    out(f"   {st['placed']} walkers, variants in use {tot} of "
+        f"{list(range(k))}   {'ok' if ok3 else 'FAIL'}")
+    # THE REVIEWER'S OWN QUESTION, AS A NUMBER. "Four walkers, four identical
+    # body plans" is a statement about pairs of the SAME SPECIES: two people of
+    # different species were never going to be the same body, and counting them
+    # in the denominator is how a crowd of one figure per species scores 94%
+    # distinct. So the population is same-species pairs, and the statistic is
+    # how many of those wear the same figure.
+    bysp = {}
+    for r in st["instances"]:
+        b, vv = split_variant(r["species"])
+        bysp.setdefault(b, []).append(vv)
+    same = pairs = 0
+    for b, vs in bysp.items():
+        n = len(vs)
+        pairs += n * (n - 1) // 2
+        for vv in set(vs):
+            c = vs.count(vv)
+            same += c * (c - 1) // 2
+    out(f"   two people of the SAME species wearing the same body: "
+        f"{same} of {pairs} pairs ({100.0 * same / max(1, pairs):.0f}%) "
+        f"-- 1/K = {100.0 / k:.0f}% is the floor a shared library can reach")
+    # AND THE ROW STILL KNOWS WHAT SPECIES SOMEBODY IS.
+    wrong = [r for r in st["instances"]
+             if r.get("base_species") != r["who"]["species"]]
+    fail += int(bool(wrong))
+    out(f"   rows whose base_species disagrees with the identicard: "
+        f"{len(wrong)}   {'ok' if not wrong else 'FAIL'}")
+
+    # -- 4. THE BARE EXCEPT, INDUCED ----------------------------------------
+    # The whole of job 2, shown rather than described. `animation._bind` raises
+    # `KeyError: no bone chain declared for mesh part ...` when `body.py` grows
+    # a part it cannot skin. `_posed` used to turn that into a bind pose and
+    # print nothing, so the entire crowd would have shipped standing to
+    # attention. Reproduced by removing one chain from `PART_CHAINS`.
+    out("\n4. a body this module cannot pose -- does it STOP, or stand to "
+        "attention?")
+    victim = "arm"
+    saved = _anim.PART_CHAINS.get(victim)
+    _posed.cache_clear()
+    crowd_body.cache_clear()
+    _anim._RIG_CACHE.clear()
+    try:
+        _anim.PART_CHAINS.pop(victim, None)
+        try:
+            m = crowd_body("human", 4, 0)
+            out(f"   FAIL: it returned {len(m[1])} triangles and said nothing "
+                f"-- the crowd would ship in the BIND POSE")
+            fail += 1
+        except KeyError as exc:
+            out(f"   RAISED, as it must: KeyError: {str(exc)[:96]}")
+        except Exception as exc:                                 # noqa: BLE001
+            out(f"   RAISED: {type(exc).__name__}: {str(exc)[:88]}")
+    finally:
+        if saved is not None:
+            _anim.PART_CHAINS[victim] = saved
+        _posed.cache_clear()
+        crowd_body.cache_clear()
+        _anim._RIG_CACHE.clear()
+
+    # AND THE CASE THAT IS ALLOWED TO FALL BACK STILL DOES, AND SAYS SO. Kosh's
+    # column plan has no legs; `animation.walk_clip` refuses it by name. That is
+    # the one figure a bind pose is right for, and it is now a precondition
+    # rather than a swallowed exception -- so it is reachable, printable and
+    # cannot be confused with a defect.
+    out("\n   the control, the one fallback that IS legitimate:")
+    n_before = len(bind_pose_fallbacks())
+    why = _bind_pose_reason("vorlon", 4)
+    m = crowd_body("vorlon", 4, 0)
+    said = len(bind_pose_fallbacks()) > n_before
+    fail += int(not (why and said and m[1]))
+    out(f"     vorlon lod 4: reason = {str(why)[:70]}")
+    out(f"     bind pose returned ({len(m[1])} triangles) and it was "
+        f"ANNOUNCED: {said}")
+    out(f"     and an ordinary figure has no reason at all: "
+        f"human lod 4 -> {_bind_pose_reason('human', 4)}")
+
+    out(f"\n{'VARIANT GATE OK' if not fail else 'VARIANT GATE FAILED'} "
+        f"({fail} problem(s))")
+    return 1 if fail else 0
+
+
 def _state_at(day, hour):
     """What a timetable says at an hour. PURE -- the runtime does the same."""
     if not day:
@@ -3875,6 +4032,16 @@ if __name__ == "__main__":
             except Exception:                                   # noqa: BLE001
                 pass
         sys.exit(lod_gate())
+    if "--variant-gate" in sys.argv:
+        # THE CONTROL SETS `CROWD_VARIANTS` ON THIS MODULE, which is the one
+        # every function below reads, for the reason `--lod-gate --legacy`
+        # spells out above: launched as a script this file is `__main__`, and
+        # a second `import populace` would be a different copy with the fix
+        # still in it -- a control that withdraws nothing.
+        _legacy = "--legacy" in sys.argv
+        if _legacy:
+            CROWD_VARIANTS = 1
+        sys.exit(variant_gate(legacy=_legacy))
     if "--rooms" in sys.argv:
         sys.exit(_rooms_gate())
     if "--cast" in sys.argv:
