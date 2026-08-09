@@ -550,6 +550,32 @@ func _my_purse() -> Dictionary:
 			if want != "" and String(k) != want:
 				push_error("interact: FALLING BACK to %s -- this is NOT the "
 					% String(k) + "person the session named (%s)" % want)
+			elif want == "":
+				# NOBODY DECLARED WHO THIS SESSION IS PLAYING, AND THAT IS THE
+				# SHIPPED PATH. In `--mode=arrival` the parent is `arrival.gd`,
+				# which answers `player_npc_id`; on the default `--mode=station`
+				# the parent is `walk.gd`, which does not -- so this loop picks
+				# the alphabetically first `player:` row and calls it the player.
+				#
+				# It is not choosing badly among candidates. It is choosing the
+				# ONLY one: `economy.py` writes exactly one player purse (it
+				# asserts that, line 2615) and casts `player:downbelow`, ALLAN,
+				# ANNA, a lurker -- while the arrival sequence casts
+				# `player:player`, CHOWDHURY, MICHAEL. TWO SYSTEMS EACH CAST A
+				# PLAYER AND THEY CAST DIFFERENT PEOPLE. The wallet in the HUD
+				# and the card in the hand name two strangers, and they always
+				# have.
+				#
+				# Reconciling them is a decision about which system is
+				# authoritative, not a patch here, so this says so on every run
+				# instead of pretending. The HUD now prints `person=` beside the
+				# credits, so it is on the frame as well as in the log.
+				push_warning("interact: NOBODY DECLARED THE PLAYER -- using %s "
+					% String(k) + "(%s) because it is the only `player:` row "
+					% String((purses[k] as Dictionary).get("name", "?"))
+					+ "in the ledger. If the card in your hand names someone "
+					+ "else, this is why: economy.py and the arrival sequence "
+					+ "cast different people. walk.gd needs a player_npc_id().")
 			return purses[k]
 	return purses[keys[0]]
 
