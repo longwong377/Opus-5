@@ -484,6 +484,35 @@ def main():
         print()
         second_defect(man)
     print()
+    # THE DEFECT THIS GATE IS NAMED FOR, ASKED DIRECTLY -- because `w_idx`
+    # below can never be non-zero and this gate could only ever return 0.
+    #
+    # `check()` sets `wrong_index` only when `found_self` is true, and
+    # `found_self` compares `chose` -- "the first cell whose index == i" --
+    # against the cell `cell_by_index` returns. But `cell_by_index` IS that
+    # same scan, so the two are the same object, always. An audit injected a
+    # duplicate index -- the exact catastrophe this file's headline describes,
+    # "the streamer primes a cell the body is not standing in" -- and the gate
+    # printed `DUPLICATE INDICES: 2 of 907` and then `CELL INDICES ARE AN
+    # IDENTITY` and exited 0. `merge_cells.py --selftest` failed the same file
+    # in milliseconds.
+    #
+    # `report()` has always DETECTED the duplicates; nothing consumed the
+    # answer. It does now. This is the cheap, direct question -- two cells
+    # cannot share an identity -- rather than the elaborate round-trip that
+    # could not fail.
+    dup = duplicate_indices(man.get("cells") or [])
+    if dup:
+        shared = sum(len(v) for v in dup.values())
+        worst = max(dup.items(), key=lambda kv: len(kv[1]))
+        print("  FAILED: `index` is not an identity -- %d of %d cells share "
+              "their index with another; index %d alone is claimed by %d. A "
+              "body priming by index gets whichever cell the scan reaches "
+              "first, which is not the one it is standing in. Run "
+              "`python3 tools/merge_cells.py`."
+              % (shared, len(man.get("cells") or []), worst[0],
+                 len(worst[1])))
+        return 1
     if w_idx:
         print("  FAILED: `index` is not an identity on this manifest -- %d of "
               "%d cells prime a cell the body is not standing in because "

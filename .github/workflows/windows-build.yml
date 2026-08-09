@@ -251,9 +251,37 @@ jobs:
       # unlike run 3, where six red gates meant "one step failed and five
       # others could not find the files it never wrote".
       - name: gates (reported, not blocking)
+        id: sgates
         if: always()
         continue-on-error: true
         run: python tools/build_world.py --gates-only
+
+      # AND A ROLL-UP, WITHOUT WHICH THE TWELVE GATES ABOVE CANNOT FAIL
+      # ANYTHING, ANYWHERE. `validate.yml` learned this in session 4e -- one
+      # failing step had blinded the 34 behind it for 30 consecutive runs -- and
+      # the cure was: every step records its own outcome and a final step fails
+      # the job if any did. That cure was applied to validate.yml and NOT to
+      # this file, which is the only workflow that builds a world and therefore
+      # the only place five of those gates can run AT ALL:
+      # `bake_sidecars --check`, `merge_cells --selftest`,
+      # `bake_columns --check-mesh` and `journal --persist-gate` exist nowhere
+      # else. `bake_columns --check-mesh` is red today and no tick in this
+      # repository is red because of it.
+      #
+      # The delivery still ships: this runs AFTER upload-artifact, so a red
+      # tick here means "the binary is on the release page and something about
+      # it is wrong", which is a true and useful statement. What it no longer
+      # means is nothing.
+      - name: did any gate fail? -- the tick is worthless without this
+        if: always()
+        run: |
+          if [ "${{ steps.sgates.outcome }}" != "success" ]; then
+            echo "FAILED: sgates -- tools/build_world.py --gates-only"
+            echo "The .exe is uploaded and at least one gate is red. Read the"
+            echo "gate-logs artifact; build_world names every failing gate."
+            exit 1
+          fi
+          echo "every gate passed"
 
       - name: keep the gate logs too
         if: always()
