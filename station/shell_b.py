@@ -558,6 +558,220 @@ def _refugee_row():
 
 
 # --------------------------------------------------------------------------
+# ONE DECK STACK PER RING -- the thing that decides every radius
+# --------------------------------------------------------------------------
+#
+# TWO DECKS AT ONE RADIUS ARE ONE DECK, and this module shipped fifteen of
+# them. `deck_slots` used to read `decks_in_ring(...)[min(deck, len - 1)]`, so
+# once a belt's deck index ran past what the hull leaves at the belt's own z,
+# every further deck resolved to the innermost radius the stack had:
+#
+#     blue ring 0   8 decks,  4 distinct radii -- decks 5,6,7,8,9 all at 179.5 m
+#     grey ring 0  23 decks, 12 distinct radii -- decks 11..22 all at 390.8 m
+#
+# `tools/merge_cells.py::deck_headroom` derives streaming residency as a
+# CONTAINMENT TEST ON RADIUS -- a deck floor is opaque, so the band a deck
+# occupies is the gap to its inboard neighbour -- and it refused the export
+# with "derived deck headroom below 2.0 m ... a band this thin is a fall
+# through the world". That refusal is correct. `min(deck, len - 1)` is the
+# defect, and a clamp is the exact shape of failure CLAUDE.md names: it emits
+# the convenient reading instead of failing.
+#
+# The cure is not a better clamp. It is that A RING HAS ONE DECK STACK and
+# every deck of that ring indexes it -- so distinct indices give distinct
+# radii by construction, `DECK_PITCH_M` apart, and there is nothing left to
+# clamp. A belt that asks for more decks than the stack holds is CAPPED, once,
+# at belt level, where `_split_evenly` redistributes its blocks over the decks
+# that remain and the annex's totals hold exactly.
+#
+# The stack depends on the belt's z depth (the hull tapers, so a deeper belt
+# is asked about a narrower cylinder) and the depth depends on how many decks
+# share the belt's blocks, so it is a fixed point. It is taken at SECTOR
+# level, at ONE axial station, and that is not a convenience -- see
+# `_settle_sector`, where taking it per ring was tried and put red ring 2 on
+# red ring 3's radii.
+_RING_STACK = {}          # (id(schema), sector, ring) -> the deck list in use
+_SECTOR_Z = {}            # (id(schema), sector) -> (z probed, depth it came from)
+_SETTLING = set()         # sectors whose fixed point is running right now
+_CAPPED = {}              # (belt id, sector, ring) -> (wanted, kept, why)
+_SETTLE_PASSES = 5
+
+
+def _probe_z(schema, profile, sector, depth_m):
+    """The axial station a sector's whole shell is planned against.
+
+    `depth_m <= 0` means "not measured yet" and gives the sector's own z0,
+    which is where the first pass starts.
+    """
+    z0 = schema["sectors"]["extents_m"][sector]["z0"]
+    if depth_m <= 0 or _LEGACY:
+        return z0
+    return it.narrowest_z(profile, z0 + depth_m / 2.0, depth_m)
+
+
+def _sector_rings(sector):
+    """Every ring index the sector's belts name, plus 0 for a node belt."""
+    out = set()
+    for b in belts().values():
+        if b["sector"] == sector:
+            out.update(b["rings"] or [0])
+    return sorted(out)
+
+
+def _stacks_at(schema, profile, sector, z):
+    """`{ring: deck list}` for every ring this sector's belts use, at ONE z.
+
+    One `z` for the whole sector is the load-bearing part. `interior.ring_radii`
+    re-partitions the cross-section at every axial station, so "ring 2" is a
+    different physical shell at two different z -- and two rings resolved at two
+    different z can occupy the same radii while each is individually correct.
+    Taken from one station they are nested by construction.
+    """
+    return {r: it.decks_in_ring(schema, profile, sector, r, z_m=z)
+            for r in _sector_rings(sector)}
+
+
+def ring_stack(schema, profile, sector, ring):
+    """THE deck stack of one ring. Every radius in this module comes from here.
+
+    Memoised per `(schema, sector, ring)`, so two decks of a ring can never
+    answer from two different stacks -- which is the invariant that makes
+    distinct deck indices give distinct radii.
+    """
+    k = (id(schema), sector, ring)
+    if k not in _RING_STACK:
+        z = _SECTOR_Z.get((id(schema), sector), (None, 0.0))[0]
+        if z is None:
+            z = _probe_z(schema, profile, sector, 0.0)
+            _SECTOR_Z[(id(schema), sector)] = (z, 0.0)
+        for r, st in _stacks_at(schema, profile, sector, z).items():
+            _RING_STACK.setdefault((id(schema), sector, r), st)
+        _RING_STACK.setdefault(k, it.decks_in_ring(schema, profile,
+                                                   sector, ring, z_m=z))
+        if sector not in _SETTLING:
+            _settle_sector(schema, profile, sector)
+    return _RING_STACK[k]
+
+
+def _settle_sector(schema, profile, sector):
+    """Run the depth/stack fixed point for one sector, at one axial station.
+
+    THE OLD LOOP WAS DEAD CODE AND THIS IS WHAT REPLACES IT. `deck_slots`
+    carried a documented three-pass recursion on `_pass` -- and 70 lines above
+    it `for _pass in range(6):` rebinds the same name, so by the time the
+    recursion guard was read `_pass` was always 5 and `if _pass < 3` never
+    fired. Every radius in the module came from pass 0, probed at the sector's
+    z0. The shadowing was invisible because the answer looked sane: z0 is the
+    narrow end of most sectors here, so the dead loop's result was usually the
+    conservative one anyway.
+
+    TWO THINGS BOUND THE DEEPENING, AND BOTH WERE FOUND BY A NUMBER MOVING.
+
+    *One station per sector.* Settling each ring against its own belt's depth
+    was tried first. It gave every ring distinct radii and put **red ring 2 on
+    red ring 3's exact radii** (101.86, 98.26, 94.66 …), because SHB-04 runs
+    300 m deep and the hull at that station carries a ring 2 no bigger than the
+    ring 3 at red's near end. Each ring was individually right and the pair was
+    a solid interpenetrating a solid. `ring_radii` partitions the whole
+    cross-section, so ring indices are only comparable within one station.
+
+    *A deepening that deletes a ring is refused.* At red's deep station ring 3
+    does not stack at all, so adopting it would silently delete SHB-05's twelve
+    decks. The rule is `spec_registry`'s: refuse the ambiguity rather than emit
+    the convenient reading of it -- keep the last station at which every ring
+    the sector's belts name still exists, and record which one that was.
+    """
+    key = (id(schema), sector)
+    _SETTLING.add(sector)
+    try:
+        for _ in range(_SETTLE_PASSES):
+            _BELT_INDEX.pop(key, None)
+            deepest = 0.0
+            for b in sorted(belts().values(), key=lambda x: x["id"]):
+                if b["sector"] != sector:
+                    continue
+                for sec, ring, dk in belt_decks(schema, profile, b):
+                    p = deck_slots(schema, profile, sec, ring, dk)
+                    if p is not None:
+                        deepest = max(deepest, p["depth_m"])
+            if deepest <= _SECTOR_Z[key][1] + 0.01:
+                break                      # the depth stopped growing
+            z = _probe_z(schema, profile, sector, deepest)
+            nxt = _stacks_at(schema, profile, sector, z)
+            if any(not v for v in nxt.values()):
+                break                      # a ring would vanish -- refuse it
+            same = all(len(v) == len(_RING_STACK.get((id(schema), sector, r),
+                                                     []))
+                       and abs(v[0]["floor_r_m"]
+                               - _RING_STACK[(id(schema), sector, r)][0]
+                               ["floor_r_m"]) < 0.005
+                       for r, v in nxt.items())
+            _SECTOR_Z[key] = (z, deepest)
+            for r, v in nxt.items():
+                _RING_STACK[(id(schema), sector, r)] = v
+            if same:
+                break
+    finally:
+        _SETTLING.discard(sector)
+        _BELT_INDEX.pop(key, None)
+
+
+def reset_stacks():
+    """Drop every cached stack. `--selftest` calls it when `_LEGACY` flips.
+
+    The legacy control changes what a stack IS (see `belt_decks`), so a cache
+    filled under one setting and read under the other would make the A/B a
+    comparison of a thing with itself -- CLAUDE.md's vacuous-A/B defect.
+    """
+    _RING_STACK.clear()
+    _SECTOR_Z.clear()
+    _CAPPED.clear()
+    _BELT_INDEX.clear()
+
+
+def _min_headroom():
+    """`tools/merge_cells.MIN_HEADROOM_M`, READ from the tool that refuses.
+
+    Falls back to a stated 2.0 only if the tool cannot be loaded at all, and
+    says so in the claim's own note rather than pretending it read it.
+    """
+    global _MIN_HEADROOM
+    if _MIN_HEADROOM is None:
+        import importlib.util                                    # noqa: PLC0415
+        p = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "tools", "merge_cells.py")
+        try:
+            sp = importlib.util.spec_from_file_location("_mc_headroom", p)
+            m = importlib.util.module_from_spec(sp)
+            sp.loader.exec_module(m)
+            _MIN_HEADROOM = float(m.MIN_HEADROOM_M)
+        except Exception:                                        # noqa: BLE001
+            _MIN_HEADROOM = 2.0
+    return _MIN_HEADROOM
+
+
+_MIN_HEADROOM = None
+
+
+def caps():
+    """What the hull took off the belts, so a cap can never be silent.
+
+    `--plan` prints it and `_selftest` claim 12 reads it. A belt capped to
+    zero decks raises in `belt_decks` instead of appearing here: that is the
+    "state it with numbers rather than clamping" case and there is nothing to
+    redistribute over.
+    """
+    return dict(_CAPPED)
+
+
+def _note_cap(belt, sector, ring, wanted, kept, why):
+    if wanted != kept:
+        _CAPPED[(belt["id"], sector, ring)] = (wanted, kept, why)
+    else:
+        _CAPPED.pop((belt["id"], sector, ring), None)
+
+
+# --------------------------------------------------------------------------
 # WHICH DECKS A BELT OWNS
 # --------------------------------------------------------------------------
 def belt_decks(schema, profile, belt):
@@ -575,6 +789,24 @@ def belt_decks(schema, profile, belt):
          because the belt is not a stack, and inventing one would be the
          `_claim_decks` failure this file's own harness declines to make.
       3. otherwise — every deck of every ring the heading names.
+
+    AND THEN CAPPED AT WHAT THE HULL LEAVES, WHICH IS A DIFFERENT QUESTION
+    FROM RULE 1. Rule 1 asks the ring at the sector's widest cylinder and is
+    about the SPEC: a row naming a deck the ring never stacks is a spec error
+    and still raises. The cap asks `ring_stack` -- the same ring over the
+    belt's own z span -- and is about the HULL: blue ring 0 stacks ten decks
+    at its widest and six where SHB-01 actually is, so `decks 2–9` is eight
+    decks of spec against four decks of ship.
+
+    A belt keeps the OUTERMOST decks it asked for, because the hull takes the
+    outer ones (narrowing moves `r_outer` inward and leaves `r_inner` alone),
+    and its blocks redistribute over what is left: `_split_evenly` sums to the
+    belt total by construction, and `deck_slots` shares the belt's gross by
+    units-on-this-deck rather than by deck index, so BOTH the dwelling count
+    and the gross survive the cap unchanged. What changes is density per deck.
+
+    Nothing here is silent -- every cap is recorded in `caps()`, printed by
+    `--plan`, and asserted against in `_selftest`.
     """
     sec, rings = belt["sector"], belt["rings"]
     if not rings:
@@ -586,12 +818,33 @@ def belt_decks(schema, profile, belt):
                 "%s houses on decks %d-%d and %s ring %d stacks %d (0..%d)"
                 % (belt["id"], belt["deck_lo"], belt["deck_hi"], sec,
                    rings[0], n, n - 1))
-        return [(sec, rings[0], d)
-                for d in range(belt["deck_lo"], belt["deck_hi"] + 1)]
+        n_hull = n if _LEGACY else len(ring_stack(schema, profile, sec,
+                                                  rings[0]))
+        hi = min(belt["deck_hi"], n_hull - 1)
+        if hi < belt["deck_lo"]:
+            # NOT CLAMPABLE AND NOT BUILDABLE. The belt's first deck is already
+            # outside what the hull leaves, so there is nothing to redistribute
+            # over. Say it with numbers.
+            raise ValueError(
+                "%s houses on decks %d-%d of %s ring %d and the hull leaves "
+                "only %d deck(s) (0..%d) over the belt's own %.0f m of z -- "
+                "no deck of this belt can be built"
+                % (belt["id"], belt["deck_lo"], belt["deck_hi"], sec, rings[0],
+                   n_hull, n_hull - 1,
+                   _SECTOR_Z.get((id(schema), sec), (0, 0.0))[1]))
+        _note_cap(belt, sec, rings[0], belt["deck_hi"] - belt["deck_lo"] + 1,
+                  hi - belt["deck_lo"] + 1,
+                  "ring stacks %d at its widest, %d over the belt's z span"
+                  % (n, n_hull))
+        return [(sec, rings[0], d) for d in range(belt["deck_lo"], hi + 1)]
     out = []
     for r in rings:
-        out += [(sec, r, d)
-                for d in range(len(it.decks_in_ring(schema, profile, sec, r)))]
+        wide = len(it.decks_in_ring(schema, profile, sec, r))
+        n_hull = wide if _LEGACY else len(ring_stack(schema, profile, sec, r))
+        _note_cap(belt, sec, r, wide, n_hull,
+                  "ring stacks %d at its widest, %d over the belt's z span"
+                  % (wide, n_hull))
+        out += [(sec, r, d) for d in range(n_hull)]
     return out
 
 
@@ -1013,8 +1266,7 @@ def support_room(kind, area_m2, seed):
 # --------------------------------------------------------------------------
 # THE DECK PLAN -- what stands where, around the ring
 # --------------------------------------------------------------------------
-def deck_slots(schema, profile, sector, ring, deck, _r=None, _depth=0.0,
-               _pass=0):
+def deck_slots(schema, profile, sector, ring, deck):
     """Every block and room on one deck, in ring order, with its arc.
 
     THE AREA BUDGET IS DERIVED, NOT PICKED, and this is where build-to-spec
@@ -1050,21 +1302,29 @@ def deck_slots(schema, profile, sector, ring, deck, _r=None, _depth=0.0,
     # outside the pressure hull: 0 of 129 (was 34)" as a number somebody paid
     # for.
     #
-    # It is circular: the radius decides the circumference, which decides how
-    # many axial bands the slots wrap into, which decides the z span the hull
-    # is asked about. So it is a fixed point, taken three times. Narrowing only
-    # ever DEEPENS the belt, so the iteration climbs and settles; `_pass`
-    # stops it, and the gate in `_selftest` is what says it settled in the
-    # right place rather than merely stopping.
-    z_probe = (schema["sectors"]["extents_m"][sector]["z0"] if _depth <= 0
-               else it.narrowest_z(profile,
-                                   schema["sectors"]["extents_m"][sector]["z0"]
-                                   + _depth / 2.0, _depth))
-    decks_list = it.decks_in_ring(schema, profile, sector, ring, z_m=z_probe)
-    if not decks_list:
-        decks_list = it.decks_in_ring(schema, profile, sector, ring)
-    d = decks_list[min(deck, len(decks_list) - 1)]
-    r = _r if _r is not None else d["floor_r_m"]
+    # IT IS ONE STACK PER RING AND IT IS ASKED FOR EXACTLY ONCE. This used to
+    # read `decks_list[min(deck, len(decks_list) - 1)]`, which is the clamp
+    # that put fifteen decks of this station at a radius another deck already
+    # had -- see `ring_stack`. There is no clamp here now: `belt_decks` has
+    # already capped the belt to what the stack holds, so an index past its end
+    # is a bug in the cap and raises rather than resolving to a neighbour.
+    stack = ring_stack(schema, profile, sector, ring)
+    at = deck
+    if _LEGACY:
+        # THE CONTROL IS THE CLAMP ITSELF. `--selftest --legacy` withholds the
+        # cap and restores `min(deck, len - 1)`, which is what this module
+        # shipped, so claim 12 is shown failing on the behaviour it was written
+        # against rather than only passing on the behaviour that replaced it.
+        at = min(deck, len(stack) - 1)
+    elif deck >= len(stack):
+        raise ValueError(
+            "shell_b: %s ring %d deck %d, and the ring's stack holds %d "
+            "(0..%d) over %.0f m of z -- belt_decks caps to the stack and "
+            "must not have handed this deck out"
+            % (sector, ring, deck, len(stack), len(stack) - 1,
+               _SECTOR_Z.get((id(schema), sector), (0, 0.0))[1]))
+    d = stack[at]
+    r = d["floor_r_m"]
     circ = 2 * math.pi * r
     ids = "+".join(o["belt"]["id"] for o in owners)
 
@@ -1265,15 +1525,11 @@ def deck_slots(schema, profile, sector, ring, deck, _r=None, _depth=0.0,
         s["z_m"] = band_z[s["band"]]
     depth = at - ex["z0"]
 
-    if _pass < 3:
-        # Re-ask the hull now the belt's true depth is known.
-        z2 = it.narrowest_z(profile, ex["z0"] + depth / 2.0, depth)
-        dl2 = it.decks_in_ring(schema, profile, sector, ring, z_m=z2) \
-            or decks_list
-        r2 = dl2[min(deck, len(dl2) - 1)]["floor_r_m"]
-        if abs(r2 - r) > 0.01:
-            return deck_slots(schema, profile, sector, ring, deck,
-                              _r=r2, _depth=depth, _pass=_pass + 1)
+    # The hull is re-asked with this depth by `_settle_sector`, at RING level,
+    # over the deepest belt the ring carries. It used to be re-asked HERE, per
+    # deck -- which is what let two decks of one ring answer from two different
+    # stacks -- and it never ran at all, because `for _pass in range(6):` above
+    # rebinds the recursion guard's own name. See `_settle_sector`.
     ring_arc_m = sum(band_arc.values())
     ring_m2 = (circ * bands if _LEGACY else ring_arc_m) * RING_W_M
 
@@ -1811,6 +2067,7 @@ def _selftest(out=print, legacy=False, quick=False):
     global _LEGACY
     _LEGACY = legacy
     _BPROF.clear()                 # the profile is measured off the geometry
+    reset_stacks()                 # `_LEGACY` changes what a deck stack IS
     schema, profile = it.load()
     fails = []
 
@@ -1834,7 +2091,7 @@ def _selftest(out=print, legacy=False, quick=False):
     except Exception as e:                                       # noqa: BLE001
         claim("the annex parses", False, "%s: %s" % (type(e).__name__, e))
         out("")
-        out("%d of 11 claims fail" % len(fails))
+        out("%d of 12 claims fail" % len(fails))
         return len(fails)
 
     # 2. every belt's program parsed, and nothing was silently dropped.
@@ -1969,8 +2226,47 @@ def _selftest(out=print, legacy=False, quick=False):
           % (len(max(same.values(), key=len)), pair[0]["area_m2"],
              pair[0]["units"], hs[0][:8], hs[1][:8]))
 
+    # 12. no two decks of a ring stand at one radius.
+    #
+    # THE CLAIM THIS MODULE SHIPPED WITHOUT, AND IT COST A WINDOWS BUILD.
+    # `tools/merge_cells.py::deck_headroom` derives streaming residency as a
+    # containment test on RADIUS -- a deck floor is opaque, so a deck occupies
+    # the band from its own floor radius inward to its neighbour's -- and it
+    # refused a 48-minute export with "derived deck headroom below 2.0 m ...
+    # a band this thin is a fall through the world". It was right. Fifteen
+    # decks of this module's own plan sat at a radius another deck already had,
+    # because `deck_slots` read `stack[min(deck, len(stack) - 1)]`.
+    #
+    # THE BAR IS READ, NOT RESTATED. `MIN_HEADROOM_M` is imported from the tool
+    # that refuses, so this gate cannot pass a build that tool would reject --
+    # the rule `spec_harness/shb.py` states one level down, "a constant copied
+    # into a harness cannot disagree with the row it checks".
+    ring_r, gaps = {}, []
+    for p in prows:
+        ring_r.setdefault((p["sector"], p["ring"]), {})[p["deck"]] = \
+            round(float(p["radius_m"]), 3)
+    dup = []
+    for k, v in sorted(ring_r.items()):
+        rs = sorted(v.values(), reverse=True)
+        if len(set(rs)) != len(rs):
+            seen = {}
+            for dk, r in sorted(v.items()):
+                seen.setdefault(r, []).append(dk)
+            dup.append((k, len(rs), len(set(rs)),
+                        sorted(x for x in seen.values() if len(x) > 1)[:1]))
+        gaps += [(round(a - b, 3), k) for a, b in zip(rs, rs[1:])]
+    thin = sorted(g for g in gaps if g[0] < _min_headroom())
+    claim("no two decks of a ring share a radius", not dup and not thin,
+          "%d rings, %d decks, tightest gap %.3f m against %.3f m demanded by "
+          "merge_cells%s%s"
+          % (len(ring_r), len(prows), min(gaps)[0] if gaps else float("nan"),
+             _min_headroom(),
+             "" if not dup else "; NOT DISTINCT: %s" % (dup[:2],),
+             "" if not thin else "; %d gap(s) under the bar: %s"
+             % (len(thin), thin[:3])))
+
     out("")
-    out("%d of 11 claims fail" % len(fails))
+    out("%d of 12 claims fail" % len(fails))
     _LEGACY = False
     return len(fails)
 
