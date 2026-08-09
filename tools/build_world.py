@@ -91,6 +91,19 @@ GATES: list[list[str]] = [
     # tool would refuse. It is RED until Shell B stops claiming rungs the
     # register already holds, and that is the point of it.
     ["station/interior.py", "--ladder"],
+    # DOES THE WORLD REMEMBER YOU? Three launches: a customs refusal is
+    # written, a FRESH PROCESS finds it, and withholding only the write makes
+    # it vanish. It lives here rather than in validate.yml because it needs a
+    # BUILT WORLD and validate.yml has never had one -- `journal.py --gate`
+    # says SKIP there, correctly. This step runs after the .exe is uploaded, on
+    # a machine holding the whole station, which is the one place the question
+    # is answerable.
+    #
+    # `save.gd` was complete, tested and audited with no caller that writes on
+    # the shipped path, so CONTINUE was dead from the day it was built. The
+    # gate that proves the fix was written in the same session and NOTHING RAN
+    # IT -- the identical defect one level up. This is that caller.
+    ["station/journal.py", "--persist-gate"],
 ]
 
 

@@ -1189,7 +1189,87 @@ def gate(verbose=False, build=True) -> bool:                     # noqa: C901
             for line in out.splitlines():
                 if line.startswith("COMPRESS ") or line.startswith("collapse:"):
                     print("    | " + line.strip())
+    # -------------------------------------------------------------------
+    # DOES THE WORLD REMEMBER YOU? -- two launches, and nothing ran them
+    # -------------------------------------------------------------------
+    # `save.gd` was complete, tested and audited, and its only two callers were
+    # gates. `main.gd::_front_door` reads slot `auto` to decide whether to offer
+    # CONTINUE and nothing had ever written it, so CONTINUE was dead from the
+    # day it was built. The two-launch gate that proves the fix was written in
+    # the same session -- AND NOTHING RAN IT, which is the identical defect one
+    # level up. A gate with no caller catches nothing.
+    #
+    # It has to be two PROCESSES. A round trip inside one launch proves the
+    # dictionary survived a function call; the claim is that a consequence
+    # survives the process, so phase 1 writes and phase 2 is a fresh boot that
+    # must find it.
+    #
+    # The control withholds only the WRITE. `--no-persist` leaves the refusal,
+    # the officers and the journal entry exactly as they were and skips the
+    # checkpoint, so a pass can only come from persistence and not from the
+    # verdict being recomputed on the way back in.
+    ok = persist_gate(godot) and ok
     print("JOURNAL GATE %s" % ("PASS" if ok else "FAIL"))
+    return ok
+
+
+def persist_gate(godot=None, build=True) -> bool:
+    """Does a consequence survive the process? Three launches, bounded.
+
+    SPLIT OUT OF `gate()` SO CI CAN RUN IT. The full acceptance launches Godot
+    ten-odd times and needs a built deck, so `validate.yml` skips it and says
+    so -- correctly, because CI has never had a deck. But the WINDOWS BUILD has
+    one, by construction, and that is where this belongs: `build_world.py`'s
+    gates run after the .exe is uploaded, on a machine holding the whole world.
+    A gate that can only run where the world exists should run where the world
+    exists.
+    """
+    if godot is None:
+        godot = godot_binary()
+    if godot is None:
+        print("PERSIST SKIP -- no Godot binary found")
+        return True
+    good, why = _boot_ready(build)
+    if not good:
+        print("PERSIST FAIL -- %s" % why)
+        return False
+    ok = True
+    print("PERSIST ACCEPTANCE -- write in one process, find it in the next")
+    persist_flags = ["--mode=arrival", "--journal-gate", "--phase=persist",
+                     "--card-drop=VISAS,ORIGIN"]
+    for extra, want, why in (
+            ((), True,
+             "a refusal is written to the auto slot"),
+            (("--no-persist",), False,
+             "the verdict still happens, only the WRITE is withheld"),
+    ):
+        out, rc = _run(godot, persist_flags + list(extra))
+        if not out.strip():
+            print("  FAIL %-24s produced no output (rc=%s)"
+                  % (" ".join(extra) or "(write)", rc))
+            ok = False
+            continue
+        got, note = _verdict(out, "PERSIST")
+        good = (got == want)
+        ok = ok and good
+        print("  %s %-24s %-40s -- %s"
+              % ("ok  " if good else "FAIL", " ".join(extra) or "(write)",
+                 why, note))
+        # Phase 2 only means anything after a phase 1 that actually wrote.
+        if not extra and good:
+            out2, rc2 = _run(godot, ["--mode=arrival", "--journal-gate",
+                                     "--phase=continue"])
+            if not out2.strip():
+                print("  FAIL %-24s produced no output (rc=%s)"
+                      % ("--phase=continue", rc2))
+                ok = False
+            else:
+                got2, note2 = _verdict(out2, "CONTINUE")
+                ok = ok and got2
+                print("  %s %-24s %-40s -- %s"
+                      % ("ok  " if got2 else "FAIL", "--phase=continue",
+                         "a FRESH PROCESS finds what was done to you", note2))
+    print("PERSIST GATE %s" % ("PASS" if ok else "FAIL"))
     return ok
 
 
@@ -1436,6 +1516,10 @@ def main():
     ap.add_argument("--emit", nargs="?", const=EMIT, default=None)
     ap.add_argument("--gate", action="store_true",
                     help="learn a fact in-world, QUIT, reload, still have it")
+    ap.add_argument("--persist-gate", action="store_true",
+                    help="three launches: a customs refusal is written, a "
+                         "FRESH PROCESS finds it, and withholding only the "
+                         "write makes it vanish. Runs where a world exists")
     ap.add_argument("--verbose", action="store_true")
     ap.add_argument("--no-build", dest="build", action="store_false",
                     help="do not build a deck if this container has none")
@@ -1445,6 +1529,8 @@ def main():
         raise SystemExit(0)
     if a.gate:
         raise SystemExit(0 if gate(a.verbose, a.build) else 1)
+    if a.persist_gate:
+        raise SystemExit(0 if persist_gate(build=a.build) else 1)
     if a.report and not a.selftest:
         report()
         raise SystemExit(0)
