@@ -77,10 +77,11 @@ LEGACY_DECK_FALLBACK = False
 # a second opinion about a fact that is already settled -- and two enumerations
 # of what the station is made of is one too many (work_list's own words).
 #
-# Cost, since the two are not comparable: `routes.clusters()` is 60 ms and
-# `shell_b.station_plan()` is minutes, so Shell B is only consulted when the
-# stem is not Shell A's. On `--places-only`, which walks the register, it is
-# never consulted at all.
+# Cost, measured rather than assumed, because "consulting the plan is
+# expensive" was the reason this file guessed in the first place:
+# `routes.clusters()` is 0.06 s and `shell_b.station_plan()` is **1.9 s** for
+# all 84 rows, once per process. Both are memoised below. There is no cost
+# argument for guessing.
 
 _SHELL_A = None
 _SHELL_B = None
@@ -277,6 +278,7 @@ def write_places(stem, sector, ring, deck, out_dir):
     an empty sidecar and an absent one read identically to a gate and only one
     of them means "this deck carries nothing the register names".
     """
+    import deck as _D                                            # noqa: PLC0415
     di, _shell, _why = deck_index_of(sector, ring, deck)
     man = os.path.join(ROOT, "station/generated/cell_manifest.json")
     floor_r = 0.0
@@ -685,6 +687,12 @@ def main(argv=None):
         except ValueError as e:
             man["decks"].append({"key": stem, "ok": False, "why": str(e)})
             print(f"  [{n}/{len(work)}] {stem}: FAILED -- {e}")
+            # WRITTEN HERE TOO, not only on the success path: a refusal on the
+            # LAST deck of a run would otherwise never reach the manifest, and
+            # a failure that leaves no record is the one nobody acts on.
+            man["elapsed_s"] = round(time.time() - t0, 1)
+            with open(mpath, "w", encoding="utf-8") as f:
+                json.dump(man, f, indent=1)
             continue
         t1 = time.time()
         cmd = [godot, "--headless", "--path", os.path.join(ROOT, "godot"),
