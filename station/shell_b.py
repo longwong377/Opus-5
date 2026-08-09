@@ -85,6 +85,7 @@ Run: python3 station/shell_b.py --selftest
 """
 import argparse
 import hashlib
+import json
 import math
 import os
 import re
@@ -2196,6 +2197,229 @@ tools/export_station.py :: work_list()  (the function at line 70)
 
 
 # --------------------------------------------------------------------------
+# A FRAME -- the one claim this module shipped without
+# --------------------------------------------------------------------------
+#
+# `docs/decisions-shell-b.md` §7 names the hole in its own evidence: *"A frame.
+# Nothing here has been rendered. Every claim in §4 is a triangle count, a
+# square metre and a ray cast; NOT ONE IS A CRAFT CLAIM."* CLAUDE.md's rule is
+# that a craft claim cites an engine frame at the rubric's HALF distance, so
+# until this existed nothing about Shell B could be scored on craft at all.
+#
+# WHY IT IS HERE AND NOT IN `tools/export_scene.py`. That file's `--shot deck`
+# assembles a SHELL A deck: it calls `deck.build_deck`, reads `--at` as a
+# gazetteer place key, and derives its camera from a register address. Shell B
+# has no register places by construction -- that is what it is FOR -- so there
+# is no `--at` for any of its 84 decks and no shot could be pointed at one.
+#
+# WHAT IT DOES NOT INVENT, and this is the whole of its claim to be evidence.
+# CLAUDE.md records that the ad-hoc deck rig -- "four omni lights and an ambient
+# of 0.34" -- produced a number that "was worthless in both directions, because
+# nobody could say how much of it was the build and how much was the four lights
+# somebody chose. A frame from a rig that does not ship measures the rig." So
+# every part of this rig is imported from `tools/export_scene.py` rather than
+# restated:
+#
+#   * the lights are `fixture_lights` over this module's own tagged spans, with
+#     `radial_aim` for which way the floor is -- the deck shot's call, verbatim;
+#   * the corridor key is `soft_fill_ring`, from the collision meta;
+#   * the ambient is `ambient_energy("corridor")` and the exposure is
+#     `DECK_EXPOSURE`, both inherited from the corridor anchor, because a Shell
+#     B corridor is `interior_kit.PROVISIONAL`'s section at less detail;
+#   * the camera is `player_camera()`, read off `godot/scripts/player.gd`;
+#   * the scene is `res://scenes/interior.tscn`, which carries the 687 material
+#     rules `materials.py --export` writes, and `check_material_coverage`
+#     refuses to write a scene.json with an unbound group in it.
+#
+# The renderer is `tools/render_godot.sh --shot shellb --no-export`, which reads
+# `station/generated/scene/shellb/scene.json` and checks for itself that Godot
+# ran Forward+ and not the OpenGL 3 fallback.
+SCENE_SUBDIR = "shellb"
+
+
+def _export_scene_module():
+    """`tools/export_scene.py`, imported rather than reimplemented."""
+    p = os.path.join(ROOT, "tools")
+    if p not in sys.path:
+        sys.path.insert(0, p)
+    import export_scene as ES                                    # noqa: PLC0415
+    return ES
+
+
+def _slot_cell(s, cellplan):
+    return int(s["angle_deg"] // cellplan["cell_deg"]) % cellplan["cells"]
+
+
+def scene_camera(frame, plan, prof, slot, cam, look_m):
+    """Where the eye stands on a Shell B deck, and what it looks at.
+
+    NOTHING HERE IS A WORLD COORDINATE TYPED IN BY HAND, for `deck_camera`'s
+    stated reason one file over: a raw `--eye 201.3,-14.7,6522.1` is
+    unreadable and unre-derivable. A frame is named by the thing a player is
+    standing in -- the ring corridor, a block's spine, or one unit's door --
+    and the numbers come out of the slot's own plan.
+
+    UP IS INWARD. On a spun ring the floor is the inside of a barrel, so a
+    standing head points AT the spin axis, and `render_shot.gd` takes the up
+    vector from the shot precisely because a corridor section is symmetric
+    enough top to bottom to hide the mistake.
+    """
+    r = plan["radius_m"]
+    floor_r = r - prof["floor_y"]
+    eye_r = floor_r - cam["eye_height_m"]
+    a0 = math.radians(slot["angle_deg"])
+    z0 = slot["z_m"]
+
+    def world(a_rad, z, radius):
+        return (radius * math.cos(a_rad), radius * math.sin(a_rad), z)
+
+    if frame == "ring":
+        # In the ring corridor, on its centreline, looking along the arc.
+        zc = z0 - RING_W_M / 2.0
+        eye = world(a0, zc, eye_r)
+        aim = world(a0 + look_m / floor_r, zc, eye_r)
+    elif frame == "spine":
+        # Inside a block, at the end the ring corridor arrives at, looking the
+        # length of the spine past every door.
+        eye = world(a0, z0 - 1.6, eye_r)
+        aim = world(a0, z0 - 1.6 - look_m, eye_r)
+    elif frame == "door":
+        # THE RUBRIC'S HALF DISTANCE. A spine is `look_m` metres long to the
+        # eye; this stands `look_m / 2` from one unit's doorway and looks at
+        # the reveal, which session 3x names as the place a player looks
+        # closest.
+        d = slot["plan"].get("doors") or [(1, z0 - 6.0)]
+        side, zd = d[len(d) // 2]
+        # Offset across the spine, away from the door being looked at, so the
+        # shot is oblique rather than square on -- a square-on quad tells you
+        # nothing about relief.
+        x_eye = -side * (CORRIDOR_W_M / 2.0 - 0.55)
+        eye = world(a0 + x_eye / r, z0 + zd + look_m / 2.0, eye_r)
+        aim = world(a0 + side * (CORRIDOR_W_M / 2.0) / r, z0 + zd,
+                    floor_r - DOOR_H_M / 2.0)
+    else:
+        raise SystemExit("--frame wants ring, spine or door, got %r" % frame)
+    a_eye = math.atan2(eye[1], eye[0])
+    return eye, aim, (-math.cos(a_eye), -math.sin(a_eye), 0.0)
+
+
+def scene(schema, profile, sector, ring, deck, frame="spine", slot_i=0,
+          lod=1, cells=None, look_m=14.0, out_png="", fov=None,
+          fixture_energy=3.0, soft_fill=None, ambient=None, quiet=False):
+    """Write `station/generated/scene/shellb/scene.json` for one Shell B frame.
+
+    Returns the scene dict. The render is a separate command, deliberately:
+    `tools/render_godot.sh` owns the Vulkan/Forward+ precondition and the
+    fallback check, and a module that shelled out to it would be a second
+    place those checks could be forgotten.
+    """
+    ES = _export_scene_module()
+    out_dir = os.path.join(ROOT, "station/generated/scene", SCENE_SUBDIR)
+    os.makedirs(out_dir, exist_ok=True)
+    cam = ES.player_camera()
+
+    plan = deck_slots(schema, profile, sector, ring, deck)
+    if plan is None:
+        raise SystemExit("%s/%d/%d: no belt owns this deck" % (sector, ring,
+                                                               deck))
+    cellplan = it.ring_cells(schema, profile, sector, ring, plan["rung"])
+    blocks = [s for s in plan["slots"] if s["kind"] == "block"]
+    if not blocks:
+        blocks = plan["slots"]
+    slot = blocks[slot_i % len(blocks)]
+    ci = _slot_cell(slot, cellplan)
+    if cells is None:
+        cells = sorted({(ci + d) % cellplan["cells"] for d in (-1, 0, 1)})
+
+    V, T, Gs, meta = build_deck(schema, profile, sector, ring, deck, lod=lod,
+                                cells=cells)
+    if not meta.get("built"):
+        raise SystemExit("%s/%d/%d did not build" % (sector, ring, deck))
+    prof = block_profile()
+
+    stem = "shb_%s_%d_%d" % (sector, ring, deck)
+    obj = os.path.join(out_dir, stem + ".obj")
+    ES.write_obj(obj, V, T, ES.per_triangle(Gs, len(T)))
+    glb = ES.to_glb(obj, os.path.join(out_dir, stem + ".glb"))
+    n, names = ES.glb_triangles(glb)
+    if n != len(T):
+        raise ValueError("%s: glb has %d triangles, source has %d"
+                         % (stem, n, len(T)))
+
+    eye, aim, up = scene_camera(frame, plan, prof, slot, cam, look_m)
+
+    # THE LIGHTS ARE THE FITTINGS, and `fixture_lights` decides which tagged
+    # span is a lamp by looking its name up in `FIXTURE_LIGHTING`. Nothing is
+    # passed in here that the assembled-deck shot does not pass.
+    lights = ES.fixture_lights(
+        V, T, Gs, fixture_energy, ES.INTERIOR_LIGHT_RANGE_M,
+        shadow_n=ES.INTERIOR_SHADOW_LIGHTS, eye=eye, down=ES.radial_aim)
+    floor_r = plan["radius_m"] - prof["floor_y"]
+    # The ring corridor's own arc, restricted to the cells that were built --
+    # a key over 1,263 m of band a shot cannot see is 700 lights of nothing.
+    cell_m = 2 * math.pi * plan["radius_m"] * (cellplan["cell_deg"] / 360.0)
+    reach = plan["band_arc_m"].get(slot["band"], 0.0)
+    a_lo = min(cells) * cellplan["cell_deg"]
+    a_hi = min(reach, (max(cells) + 1) * cell_m) / max(plan["radius_m"], 1e-9)
+    fill_meta = {"floor_r_m": floor_r,
+                 "ceil_r_m": floor_r - (prof["ceil_y"] - prof["floor_y"]),
+                 "half_w_m": RING_W_M / 2.0,
+                 "start_deg": a_lo,
+                 "arc_deg": max(0.0, math.degrees(a_hi) - a_lo),
+                 "z_m": slot["z_m"] - RING_W_M / 2.0}
+    fill_e = ES.SOFT_FILL_ENERGY if soft_fill is None else soft_fill
+    fill = (ES.soft_fill_ring(fill_meta, fill_e)
+            if fill_e > 0.0 and fill_meta["arc_deg"] > 0.0 else [])
+    lights = lights + fill
+
+    out = {
+        "shot": "shellb",
+        "scene": "res://scenes/interior.tscn",
+        "glb": [glb],
+        "triangles": n,
+        "groups": sorted(set(names)),
+        "lights": lights,
+        "deck": "%s/%d/%d" % (sector, ring, deck),
+        "frame": frame,
+        "belt": plan["belt"],
+        "cells": list(cells),
+        "exposure": ES.DECK_EXPOSURE,
+        "ambient": (ES.ambient_energy("corridor") * ES.DECK_EXPOSURE
+                    if ambient is None else ambient),
+        "camera": {"eye": list(eye), "target": list(aim), "up": list(up),
+                   "fov": cam["fov"] if fov is None else fov,
+                   "near": 0.06, "far": 400.0},
+        "sun_from": None,
+        "out_png": out_png,
+    }
+    # A GROUP NO RULE MATCHES RENDERS ON THE glTF DEFAULT -- WHITE PLASTIC --
+    # because `interior.tscn` declares no `fallback_material`. Asked here for
+    # `export_scene.build()`'s reason: one call site every shot passes through.
+    ES.check_material_coverage(out, strict=True)
+    with open(os.path.join(out_dir, "scene.json"), "w", encoding="utf-8") as f:
+        json.dump(out, f, indent=1)
+    if not quiet:
+        n_cast = len([lt for lt in lights if lt.get("group")
+                      != "corridor_soft_fill"])
+        print("  %s/%d/%d %s cells %s: %s tri, %d instances"
+              % (sector, ring, deck, plan["belt"], list(cells),
+                 "{:,}".format(n), len(set(names))))
+        print("  lights: %d cast from tagged fittings, %d soft fill, "
+              "ambient %.3f, exposure %.2f"
+              % (n_cast, len(fill), out["ambient"], out["exposure"]))
+        if not n_cast:
+            print("  NO FITTING IN THIS BUILD IS A CAST SOURCE. Every tagged "
+                  "light group resolves to a material and none of them "
+                  "resolves to an `export_scene.FIXTURE_LIGHTING` key, so the "
+                  "frame is ambient and soft fill only.")
+        print("  camera %s: eye (%.2f, %.2f, %.2f) fov %.0f"
+              % (frame, eye[0], eye[1], eye[2], out["camera"]["fov"]))
+        print("  render: GODOT=... bash tools/render_godot.sh --shot %s "
+              "--no-export --res 1280x720 --out <png>" % SCENE_SUBDIR)
+    return out
+
+
+# --------------------------------------------------------------------------
 # OUTPUT
 # --------------------------------------------------------------------------
 def write_obj(path, V, T, Gs):
@@ -2548,6 +2772,26 @@ def _cli(argv=None):
     ap.add_argument("--lod", type=int, default=1)
     ap.add_argument("--obj", default="")
     ap.add_argument("--integration", action="store_true")
+    ap.add_argument("--scene", action="store_true",
+                    help="write station/generated/scene/shellb/scene.json for "
+                         "one frame of one deck, then render it with "
+                         "tools/render_godot.sh --shot shellb --no-export")
+    ap.add_argument("--frame", default="spine",
+                    choices=("ring", "spine", "door"),
+                    help="what the eye is standing in: the ring corridor, a "
+                         "block's spine, or one unit's doorway at the "
+                         "rubric's half distance")
+    ap.add_argument("--slot", type=int, default=0,
+                    help="which block of the deck the frame is taken in")
+    ap.add_argument("--look-m", type=float, default=14.0,
+                    help="how far ahead the eye looks, in metres")
+    ap.add_argument("--fov", type=float, default=None)
+    ap.add_argument("--fixture-energy", type=float, default=3.0)
+    ap.add_argument("--soft-fill", type=float, default=None,
+                    help="energy of the ring corridor's off-camera key; 0 is "
+                         "the negative control")
+    ap.add_argument("--ambient", type=float, default=None)
+    ap.add_argument("--out", default="", help="the PNG the renderer writes")
     a = ap.parse_args(argv)
 
     if a.integration:
@@ -2557,6 +2801,17 @@ def _cli(argv=None):
         return 1 if _selftest(legacy=a.legacy, quick=a.quick) else 0
 
     schema, profile = it.load()
+    if a.scene:
+        if not a.deck:
+            raise SystemExit("--scene wants --deck SECTOR/RING/DECK")
+        sec, ring, dk = a.deck.split("/")
+        scene(schema, profile, sec, int(ring), int(dk), frame=a.frame,
+              slot_i=a.slot, lod=a.lod,
+              cells=None if a.cell is None else [a.cell],
+              look_m=a.look_m, out_png=a.out, fov=a.fov,
+              fixture_energy=a.fixture_energy, soft_fill=a.soft_fill,
+              ambient=a.ambient)
+        return 0
     if a.plan:
         tot, rows = station_totals(schema, profile)
         print("\nSHELL B -- THE PLAN\n")
