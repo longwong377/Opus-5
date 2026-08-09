@@ -100,6 +100,22 @@ def work_list():
         if k[:3] == (DRUM_SECTOR, DRUM_RING, DRUM_DECK):
             continue
         decks[k[:3]].append(k[3])
+
+    # SHELL B -- THE 180 DECKS THAT CARRY NO NAMED LOCATION AND ALL THE PEOPLE.
+    # `routes.clusters()` is "every deck that carries a location", which is 71
+    # of the station's 251. That enumeration is right for Shell A and it is the
+    # reason 175 decks had no geometry of any kind: nobody lives in a landmark.
+    # `station/shell_b.py` owns the residential belts -- 101 decks, 222,580
+    # dwellings, 4.64 M m2 -- and a deck of its own has NO cluster z, which is
+    # exactly how the build loop below tells the two apart.
+    import shell_b as SHB                                       # noqa: PLC0415
+    _schema, _profile = it.load()
+    for row in SHB.station_plan(_schema, _profile):
+        key = (row["sector"], row["ring"], row["deck"])
+        if key == (DRUM_SECTOR, DRUM_RING, DRUM_DECK):
+            continue                      # the drum is export_drum's, as above
+        decks.setdefault(key, [])         # empty list == "this one is Shell B"
+
     rings = sorted({k[:2] for k in nodes})
     ang = {s: RT.transit_angle(s, nodes)
            for s in sorted({k[0] for k in nodes})}
@@ -200,6 +216,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     decks, rings, ang, nodes = work_list()
+    import shell_b as SHB                                       # noqa: PLC0415
     if a.sector:
         decks = {k: v for k, v in decks.items() if k[0] == a.sector}
         rings = [r for r in rings if r[0] == a.sector]
@@ -270,17 +287,30 @@ def main(argv=None):
             print(f"  [{n}/{len(order)}] {stem} -- already built, skipped")
             continue
         try:
-            V, T, G, st = D.build_deck_clusters(
-                schema, profile, sec, ring, dk, join=True,
-                must_cover=ang[sec])
+            # WHICH SHELL IS THIS DECK? A Shell A deck came from
+            # `routes.clusters()` and carries its cluster z values; a Shell B
+            # deck was seeded with an empty list by `work_list` and has none.
+            # One branch, decided by the data, so neither builder can be handed
+            # the other's deck -- which is the mistake that cost run 2 when the
+            # drum reached a ring-deck builder.
+            if not decks[k]:
+                V, T, G, st = SHB.build_deck(schema, profile, sec, ring, dk)
+            else:
+                V, T, G, st = D.build_deck_clusters(
+                    schema, profile, sec, ring, dk, join=True,
+                    must_cover=ang[sec])
             ob, gb = _write(stem, V, T, G)
             # AND ITS COLLISION, WHICH THE FIRST 70-DECK BUILD DID NOT WRITE.
             # 2.3 GB of render mesh with nothing to stand on is a station a body
             # walks through. The shell is ~0.5% of the render and is what makes
             # the difference between geometry and a place.
-            cv, ct, cmeta = D.build_collision_clusters(
-                schema, profile, sec, ring, dk, join=True,
-                must_cover=ang[sec])
+            if not decks[k]:
+                cv, ct, cmeta = SHB.deck_collision(
+                    schema, profile, sec, ring, dk)
+            else:
+                cv, ct, cmeta = D.build_collision_clusters(
+                    schema, profile, sec, ring, dk, join=True,
+                    must_cover=ang[sec])
             # THE SPANS, NOT ONE GROUP. Writing the shell as a single
             # `("collision", 0, len(ct))` made `build_collision`'s
             # `doorpanel_<place>` spans unaddressable and WELDED EVERY ROOM ON
