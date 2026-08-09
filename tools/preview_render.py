@@ -25,7 +25,7 @@ def load_obj(path):
     """
     verts, tris, groups = [], [], []
     current = "default"
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             if line.startswith("v "):
                 _, x, y, z = line.split()

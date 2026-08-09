@@ -296,7 +296,7 @@ def dialogue_state(dd, stem):
     if not os.path.exists(d):
         return "MISSING", 0, 0, 0
     try:
-        with open(d) as f:
+        with open(d, encoding="utf-8") as f:
             rows = json.load(f)
     except (ValueError, OSError) as e:
         return "UNREADABLE(%s)" % type(e).__name__, 0, 0, 0
@@ -319,7 +319,7 @@ def arrival_state(dd, stem):
     if not os.path.exists(p):
         return "MISSING", 0, ""
     try:
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             seq = json.load(f)
     except (ValueError, OSError) as e:
         return "UNREADABLE(%s)" % type(e).__name__, 0, ""
@@ -356,7 +356,7 @@ def verify_spawn(dd, stem, scratch, tol=0.01):
     p = os.path.join(dd, stem + "_arrival.json")
     if not os.path.exists(p):
         return None
-    with open(p) as f:
+    with open(p, encoding="utf-8") as f:
         have = (json.load(f).get("build") or {}).get("spawn")
     if not (isinstance(have, list) and len(have) == 3):
         return None
@@ -420,7 +420,7 @@ def run(argv=None):
     try:
         for i, stem in enumerate(todo, 1):
             actors = os.path.join(dd, stem + "_actors.json")
-            with open(actors) as f:
+            with open(actors, encoding="utf-8") as f:
                 n_cast = len(json.load(f))
             marks = []
             for kind, want, baker in (

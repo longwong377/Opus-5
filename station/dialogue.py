@@ -4481,9 +4481,9 @@ def coverage(actors_path: str, sidecar_path: str):
     resident the scope document ("NPCs with names, species, roles and
     schedules -- not crowds, *residents*") says should not exist.
     """
-    with open(actors_path) as f:
+    with open(actors_path, encoding="utf-8") as f:
         cast = {a.get("group", "") for a in json.load(f) if a.get("who")}
-    with open(sidecar_path) as f:
+    with open(sidecar_path, encoding="utf-8") as f:
         spoke = {r.get("group", "") for r in json.load(f)}
     return len(cast & spoke), len(cast), sorted(cast - spoke)
 
@@ -4540,14 +4540,14 @@ def write_sidecar(actors_path: str, out_path: str, world: World = None,
     `hours=None` writes the single-hour form this function had before, which
     is what `--hour` on the command line asks for.
     """
-    with open(actors_path) as f:
+    with open(actors_path, encoding="utf-8") as f:
         actors = json.load(f)
     world = world or World()
     rows = []
     for h in (hours or (world.hour,)):
         rows += sidecar(actors, World(hour=h, day=world.day,
                                       datum=world.datum))
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(rows, f, indent=1)
     return len(rows)
 
@@ -4646,7 +4646,7 @@ def _cast(paths=None, cap=None):
     out = []
     for p in (paths if paths is not None else _cast_files()):
         try:
-            with open(p) as f:
+            with open(p, encoding="utf-8") as f:
                 rows = json.load(f)
         except Exception:                                        # noqa: BLE001
             continue
@@ -4807,7 +4807,7 @@ def converse(out=print, hours=(3.0, 13.0), cap=None):            # noqa: C901
             "checkout, so whether a player can reach any of the above is "
             "unanswered here. `python3 station/boot.py` writes it.")
     else:
-        with open(boot_p) as f:
+        with open(boot_p, encoding="utf-8") as f:
             man = json.load(f)
         side = man.get("dialogue", "")
         ok_side = bool(side) and os.path.exists(side)
@@ -4819,7 +4819,7 @@ def converse(out=print, hours=(3.0, 13.0), cap=None):            # noqa: C901
                          "so walk.gd builds no Dialogue node and the whole "
                          "system is unreachable from the game")
         else:
-            with open(side) as f:
+            with open(side, encoding="utf-8") as f:
                 rows = json.load(f)
             hs = sorted({r.get("hour") for r in rows})
             with_c = sum(1 for r in rows if r.get("choices"))

@@ -1337,7 +1337,7 @@ def _lit_keys():
                 os.path.abspath(__file__))), "station/generated/hull.obj")
             ext_groups = set()
             if os.path.exists(hull):
-                with open(hull) as f:
+                with open(hull, encoding="utf-8") as f:
                     for line in f:
                         if line.startswith("g "):
                             ext_groups.add(line[2:].strip())

@@ -527,7 +527,7 @@ def build_lift(schema, profile, g=None, lobby_render=True, quiet=False):
         "render_tris": len(rt), "collision_tris": len(st),
         "car_tris": len(ct), "car_collision_tris": len(xt),
     }
-    with open(stem + ".json", "w") as f:
+    with open(stem + ".json", "w", encoding="utf-8") as f:
         json.dump(man, f, indent=1)
     return man
 
@@ -598,7 +598,7 @@ def build_tram(schema, profile, sector=None, count=None, angle_deg=0.0,
         "leg_table": _leg_table(rep["spacing_m"])["table"],
         "triangles": len(tris),
     }
-    with open(stem + ".json", "w") as f:
+    with open(stem + ".json", "w", encoding="utf-8") as f:
         json.dump(man, f, indent=1)
     return man
 

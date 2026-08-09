@@ -935,7 +935,7 @@ def write_arrival_sidecar(out_dir, stem, paths=None, day: int = 0,
                         ("glb", "collision", "interact", "actors",
                          "spawn", "spawn_at", "rooms")}
     path = os.path.join(out_dir, f"{stem}_arrival.json")
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(seq, f, indent=1)
     return path
 
@@ -944,7 +944,7 @@ def emit(path: str = DEFAULT_EMIT, day: int = 0, seed: str = "player",
          choices: dict = None) -> str:
     seq = sequence(day=day, seed=seed, choices=choices)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(seq, f, indent=1)
     return path
 
@@ -1327,7 +1327,7 @@ def _selftest(out=print):                                        # noqa: C901
     check("the gazetteer is where traffic.py says it is",
           os.path.exists(GAZETTEER))
     if os.path.exists(GAZETTEER):
-        txt = open(GAZETTEER).read()
+        txt = open(GAZETTEER, encoding="utf-8").read()
         for phrase in ("The process a visitor goes through",
                        "customs area 7",
                        "could not afford a ticket home",
@@ -1345,7 +1345,7 @@ def _selftest(out=print):                                        # noqa: C901
     with tempfile.TemporaryDirectory() as td:
         pth = emit(os.path.join(td, "a.json"), 0, "player")
         nbytes = os.path.getsize(pth)
-        back = json.load(open(pth))
+        back = json.load(open(pth, encoding="utf-8"))
     check("the sidecar the engine reads round-trips through JSON",
           back["steps"] == seq["steps"] and back["checks"] == seq["checks"],
           f"{len(back['steps'])} steps, {len(back['checks'])} checks, "

@@ -197,7 +197,7 @@ def assembled():
     path = os.path.join(STATION, "station_manifest.json")
     if not os.path.exists(path):
         return {}
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         man = json.load(f)
     return {d["key"]: d for d in man.get("decks", ())
             if d.get("ok") and os.path.exists(
@@ -700,7 +700,7 @@ def build(schema, profile, cand, rate=1.0, quiet=False):
         "max_frames": int(frames * 1.5) + 600,
     }
     path = os.path.join(OUT, "agenda.json")
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(man, f, indent=1)
     if not quiet:
         print(f"  wrote {os.path.relpath(path, ROOT)} -- {r['length_m']:,.0f} m "
@@ -1593,7 +1593,7 @@ def build3(schema, profile, cand, rate=1.0, quiet=False):
         "max_frames": int(frames * 1.5) + 600,
     }
     path = os.path.join(OUT, "commute.json")
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(man, f, indent=1)
     if not quiet:
         print(f"  wrote {os.path.relpath(path, ROOT)} -- "
@@ -2043,7 +2043,7 @@ def baked_residents():
         path = os.path.join(STATION, key + "_actors.json")
         if not os.path.exists(path):
             continue
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             for a in json.load(f):
                 who = a.get("who") or {}
                 if who.get("home") and who.get("job") and who.get("id"):
@@ -2340,11 +2340,11 @@ def primitives():
             prims, npc = B._glb_primitives(glb)
         except Exception:                                         # noqa: BLE001
             continue
-        with open(act) as f:
+        with open(act, encoding="utf-8") as f:
             n_act = len(json.load(f))
         n_crw = 0
         if os.path.exists(crw):
-            with open(crw) as f:
+            with open(crw, encoding="utf-8") as f:
                 n_crw = len(json.load(f))
         rows.append((key, prims, npc, n_act, n_crw))
     rows.sort(key=lambda r: -r[1])

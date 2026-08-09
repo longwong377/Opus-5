@@ -1069,7 +1069,7 @@ def _selftest():                                                # noqa: C901
     # this file, so the two transcriptions have to agree. Nothing in this
     # module reads the canon file; this exists only to disagree.
     canon = os.path.join(os.path.dirname(_STATION), "canon", "00-MASTER.md")
-    text = open(canon).read()
+    text = open(canon, encoding="utf-8").read()
     for label in CARD:
         if label not in text:
             check(f"canon 1.4 carries the {label} field", False)

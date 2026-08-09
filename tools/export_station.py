@@ -96,7 +96,7 @@ def _write(stem, V, T, G):
     obj = os.path.join(OUT, stem + ".obj")
     glb = os.path.join(OUT, stem + ".glb")
     D.write_obj(obj, V, T, G)
-    with open(obj) as f:
+    with open(obj, encoding="utf-8") as f:
         body = f.read()
     nf = body.count("\nf ")
     ng = body.count("\ng ")
@@ -153,7 +153,7 @@ def _sidecars(stem, V, T, G, st):
                           ("actors", st.get("actors", [])),
                           ("crowd", st.get("crowd", []))):
         p = os.path.join(OUT, f"{stem}_{name}.json")
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             json.dump(payload, f)
         out[name] = len(payload)
     return out
@@ -218,7 +218,7 @@ def main(argv=None):
     man = {"decks": [], "columns": [], "started": time.time()}
     if os.path.exists(mpath):
         try:
-            with open(mpath) as f:
+            with open(mpath, encoding="utf-8") as f:
                 old = json.load(f)
             man["decks"] = list(old.get("decks", ()))
             man["columns"] = list(old.get("columns", ()))
@@ -232,7 +232,7 @@ def main(argv=None):
 
     def flush():
         man["elapsed_s"] = round(time.time() - man["started"], 1)
-        with open(mpath, "w") as f:
+        with open(mpath, "w", encoding="utf-8") as f:
             json.dump(man, f, indent=1)
 
     for n, k in enumerate(order, 1):

@@ -1000,7 +1000,7 @@ BASELINE = {"declared": 357, "resolved": 357, "places_all": 125,
 def load_audit(path=CACHE):
     if not os.path.exists(path):
         return None
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -1620,7 +1620,7 @@ def _cli(argv):
     if a.gate:
         if a.rebuild:
             rows = audit()
-            with open(CACHE, "w") as f:
+            with open(CACHE, "w", encoding="utf-8") as f:
                 json.dump(rows, f, indent=1)
         else:
             rows = load_audit()
@@ -1695,7 +1695,7 @@ def _cli(argv):
             print(f"  built {b:8s} {g:3d}/{d:3d}")
         if a.write:
             os.makedirs(os.path.dirname(CACHE), exist_ok=True)
-            with open(CACHE, "w") as f:
+            with open(CACHE, "w", encoding="utf-8") as f:
                 json.dump(rows, f, indent=1)
             print(f"wrote {CACHE}")
         # THE ASSERTION, AND IT FAILS. `--audit` is the honest form of the

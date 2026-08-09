@@ -1126,7 +1126,7 @@ def spec_incident_places(path=None):
         return hit
     out = {}
     key = None
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             m = re.match(r"^###\s+PLC-\d+\s+`([a-z0-9_]+)`", line)
             if m:
@@ -4985,7 +4985,7 @@ def spec_ids(path, prefix="INC-"):
     """
     import re
     ids = set()
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             m = re.match(r"^\|\s*(INC-[A-Z]+)\s*\|", line)
             if m:
@@ -5573,7 +5573,7 @@ def _shipped_rooms():
     p = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                      "generated", "scene", "boot.json")
     try:
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             return tuple(json.load(f).get("rooms") or ())
     except Exception:                                        # pragma: no cover
         return ()

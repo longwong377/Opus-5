@@ -141,7 +141,7 @@ def write_obj(path, meshes, rename=None):
             order.append(g)
             buckets[g] = []
         buckets[g].append((verts, tris))
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write("# written by tools/glb_to_obj.py\n")
         for g in order:
             for verts, tris in buckets[g]:

@@ -1001,7 +1001,7 @@ def write_obj(path, verts, tris, groups=None, name="collision"):
     for gname, lo, hi in (groups or ()):
         for i in range(lo, min(hi, len(tris))):
             per[i] = gname
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         for x, y, z in verts:
             f.write(f"v {x:.5f} {y:.5f} {z:.5f}\n")
         cur = None

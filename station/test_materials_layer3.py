@@ -140,7 +140,7 @@ def _via_write_obj(mod_name):
         try:
             with contextlib.redirect_stdout(_io.StringIO()):
                 mod.write_obj(path)
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 return {ln[2:].strip() for ln in f if ln.startswith("g ")}
         finally:
             _os.unlink(path)

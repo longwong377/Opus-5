@@ -6240,7 +6240,7 @@ def _patch_import(path, kind):
     """
     if not os.path.exists(path):
         return False
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         text = f.read()
     out = text.replace("compress/mode=0", "compress/mode=2")
     # MIPMAPS ARE NOT OPTIONAL HERE and Godot's PNG default is off. The hull
@@ -6262,7 +6262,7 @@ def _patch_import(path, kind):
         # visible banding in the shading, which reads as a modelling fault.
         out = out.replace("compress/normal_map=0", "compress/normal_map=1")
     if out != text:
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(out)
     return True
 
@@ -6360,7 +6360,7 @@ def shader_uniforms(name):
     while the library thinks it set 6.0.
     """
     path = os.path.join(SHADER_DIR, f"{name}.gdshader")
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         src = f.read()
     return set(re.findall(r"^uniform\s+\S+\s+([A-Za-z_][A-Za-z0-9_]*)",
                           src, re.M))
@@ -6554,7 +6554,7 @@ def export_tres(outdir=MATERIAL_DIR):
     written = []
     for m in MATERIALS:
         path = os.path.join(outdir, f"{m.name}.tres")
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(shader_tres(m) if m.shader else tres(m))
         if m.shader:
             written.append(f"  ({m.shader}.gdshader)")
@@ -6597,7 +6597,7 @@ def patch_scene_rules(path, scene):
     touched. The lights, the environment and the tonemapper are judgements and
     stay owned by whoever wrote them.
     """
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         text = f.read()
 
     # Existing resources, so `fallback_material = ExtResource("m_hull")` and
@@ -6641,7 +6641,7 @@ def patch_scene_rules(path, scene):
     # stale, which is the same class of defect as the paste step.
     n = (text.count("[ext_resource") + text.count("[sub_resource") + 1)
     text = re.sub(r"load_steps=\d+", f"load_steps={n}", text, count=1)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(text)
     return path, len(rules), len(added)
 
@@ -6665,7 +6665,7 @@ def export_rules_gd(outdir=MATERIAL_DIR):
         lines.append("}")
         lines.append("")
     path = os.path.join(outdir, "material_rules.gen.txt")
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
     return path
 
@@ -7862,7 +7862,7 @@ def _selftest():
             continue
         path = os.path.join(TEXTURE_DIR, fn)
         try:
-            with _PILImage.open(path) as im:
+            with _PILImage.open(path, encoding="utf-8") as im:
                 im.load()               # header alone decodes on a truncated
                 sheet = fn[:-4]         # file; the pixels are the test
                 for suffix in ("_albedo", "_orm", "_normal"):
@@ -7895,7 +7895,7 @@ def _selftest():
         path = os.path.join(MATERIAL_DIR, f"{m.name}.tres")
         if not os.path.exists(path):
             continue
-        with open(path) as fh:
+        with open(path, encoding="utf-8") as fh:
             if fh.read() != (shader_tres(m) if m.shader else tres(m)):
                 drifted.append(m.name)
     check("every exported .tres is what the library would write today",
@@ -8255,7 +8255,7 @@ def _selftest():
             if not os.path.exists(path):
                 missing.append(frame)
                 continue
-            a = _numpy.asarray(_PILImage.open(path).convert("RGB"),
+            a = _numpy.asarray(_PILImage.open(path, encoding="utf-8").convert("RGB"),
                             dtype=_numpy.float32) / 255.0
             v = a.max(axis=2)
             sel = (v > 0.04) & (v < 0.95)
@@ -8273,7 +8273,7 @@ def _selftest():
         _f = "07-sector-grey/grey level 1.webp"
         _p = os.path.join(ROOT, "reference", _f)
         if os.path.exists(_p):
-            a = _numpy.asarray(_PILImage.open(_p).convert("RGB"),
+            a = _numpy.asarray(_PILImage.open(_p, encoding="utf-8").convert("RGB"),
                             dtype=_numpy.float32) / 255.0
             v = a.max(axis=2)
             sel = (v > 0.04) & (v < 0.95)
@@ -8299,7 +8299,7 @@ def _selftest():
         if not os.path.exists(spath):
             check(f"{scene} scene file exists", False, spath)
             continue
-        text = open(spath).read()
+        text = open(spath, encoding="utf-8").read()
         want = godot_rules(scene)
         got = dict(re.findall(r'"([a-z0-9_]+)": ExtResource\("([a-zA-Z0-9_]+)"\)',
                               text[text.index("material_rules = {"):]))

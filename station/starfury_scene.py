@@ -171,7 +171,7 @@ def _group_vertices(obj_path, group):
     verts = []
     used = set()
     current = None
-    with open(obj_path) as f:
+    with open(obj_path, encoding="utf-8") as f:
         for line in f:
             if line.startswith("v "):
                 p = line.split()
@@ -560,7 +560,7 @@ def compose_lookback(flight_path, out_png, out_dir=OUT_DIR, res="1280x720"):
     extra .glb in the list and a camera that came out of a flight rather than
     out of an argument.
     """
-    flight = json.load(open(flight_path))
+    flight = json.load(open(flight_path, encoding="utf-8"))
     # THE LOOK-BACK BEAT, NOT THE LAST ONE. Since the mission grew a dock phase
     # `final` is the craft parked 3 m off the hull with its nose 85 degrees off
     # the station -- a perfectly valid state and the wrong photograph. The
@@ -600,7 +600,7 @@ def compose_lookback(flight_path, out_png, out_dir=OUT_DIR, res="1280x720"):
     os.makedirs(ldir, exist_ok=True)
     dst = os.path.join(ldir, "scene.json")
     shot["scene_json"] = dst
-    with open(dst, "w") as f:
+    with open(dst, "w", encoding="utf-8") as f:
         json.dump(shot, f, indent=1)
     return dst, posed
 
@@ -624,7 +624,7 @@ def check_flight(flight_path, perturb=0.0, quiet=False):
     speed before comparing, so a caller can prove the check FAILS on a wrong
     number. A check nobody has seen fail is a check nobody has tested.
     """
-    flight = json.load(open(flight_path))
+    flight = json.load(open(flight_path, encoding="utf-8"))
     predicted = launch_state()
     ok = True
     lines = []

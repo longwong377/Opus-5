@@ -186,7 +186,7 @@ def player_from_ledger(path: str = None):
     disagreed with the HUD would be worse than no bake.
     """
     path = path or LEDGER
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         led = json.load(f)
     purses = led.get("purses") or {}
     keys = sorted(purses)
@@ -223,7 +223,7 @@ def boot_rooms(path: str = None) -> list:
     """
     path = path or BOOT_JSON
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return [str(r) for r in (json.load(f).get("rooms") or [])]
     except Exception:                                             # noqa: BLE001
         return []
@@ -591,7 +591,7 @@ def restricted_sources() -> list:
     rooms = set(boot_rooms())
     out = []
     try:
-        with open(LEDGER) as f:
+        with open(LEDGER, encoding="utf-8") as f:
             stock = (json.load(f).get("stock") or {})
     except Exception:                                             # noqa: BLE001
         return out
@@ -611,7 +611,7 @@ def emit(path: str = None, **kw) -> str:
     path = path or OUT_JSON
     d = table(**kw)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(d, f, indent=1, sort_keys=True)
     return path
 
@@ -1311,7 +1311,7 @@ def _write_ledger(led, path: str) -> str:
 
 
 def _purse_of(path: str, nid: str) -> dict:
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return (json.load(f).get("purses") or {}).get(nid) or {}
 
 
@@ -1612,7 +1612,7 @@ def _run(extra, timeout=240, verbose=False, ledger_src=None, ledger_at=None,
 
 def _purse(path):
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             p = json.load(f).get("purses", {})
     except Exception:                                             # noqa: BLE001
         return {}
@@ -2091,7 +2091,7 @@ def _savegame(after_ts: float) -> tuple:
         return None, ("%s is %.1f s OLDER than this launch -- it was not "
                       "written by it" % (path, -age))
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f), path
     except Exception as e:                                        # noqa: BLE001
         return None, "%s unreadable -- %s" % (path, e)
@@ -2495,7 +2495,7 @@ def _table_is_current(path: str = None) -> bool:
     """
     path = path or OUT_JSON
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             d = json.load(f)
     except Exception:                                             # noqa: BLE001
         return False
@@ -2593,7 +2593,7 @@ def main(argv=None):
         report(all_places=a.all)
     if a.bake:
         p = emit()
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             n = len(json.load(f)["places"])
         print("enforcement: %s -- %d place(s)" % (os.path.relpath(p, ROOT), n))
     if a.selftest and not selftest():

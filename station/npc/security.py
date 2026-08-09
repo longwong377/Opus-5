@@ -1295,7 +1295,7 @@ def _selftest(out=print):                                       # noqa: C901
     check(os.path.exists(GAZETTEER),
           "the file this module exists to read is where it says it is")
     n += 1
-    txt = open(GAZETTEER).read()
+    txt = open(GAZETTEER, encoding="utf-8").read()
     for phrase in ("2 officers", "No permanent post", "Security Central"):
         check(phrase.lower() in txt.lower(),
               f"the gazetteer still says {phrase!r}")

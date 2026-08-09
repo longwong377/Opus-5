@@ -217,7 +217,7 @@ def columns(legacy=False):
 
 
 def deck_table(sector=None):
-    with open(CELL_MANIFEST) as f:
+    with open(CELL_MANIFEST, encoding="utf-8") as f:
         rows = json.load(f)["deck_table"]
     return [r for r in rows if sector is None or r["sector"] == sector]
 
@@ -361,7 +361,7 @@ def already_baked(sector):
     if not os.path.exists(p):
         return False
     try:
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             man = json.load(f)
     except (ValueError, OSError):
         return False
@@ -495,7 +495,7 @@ def bake_one(col, work, timeout=600, quiet=True):
                          if ln.strip() and "ALSA" not in ln][-6:]
         return rep
 
-    with open(man_p) as f:
+    with open(man_p, encoding="utf-8") as f:
         man = json.load(f)
     man = finalise(man, col, st, row, whole)
 
@@ -634,7 +634,7 @@ def deck_cell_rows(cells_dir=CELLS):
         stem = os.path.basename(p)[:-len("_cells.json")]
         if stem == "station" or stem.startswith("column_"):
             continue
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             for c in json.load(f).get("cells", []):
                 if c.get("aabb"):
                     out.append((stem, c))
@@ -659,7 +659,7 @@ def verify(cells_dir=CELLS, near_m=NEAR_M, sector=None):
         sec = os.path.basename(p)[len("column_"):-len("_cells.json")]
         if sector and sec != sector:
             continue
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             man = json.load(f)
         col = man.get("column", {})
         mine = man.get("cells", [])

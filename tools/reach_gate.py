@@ -57,7 +57,7 @@ def places_in_cells(cells_dir=CELLS):
     for p in sorted(glob.glob(os.path.join(cells_dir, "*_places.json"))):
         stem = os.path.basename(p)[:-len("_places.json")]
         try:
-            with open(p) as f:
+            with open(p, encoding="utf-8") as f:
                 d = json.load(f)
         except (OSError, ValueError):
             continue
@@ -78,7 +78,7 @@ def manifest_decks(path=MERGED):
     """
     if not os.path.exists(path):
         return None
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         j = json.load(f)
     stems = set()
     for c in j.get("cells", ()):

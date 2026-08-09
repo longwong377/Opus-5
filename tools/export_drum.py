@@ -584,7 +584,7 @@ def _write(out_dir, stem, V, T, G):
     obj = os.path.join(out_dir, stem + ".obj")
     glb = os.path.join(out_dir, stem + ".glb")
     D.write_obj(obj, V, T, G)
-    with open(obj) as f:
+    with open(obj, encoding="utf-8") as f:
         body = f.read()
     nf = body.count("\nf ")
     ng = body.count("\ng ")
@@ -842,7 +842,7 @@ def main(argv=None):
         for nm, payload in (("interact", irows), ("actors", actors),
                             ("crowd", crowd)):
             p = os.path.join(a.out, f"{STEM}_{nm}.json")
-            with open(p, "w") as f:
+            with open(p, "w", encoding="utf-8") as f:
                 json.dump(payload, f)
             side[nm] = len(payload)
         side_s = time.time() - t0
@@ -947,14 +947,14 @@ def main(argv=None):
     man = {"decks": [], "columns": []}
     if os.path.exists(mpath):
         try:
-            with open(mpath) as f:
+            with open(mpath, encoding="utf-8") as f:
                 man = json.load(f)
         except (OSError, ValueError):
             man = {"decks": [], "columns": []}
     man["decks"] = [r for r in man.get("decks", ())
                     if r.get("key") != STEM] + [row]
     man.setdefault("columns", [])
-    with open(mpath, "w") as f:
+    with open(mpath, "w", encoding="utf-8") as f:
         json.dump(man, f, indent=1)
     good = [d for d in man["decks"] if d.get("ok")]
     print(f"\n  manifest: {len(good)} of {len(man['decks'])} decks ok "

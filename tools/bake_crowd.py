@@ -146,7 +146,7 @@ def selftest(out_dir=DECKDIR):
     named, orphan, examples = {}, 0, []
     for p in rows:
         try:
-            with open(p) as f:
+            with open(p, encoding="utf-8") as f:
                 data = json.load(f)
         except Exception as exc:                                # noqa: BLE001
             print("  (unreadable %s: %s)" % (os.path.basename(p), exc))

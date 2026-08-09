@@ -55,7 +55,7 @@ def main():
     args = ap.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
-    img = Image.open(args.image).convert("RGB")
+    img = Image.open(args.image, encoding="utf-8").convert("RGB")
     stem = args.tag or os.path.splitext(os.path.basename(args.image))[0]
     stem = "".join(c if c.isalnum() or c in "-_" else "_" for c in stem)
     print(f"source: {args.image}  {img.size[0]}x{img.size[1]}")

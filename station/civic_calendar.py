@@ -217,7 +217,7 @@ def plc_index() -> dict:
     it out is what lets the gate assert coverage of the spec's OWN list.
     """
     out = {}
-    with open(SPEC_PLACES) as f:
+    with open(SPEC_PLACES, encoding="utf-8") as f:
         for line in f:
             m = re.match(r"^###\s+(PLC-\d{3})\s+`([a-z0-9_]+)`", line)
             if m:
@@ -234,7 +234,7 @@ def sys15_text() -> str:
     and SYS-16's ids out of the union.
     """
     body, on = [], False
-    with open(SPEC_SYSTEMS) as f:
+    with open(SPEC_SYSTEMS, encoding="utf-8") as f:
         for line in f:
             if line.startswith("## SYS-15"):
                 on = True

@@ -1701,7 +1701,7 @@ def write_obj(path, verts, tris, groups):
     for name, lo, hi in groups:
         for i in range(lo, hi):
             per[i] = name
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         for x, y, z in verts:
             f.write(f"v {x:.4f} {y:.4f} {z:.4f}\n")
         cur = None

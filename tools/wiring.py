@@ -567,9 +567,9 @@ def reach_report(out=print):
                 continue
             p = os.path.join(base, f)
             key = os.path.relpath(p, root)[:-3].replace(os.sep, ".")
-            mods[key] = (p, sum(1 for _ in open(p, errors="ignore")))
+            mods[key] = (p, sum(1 for _ in open(p, errors="ignore", encoding="utf-8")))
     for k, (p, _n) in mods.items():
-        src = open(p, errors="ignore").read()
+        src = open(p, errors="ignore", encoding="utf-8").read()
         names = set(re.findall(r"^\s*(?:import|from)\s+([a-z_][a-z_0-9.]*)",
                                src, re.M))
         # `__import__("shuttle")` -- a module name inside a string, which a

@@ -29,7 +29,7 @@ FRAMES = int(sys.argv[1]) if len(sys.argv) > 1 else 660_000
 
 def rss_kb(pid):
     try:
-        with open(f"/proc/{pid}/status") as f:
+        with open(f"/proc/{pid}/status", encoding="utf-8") as f:
             for ln in f:
                 if ln.startswith("VmRSS:"):
                     return int(ln.split()[1])

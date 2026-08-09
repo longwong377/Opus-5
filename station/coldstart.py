@@ -182,7 +182,7 @@ def harness_drivers():
         for p in sorted(glob.glob(os.path.join(ROOT, pat))):
             if os.path.basename(p) == "coldstart.py":
                 continue
-            with open(p, "r", errors="replace") as f:
+            with open(p, "r", errors="replace", encoding="utf-8") as f:
                 text = f.read()
             if "godot" not in text.lower():
                 continue
@@ -237,7 +237,7 @@ def strip_comments(text, marker):
 
 def references(path):
     """Every res:// resource this file names, outside comments."""
-    with open(path, "r", errors="replace") as f:
+    with open(path, "r", errors="replace", encoding="utf-8") as f:
         text = f.read()
     marker = ";" if path.endswith((".tscn", ".godot")) else "#"
     return sorted(set(RES_RE.findall(strip_comments(text, marker))))
@@ -258,7 +258,7 @@ def main_scene():
 
 
 def line_count(path):
-    with open(path, "r", errors="replace") as f:
+    with open(path, "r", errors="replace", encoding="utf-8") as f:
         return sum(1 for _ in f)
 
 
@@ -652,7 +652,7 @@ def built_deck(*required):
     # Named per key rather than by a version stamp, because a stamp is a second
     # description of what the file contains and would go stale on its own.
     try:
-        with open(boot) as f:
+        with open(boot, encoding="utf-8") as f:
             d = json.load(f)
     except Exception as e:                                      # noqa: BLE001
         return False, "%s does not parse (%s) -- re-bake" % (rel, e)
@@ -685,7 +685,7 @@ def purse_ledger():
                        "--days 14 --role lurker --seed downbelow --save %s`"
                        % (rel, rel))
     try:
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             if not json.load(f).get("purses"):
                 return False, "%s holds no purse -- re-run the ledger" % rel
     except Exception as e:                                      # noqa: BLE001

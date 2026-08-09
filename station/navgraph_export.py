@@ -375,7 +375,7 @@ def topology_digest(schema=None, profile=None):
 def write(path=OUT, quiet=False):
     man, _n, _e, _ok, _bad = graph(quiet=quiet)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(man, f, separators=(",", ":"))
     if not quiet:
         c = man["counts"]
@@ -597,14 +597,14 @@ def build_walk(schema, profile, a_row, b_row, out_dir=WALK_OUT, quiet=False):
                       mb["z_m"]),
     }
     path = os.path.join(out_dir, "navwalk.json")
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(man, f, indent=1)
     return man, path
 
 
 def _write_obj(out_dir, stem, verts, tris, groups):
     path = os.path.join(out_dir, stem + ".obj")
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(f"o {stem}\n")
         for v in verts:
             f.write(f"v {v[0]:.6f} {v[1]:.6f} {v[2]:.6f}\n")
@@ -765,7 +765,7 @@ def gate(argv):
         check(False, "the graph is on disk",
               f"{os.path.relpath(a.graph, ROOT)} is missing -- run --write")
         return 1
-    man = json.load(open(a.graph))
+    man = json.load(open(a.graph, encoding="utf-8"))
     check(man.get("kind") == "navgraph" and man.get("version") == VERSION,
           "the artefact is a navgraph of this version",
           f"kind={man.get('kind')} version={man.get('version')}")
@@ -793,7 +793,7 @@ def gate(argv):
 
     ask = os.path.join(ROOT, "station/generated/scene/navwalk/pairs.json")
     os.makedirs(os.path.dirname(ask), exist_ok=True)
-    with open(ask, "w") as f:
+    with open(ask, "w", encoding="utf-8") as f:
         json.dump([{"a": x[0], "b": x[1], "seq": x[2]} for x in pr], f)
 
     # ---- 3. the engine, on the same pairs ----------------------------------
@@ -858,7 +858,7 @@ def gate(argv):
         print("\n  building the walk's collision (route_walk's own shells)")
         wman, wman_path = build_walk(schema, profile, a_row, b_row)
     else:
-        wman = json.load(open(wman_path))
+        wman = json.load(open(wman_path, encoding="utf-8"))
     missing = [p for p in wman["collision_glbs"] if not os.path.exists(p)]
     if missing:
         print("\n  collision shells missing -- rebuilding")
@@ -970,7 +970,7 @@ def report(path=OUT):
     if not os.path.exists(path):
         print(f"no graph at {os.path.relpath(path, ROOT)} -- run --write")
         return 1
-    man = json.load(open(path))
+    man = json.load(open(path, encoding="utf-8"))
     c = man["counts"]
     print(f"{os.path.relpath(path, ROOT)}  v{man['version']}  "
           f"{man['digest']}\n")

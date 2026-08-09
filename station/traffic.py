@@ -624,7 +624,7 @@ def _selftest(out=print):                                       # noqa: C901
     n += 1
     check(os.path.exists(GAZETTEER), "the gazetteer is where it says it is")
     if os.path.exists(GAZETTEER):
-        txt = open(GAZETTEER).read()
+        txt = open(GAZETTEER, encoding="utf-8").read()
         for phrase in ("50 to 60 ships", "Peak-to-trough",
                        "The liner is the event"):
             n += 1

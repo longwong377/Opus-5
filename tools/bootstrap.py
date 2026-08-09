@@ -114,7 +114,7 @@ def _boot_has(key):
     if not os.path.exists(p):
         return False
     try:
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             return bool(json.load(f).get(key))
     except Exception:                                            # noqa: BLE001
         return False
@@ -218,7 +218,7 @@ def _sidecars_carry(field):
     stale = []
     for f in have:
         try:
-            with open(f) as fh:
+            with open(f, encoding="utf-8") as fh:
                 rows = json.load(fh)
         except Exception:                                        # noqa: BLE001
             stale.append(os.path.basename(f))
@@ -299,7 +299,7 @@ def _cell_coverage():
     p = os.path.join(GEN, "cell_manifest.json")
     if os.path.exists(p):
         try:
-            with open(p) as f:
+            with open(p, encoding="utf-8") as f:
                 want = len(json.load(f).get("deck_table", []))
         except Exception:                                        # noqa: BLE001
             want = 0

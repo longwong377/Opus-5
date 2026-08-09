@@ -1093,7 +1093,7 @@ def main(argv):
               f"start one with:  python3 tools/aaa_gate.py --template")
         return 1
     try:
-        card = json.load(open(path))
+        card = json.load(open(path, encoding="utf-8"))
     except json.JSONDecodeError as exc:
         print(f"{path} is not valid JSON: {exc}")
         return 1

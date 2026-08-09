@@ -154,7 +154,7 @@ def floor_boxes(cells_dir=CELLS):
             continue
         sector = stem.split("_")[0]
         try:
-            with open(p) as f:
+            with open(p, encoding="utf-8") as f:
                 man = json.load(f)
         except (OSError, ValueError):
             continue

@@ -256,7 +256,7 @@ def measure(path, clip=CLIP, floor=FLOOR, gain=1.0, box=None):
     the backdrop, and export_scene says so at length. Anything measured
     box-to-box must use boxes that frame the same object the same way.
     """
-    img = Image.open(path).convert("RGB")
+    img = Image.open(path, encoding="utf-8").convert("RGB")
     a = np.asarray(img, dtype=np.float64) / 255.0
     if box is not None:
         l, t, r, b = box
@@ -571,7 +571,7 @@ def derive(corpus_json=CORPUS_JSON, root=None):
     # The repo root: the corpus's paths are `reference/...`, relative to it.
     root = root or os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.abspath(corpus_json))))
-    doc = json.load(open(corpus_json))
+    doc = json.load(open(corpus_json, encoding="utf-8"))
     offset = doc.get("render_offset", RENDER_OFFSET)
     q = doc.get("quantile", DIST_QUANTILE)
     ms, gs = [], {}

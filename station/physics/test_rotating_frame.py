@@ -31,7 +31,7 @@ def close(a, b, tol=1e-6):
 
 
 def main():
-    schema = yaml.safe_load(open(SCHEMA))
+    schema = yaml.safe_load(open(SCHEMA, encoding="utf-8"))
     drum = from_schema(schema)
 
     # --- canon agreement ----------------------------------------------------

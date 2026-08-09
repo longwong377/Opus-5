@@ -737,7 +737,7 @@ def _selftest(out=print):                                       # noqa: C901
           "and they are FAC-01..FAC-28 with no gap and no repeat",
           str([i for i in ids if ids.count(i) > 1])[:60])
     n += 1
-    txt = open(SPEC).read() if os.path.exists(SPEC) else ""
+    txt = open(SPEC, encoding="utf-8").read() if os.path.exists(SPEC) else ""
     missing = [i for i in ids if f"### {i} " not in txt]
     check(not missing,
           "every id in this file has a block in docs/spec/PEOPLE.md -- the "

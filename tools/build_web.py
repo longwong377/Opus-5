@@ -358,11 +358,11 @@ def main():
     ap.add_argument("--slice", default=os.path.join(ROOT, "docs/web/slice.json"))
     ap.add_argument("--out", default=os.path.join(ROOT, "docs/web/play.html"))
     a = ap.parse_args()
-    raw = open(a.slice).read()
+    raw = open(a.slice, encoding="utf-8").read()
     # `</script>` inside a JSON blob would close the tag it lives in.
     raw = raw.replace("</", "<\\/")
-    open(a.out, "w").write(PAGE.replace("__SLICE__", raw))
-    d = json.loads(open(a.slice).read())
+    open(a.out, "w", encoding="utf-8").write(PAGE.replace("__SLICE__", raw))
+    d = json.loads(open(a.slice, encoding="utf-8").read())
     print(f"wrote {a.out} -- {os.path.getsize(a.out)/1e6:.2f} MB, "
           f"{d['tris']:,} tris, {d['col_tris']:,} collision tris")
     return 0

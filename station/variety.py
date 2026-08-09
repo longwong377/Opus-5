@@ -766,7 +766,7 @@ def load_all(keys=None, rebuild=False, verbose=False, extra=()):
     path = _cache_path()
     store = {}
     if os.path.exists(path) and not rebuild:
-        with open(path) as fh:
+        with open(path, encoding="utf-8") as fh:
             store = json.load(fh)
     schema, profile = IT.load()
     places = list(DIR.PLACES) + list(extra)
@@ -794,7 +794,7 @@ def load_all(keys=None, rebuild=False, verbose=False, extra=()):
                   f"{time.time() - t0:6.2f}s  open={o['open']:,}")
     if dirty:
         tmp = path + ".tmp"
-        with open(tmp, "w") as fh:
+        with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(store, fh)
         os.replace(tmp, path)
     return out
@@ -855,7 +855,7 @@ def verify_cache(n=6, out=print, seed=0):
     if not os.path.exists(path):
         out(f"  no cache at {path}")
         return 1
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         store = json.load(fh)
     schema, profile = IT.load()
     keys = sorted(store)

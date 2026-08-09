@@ -215,7 +215,7 @@ def sun_direction():
     elevation mean here (y = sin(elev), so +Y is 'up' and the station's axis is
     +Z).
     """
-    with open(EXPORT_SCENE) as f:
+    with open(EXPORT_SCENE, encoding="utf-8") as f:
         text = f.read()
     def num(flag):
         m = re.search(r'add_argument\("' + flag + r'".*?default=([-0-9.]+)',
@@ -302,7 +302,7 @@ def _obj_read(path, want_groups=None):
     """
     verts, tris, groups = [], [], []
     g = "default"
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             if line.startswith("v "):
                 _, x, y, z = line.split()
@@ -351,7 +351,7 @@ def window_local(place_key, cache=True):
     path = os.path.join(OUT_DIR, "apertures.json")
     store = {}
     if cache and os.path.exists(path):
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             store = json.load(f)
         if place_key in store:
             return store[place_key]
@@ -427,7 +427,7 @@ def window_local(place_key, cache=True):
     if cache:
         os.makedirs(OUT_DIR, exist_ok=True)
         store[place_key] = out
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(store, f, indent=1, sort_keys=True)
     return out
 
@@ -767,7 +767,7 @@ def star_shader():
     an empty sky. That is hard rule 4 -- one description -- applied to a
     shader.
     """
-    with open(SKY_SHADER) as f:
+    with open(SKY_SHADER, encoding="utf-8") as f:
         src = f.read()
     body = []
     for name in ("hash33", "star_layer"):
@@ -902,7 +902,7 @@ def build(place_key, phase_deg=0.0, out_dir=OUT_DIR, sch=None, glb=True):
                              f"has {tri}")
 
     shader_path = os.path.join(out_dir, "vista_stars.gdshader")
-    with open(shader_path, "w") as f:
+    with open(shader_path, "w", encoding="utf-8") as f:
         f.write(star_shader())
 
     rules = M.godot_rules("exterior")
@@ -947,7 +947,7 @@ def build(place_key, phase_deg=0.0, out_dir=OUT_DIR, sch=None, glb=True):
         "view_range_m": VIEW_RANGE_M,
     }
     man_path = os.path.join(out_dir, f"{place_key}.json")
-    with open(man_path, "w") as f:
+    with open(man_path, "w", encoding="utf-8") as f:
         json.dump(man, f, indent=1, sort_keys=True)
     return man
 
@@ -1000,7 +1000,7 @@ def _linear_y(png, box):
     and a number from there are comparable.
     """
     from PIL import Image                                    # noqa: PLC0415
-    img = Image.open(png).convert("RGB")
+    img = Image.open(png, encoding="utf-8").convert("RGB")
     w, h = img.size
     l, t, r, b = box
     crop = img.crop((int(l * w), int(t * h), max(int(r * w), int(l * w) + 1),
@@ -1068,7 +1068,7 @@ def _selftest(places=WINDOW_PLACES, verbose=True):
 
     print("\nSHADER: the interior starfield is the exterior starfield")
     code = star_shader()
-    with open(SKY_SHADER) as f:
+    with open(SKY_SHADER, encoding="utf-8") as f:
         sky = f.read()
     check("hash33 is lifted verbatim from space_sky.gdshader",
           "p += dot(p, p.yxz + 33.33);" in code

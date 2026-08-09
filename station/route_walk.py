@@ -285,7 +285,7 @@ def built_decks():
     path = os.path.join(STATION, "station_manifest.json")
     if not os.path.exists(path):
         return set()
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         man = json.load(f)
     return {d["key"] for d in man.get("decks", ())
             if d.get("ok") and os.path.exists(
@@ -825,7 +825,7 @@ def build(schema, profile, a_row, a_key, b_row, b_key, quiet=False):
                          os.path.join(STATION, f"column_{sector}.glb")],
     }
     path = os.path.join(OUT, "route.json")
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(man, f, indent=1)
     if not quiet:
         print(f"  wrote {os.path.relpath(path, ROOT)} -- "

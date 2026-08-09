@@ -122,7 +122,7 @@ def write_places(stem, sector, ring, deck, out_dir):
     floor_r = 0.0
     label = ""
     if os.path.exists(man):
-        with open(man) as f:
+        with open(man, encoding="utf-8") as f:
             for row in json.load(f).get("deck_table", []):
                 if (row.get("sector") == sector
                         and int(row.get("ring_index", -1)) == int(ring)
@@ -137,7 +137,7 @@ def write_places(stem, sector, ring, deck, out_dir):
         return "", 0
     os.makedirs(out_dir, exist_ok=True)
     p = os.path.join(out_dir, stem + "_places.json")
-    with open(p, "w") as f:
+    with open(p, "w", encoding="utf-8") as f:
         json.dump({
             "version": 1,
             "written_by": "tools/bake_station.py write_places()",
@@ -443,7 +443,7 @@ def main(argv=None):
             for ln in row.get("engine", ()):
                 print(f"        | {ln[:150]}")
         man["elapsed_s"] = round(time.time() - t0, 1)
-        with open(mpath, "w") as f:
+        with open(mpath, "w", encoding="utf-8") as f:
             json.dump(man, f, indent=1)
 
     good = [d for d in man["decks"] if d.get("ok")]

@@ -34,9 +34,9 @@ DEFAULT_Z_STRIDE = 1
 
 
 def load():
-    with open(SCHEMA) as f:
+    with open(SCHEMA, encoding="utf-8") as f:
         schema = yaml.safe_load(f)
-    with open(PROFILE) as f:
+    with open(PROFILE, encoding="utf-8") as f:
         profile = json.load(f)
     return schema, profile
 
@@ -301,7 +301,7 @@ def check_closure(verts, groups, apertures):
 
 def write_obj(path, verts, groups):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write("# Babylon 5 station hull -- generated from station/schema/station.yaml\n")
         f.write("# Do not edit by hand. Regenerate with station/generate_hull.py\n")
         for x, y, z in verts:
@@ -417,7 +417,7 @@ def main():
         },
     }
     mpath = os.path.join(os.path.dirname(a.out), "hull_manifest.json")
-    with open(mpath, "w") as f:
+    with open(mpath, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=1)
 
     print(json.dumps(manifest, indent=1))

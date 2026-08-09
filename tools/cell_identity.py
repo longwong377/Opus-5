@@ -233,7 +233,7 @@ def named_places(cells_dir=CELLS):
     out = []
     for p in sorted(glob.glob(os.path.join(cells_dir, "*_places.json"))):
         try:
-            with open(p) as f:
+            with open(p, encoding="utf-8") as f:
                 j = json.load(f)
         except (OSError, ValueError):
             continue
@@ -476,7 +476,7 @@ def main():
         print("cell_identity: no manifest at %s" % a.manifest)
         print("       run: python3 tools/merge_cells.py")
         return 0
-    with open(a.manifest) as f:
+    with open(a.manifest, encoding="utf-8") as f:
         man = json.load(f)
     right, w_idx, w_con, tested = report(
         man, os.path.relpath(a.manifest, ROOT), a.cells, a.verbose)

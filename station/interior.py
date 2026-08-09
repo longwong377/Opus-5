@@ -33,9 +33,9 @@ PROFILE = os.path.join(ROOT, "station/schema/radius_profile.json")
 
 
 def load():
-    with open(SCHEMA) as f:
+    with open(SCHEMA, encoding="utf-8") as f:
         schema = yaml.safe_load(f)
-    with open(PROFILE) as f:
+    with open(PROFILE, encoding="utf-8") as f:
         profile = json.load(f)["profile"]
     return schema, profile
 
@@ -1474,7 +1474,7 @@ def write_grouped_obj(path, verts, tris, groups):
         if g not in seen:
             seen.add(g)
             order.append(g)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         for x, y, z in verts:
             f.write(f"v {x:.4f} {y:.4f} {z:.4f}\n")
         for g in order:
@@ -2294,7 +2294,7 @@ def write_cell_manifest(path, schema, profile):
     out["cell_rule"] = ("cell i of a deck spans [i*cell_deg, (i+1)*cell_deg] "
                         "degrees and neighbours (i-1) %% cells and "
                         "(i+1) %% cells; rings close, so there are no ends")
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=1)
     return out
 

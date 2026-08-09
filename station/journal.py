@@ -835,7 +835,7 @@ DEFAULT_ROUTES = (
 
 def emit(path=EMIT) -> str:
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(manifest(), f, indent=1, sort_keys=True)
     return path
 

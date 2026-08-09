@@ -32,7 +32,7 @@ DECK = os.path.join(ROOT, "station/generated/scene/deck")
 def read_obj(path):
     v, f, g = [], [], []
     name, start = "default", 0
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for ln in fh:
             if ln.startswith("v "):
                 p = ln.split()
@@ -73,7 +73,7 @@ def cut(v, f, g, keep, prefix=""):
 
 
 def write_obj(path, verts, faces):
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:
         fh.write(f"# cutaway -- {len(verts):,} verts, {len(faces):,} tris\n")
         for x, y, z in verts:
             fh.write(f"v {x:.4f} {y:.4f} {z:.4f}\n")

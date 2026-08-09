@@ -1690,7 +1690,7 @@ class Ledger:
     # -- persistence --------------------------------------------------------
     def save(self, path=LEDGER_PATH):
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump({"version": LEDGER_VERSION, "day": self.day,
                        "seed": self.seed, "stock": self.stock,
                        "till": self.till, "purses": self.purses,
@@ -1702,7 +1702,7 @@ class Ledger:
 
     @classmethod
     def load(cls, path=LEDGER_PATH):
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             d = json.load(f)
         if d.get("version") != LEDGER_VERSION:
             raise ValueError(f"ledger version {d.get('version')} is not "
@@ -2816,7 +2816,7 @@ def trade_gate(out=print, break_margin=False, break_crossplace=False):
               rr.returncode == 0 and bool(wrote)
               and os.path.exists(shipped),
               f"rc={rr.returncode}, {os.path.getsize(shipped) if os.path.exists(shipped) else 0} bytes")
-        with open(shipped) as fh:
+        with open(shipped, encoding="utf-8") as fh:
             doc = json.load(fh)
         sells = [r for r in doc.get("sales", []) if r["n"] < 0]
         pk = [k for k in doc.get("purses", {}) if k.startswith("player:")]

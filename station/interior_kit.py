@@ -2539,7 +2539,7 @@ def write_obj(path, verts, tris, spans=None, default_group="structure"):
         for i in range(lo, min(hi, len(tris))):
             owner[i] = name
 
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write("# interior kit -- provisional dimensions, docs/interior-kit-spec.md\n")
         for x, y, z in verts:
             f.write(f"v {x:.5f} {y:.5f} {z:.5f}\n")

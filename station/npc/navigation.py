@@ -2948,7 +2948,7 @@ def _banned_names(path=None):
     import tokenize                                          # noqa: PLC0415
     path = os.path.abspath(__file__) if path is None else path
     names, prev = set(), ""
-    with tokenize.open(path) as f:
+    with tokenize.open(path, encoding="utf-8") as f:
         for tok in tokenize.generate_tokens(f.readline):
             if tok.type == tokenize.NAME:
                 names.add(tok.string)

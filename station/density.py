@@ -654,7 +654,7 @@ def edge_fraction(path, sigma=1.2, hi=None, lo=None):
     from PIL import Image                                       # noqa: PLC0415
     hi = WEBER_HI if hi is None else hi
     lo = WEBER_LO if lo is None else lo
-    a = np.asarray(Image.open(path).convert("RGB")).astype(float) / 255.0
+    a = np.asarray(Image.open(path, encoding="utf-8").convert("RGB")).astype(float) / 255.0
     lum = 0.2126 * a[:, :, 0] + 0.7152 * a[:, :, 1] + 0.0722 * a[:, :, 2]
     g = _gauss(lum, sigma)
     gy, gx = np.gradient(g)
@@ -734,7 +734,7 @@ def _obj_mesh(mod_name):
             with contextlib.redirect_stdout(io.StringIO()):
                 mod.write_obj(path)
             v, t = [], []
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 for ln in f:
                     if ln.startswith("v "):
                         v.append(tuple(float(x) for x in ln.split()[1:4]))

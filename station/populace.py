@@ -3440,7 +3440,7 @@ def lod_gate(out=print, dirs=None):
         named, unbaked = {}, 0
         for p in rows:
             try:
-                with open(p) as f:
+                with open(p, encoding="utf-8") as f:
                     data = _json.load(f)
             except Exception:                                    # noqa: BLE001
                 continue

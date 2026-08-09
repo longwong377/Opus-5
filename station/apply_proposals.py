@@ -43,7 +43,7 @@ PROPOSALS = os.path.join(ROOT, "docs", "layer3-proposals")
 def load():
     out = []
     for path in sorted(glob.glob(os.path.join(PROPOSALS, "*.json"))):
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             d = json.load(f)
         out.append((d.get("_family", os.path.basename(path)[:-5]),
                     d.get("materials", []), d.get("coverage_note", "")))

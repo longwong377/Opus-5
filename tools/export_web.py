@@ -45,7 +45,7 @@ def read_obj(path):
     """(verts, faces, groups) where groups is [(name, first_face, end_face)]."""
     v, f, g = [], [], []
     name, start = "default", 0
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for ln in fh:
             if ln.startswith("v "):
                 _, x, y, z = ln.split()
@@ -234,7 +234,7 @@ def build(sector, ring, deck, at, half_deg, half_z, out):
         "cpos": base64.b64encode(cpos).decode(),
         "cidx": base64.b64encode(cidx).decode(),
     }
-    with open(out, "w") as fh:
+    with open(out, "w", encoding="utf-8") as fh:
         json.dump(data, fh)
     mb = os.path.getsize(out) / 1e6
     print(f"{at}: {len(rf):,} render tris in {len(mats)} materials, "

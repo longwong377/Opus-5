@@ -499,13 +499,13 @@ def shipped_radius(cells_dir=CELLS, default=98.9):
     """
     p = os.path.join(cells_dir, "station_cells.json")
     if os.path.exists(p):
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             r = float(json.load(f).get("residency", {}).get("radius_m", 0.0))
         if r > 0.0:
             return r, "the merged manifest %s" % os.path.relpath(p, ROOT)
     best = 0.0
     for q in glob.glob(os.path.join(cells_dir, "*_cells.json")):
-        with open(q) as f:
+        with open(q, encoding="utf-8") as f:
             best = max(best, float(json.load(f).get("residency", {})
                                    .get("radius_m", 0.0)))
     if best > 0.0:
@@ -714,7 +714,7 @@ def bake(glb, col, band, radius, cells_out, timeout=1800, out=print):
 
 def patch_residency(man_path, band, radius, out=print):
     """Write the residency the deck row could not supply. See section 3."""
-    with open(man_path) as f:
+    with open(man_path, encoding="utf-8") as f:
         man = json.load(f)
     res = man.get("residency", {})
     before = float(res.get("radius_m", 0.0))
@@ -740,7 +740,7 @@ def patch_residency(man_path, band, radius, out=print):
         "tools/bake_drum.py -- the band minimising worst-case resident "
         "triangles inside budget.CELLS['cell_tris'] and budget.DRAW"
         "['max_per_frame']. INV-1252")
-    with open(man_path, "w") as f:
+    with open(man_path, "w", encoding="utf-8") as f:
         json.dump(man, f, indent=2)
     out("  residency radius %.1f -> %.1f m (free %.1f m) in %s"
         % (before, float(band), float(2 * band),

@@ -1889,7 +1889,7 @@ def _selftest(out=print):                                       # noqa: C901
     # -- THE GAZETTEER'S SENTENCE -----------------------------------------
     out("")
     n += 1
-    txt = " ".join(open(GAZETTEER).read().split()) if os.path.exists(
+    txt = " ".join(open(GAZETTEER, encoding="utf-8").read().split()) if os.path.exists(
         GAZETTEER) else ""
     check("the compressors are audible from Downbelow" in txt,
           "the gazetteer sentence the machinery leak is built to is still "

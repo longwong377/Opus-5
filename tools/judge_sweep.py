@@ -191,13 +191,13 @@ CAMERA_RE = re.compile(r"^render_shot: camera at (.+)$", re.M)
 
 def load_ledger():
     if os.path.exists(LEDGER):
-        with open(LEDGER) as f:
+        with open(LEDGER, encoding="utf-8") as f:
             return json.load(f)
     return {"round": "judge-4e", "frames": {}}
 
 
 def save_ledger(led):
-    with open(LEDGER, "w") as f:
+    with open(LEDGER, "w", encoding="utf-8") as f:
         json.dump(led, f, indent=1, sort_keys=True)
         f.write("\n")
 
@@ -210,7 +210,7 @@ def run_one(name, why, flags, keep_log=None):
     p = subprocess.run(cmd, capture_output=True, text=True)
     log = p.stdout + p.stderr
     if keep_log:
-        with open(keep_log, "a") as f:
+        with open(keep_log, "a", encoding="utf-8") as f:
             f.write(f"\n===== {name} =====\n{log}")
 
     m = RENDERER_RE.search(log)

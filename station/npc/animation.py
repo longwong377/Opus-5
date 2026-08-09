@@ -2766,7 +2766,7 @@ def emit(outdir, species=None, npc_id=NOMINAL, keys=None, lod=0, godot=True):
                            "walk_g_min": WALK_G_MIN},
         }
         p = os.path.join(outdir, f"{k}.json")
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             json.dump(doc, f, separators=(",", ":"), sort_keys=True)
         written.append((p, os.path.getsize(p)))
     return written
@@ -2794,7 +2794,7 @@ def write_pose_obj(path, entries):
         if g not in seen:
             seen.add(g)
             order.append(g)
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:
         fh.write("# station/npc/animation.py -- posed figures\n")
         for x, y, z in verts:
             fh.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")

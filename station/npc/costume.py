@@ -4351,7 +4351,7 @@ def _selftest():
     # armband is one and was missed by both other sources. Grepping the source
     # is what stops `BUILDER_FABRICS` going stale the day a second one lands.
     import re as _re                                            # noqa: PLC0415
-    _src = open(__file__).read()
+    _src = open(__file__, encoding="utf-8").read()
     # Filtered to pairs that name a REAL slot and a REAL fabric: this file's
     # own tests and docstrings call `group_name("slot", "fabric")` and
     # `group_name("npc_not_a_slot", "x")` to prove it rejects them, and those

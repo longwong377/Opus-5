@@ -34,8 +34,8 @@ def check(name, ok, detail=""):
 
 
 def main():
-    schema = yaml.safe_load(open(SCHEMA))
-    profile = json.load(open(PROFILE))
+    schema = yaml.safe_load(open(SCHEMA, encoding="utf-8"))
+    profile = json.load(open(PROFILE, encoding="utf-8"))
     features = schema["longitudinal"]["features"]
 
     canon_len = schema["station"]["overall_length_m"]["value"]
@@ -89,7 +89,7 @@ def main():
     if not os.path.exists(MANIFEST):
         check("hull mesh generated", False, "run station/generate_hull.py first")
     else:
-        man = json.load(open(MANIFEST))
+        man = json.load(open(MANIFEST, encoding="utf-8"))
         # A manifest left behind by station/lod.py describes a decimated level,
         # not the mesh the engine consumes, and every assertion below would then
         # be measuring the wrong thing. Catch it explicitly rather than letting

@@ -157,13 +157,13 @@ def boot_deck():
     if not os.path.exists(BOOT):
         return "", None, ("no station/generated/scene/boot.json -- run "
                           "`python3 station/boot.py --bake`")
-    with open(BOOT) as f:
+    with open(BOOT, encoding="utf-8") as f:
         doc = json.load(f)
     ip = doc.get("interact", "")
     if not ip or not os.path.exists(ip):
         return doc.get("deck", ""), None, (
             "boot.json names no interact sidecar that exists (%r)" % ip)
-    with open(ip) as f:
+    with open(ip, encoding="utf-8") as f:
         rows = json.load(f)
     return doc.get("deck", ""), rows, ""
 
@@ -495,7 +495,7 @@ def rebake_sidecar(rows, dest, hour=13.0, day=0):
         for k in ("centre", "half", "tris", "yaw"):
             if k in src:
                 r[k] = src[k]
-    with open(dest, "w") as f:
+    with open(dest, "w", encoding="utf-8") as f:
         json.dump(fresh, f, indent=1)
     return fresh
 
@@ -503,7 +503,7 @@ def rebake_sidecar(rows, dest, hour=13.0, day=0):
 def _ledger_snapshot(path):
     if not os.path.exists(path):
         return None
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 

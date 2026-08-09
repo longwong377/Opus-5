@@ -499,7 +499,7 @@ def _selftest(out=print):                                       # noqa: C901
           f"{pairs_with} of {total}")
 
     n += 1
-    txt = open(GAZETTEER).read() if os.path.exists(GAZETTEER) else ""
+    txt = open(GAZETTEER, encoding="utf-8").read() if os.path.exists(GAZETTEER) else ""
     check("95% as avoidance and 5% as" in txt
           and "contact" in txt,
           "the rule this module is built on is still in FACTIONS.md")

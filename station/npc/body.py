@@ -3769,7 +3769,7 @@ def write_obj(path, verts, tris, spans=None, default="npc"):
     for name, lo, hi in (spans or []):
         for i in range(lo, min(hi, len(tris))):
             owner[i] = name
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write("# station/npc/body.py -- parametric species bodies\n")
         for x, y, z in verts:
             f.write(f"v {x:.6f} {y:.6f} {z:.6f}\n")
@@ -4054,7 +4054,7 @@ def skinned(species: str, npc_id: str = None, lod: int = 0):
 def write_skinned(path, doc):
     """The skinned body as JSON. Text, per ADR 0001."""
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(doc, f, separators=(",", ":"), sort_keys=True)
     return path, os.path.getsize(path)
 

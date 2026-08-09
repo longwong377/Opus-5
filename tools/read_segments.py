@@ -23,7 +23,7 @@ DRAW_TOP, DRAW_BOT = 150, 600
 
 
 def build(image, seg_start, seg_end, minor, major, scale, tag):
-    im = Image.open(image).convert("RGB")
+    im = Image.open(image, encoding="utf-8").convert("RGB")
     pxm = (NOSE_PX - TAIL_PX) / MILLER_L
     d = ImageDraw.Draw(im)
 

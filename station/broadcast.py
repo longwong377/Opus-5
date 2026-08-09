@@ -965,7 +965,7 @@ def _selftest(out=print):                                       # noqa: C901
 
     # -- the voice ------------------------------------------------------
     n += 1
-    txt = open(GAZETTEER).read() if os.path.exists(GAZETTEER) else ""
+    txt = open(GAZETTEER, encoding="utf-8").read() if os.path.exists(GAZETTEER) else ""
     check("Do not make them look like villain posters" in txt,
           "the build note this module is written to is still in FACTIONS.md")
     n += 1

@@ -710,7 +710,7 @@ def build(levels, quiet=True):
     stale. lod0's manifest is saved and restored around the whole run.
     """
     main_manifest = os.path.join(GENERATED, "hull_manifest.json")
-    saved = open(main_manifest).read() if os.path.exists(main_manifest) else None
+    saved = open(main_manifest, encoding="utf-8").read() if os.path.exists(main_manifest) else None
     try:
         for lv in levels:
             path = os.path.join(GENERATED, f"hull_{lv['name']}.obj")
@@ -721,7 +721,7 @@ def build(levels, quiet=True):
                  "--greeble-detail", str(lv["greeble_detail"]),
                  "--out", path],
                 cwd=STATION, check=True, capture_output=True)
-            man = json.load(open(main_manifest))
+            man = json.load(open(main_manifest, encoding="utf-8"))
             lv["triangles"] = man["triangles"]
             lv["hull_triangles"] = man["hull_triangles"]
             lv["greeble_triangles"] = man["greeble_triangles"]
@@ -738,7 +738,7 @@ def build(levels, quiet=True):
         # next agent's validate.py run failed for a reason that had nothing to
         # do with what they had changed.
         if saved is not None:
-            with open(main_manifest, "w") as f:
+            with open(main_manifest, "w", encoding="utf-8") as f:
                 f.write(saved)
         elif os.path.exists(os.path.join(GENERATED, "hull.obj")):
             subprocess.run([sys.executable, "generate_hull.py"],
@@ -889,7 +889,7 @@ def _rasteriser_px(size_m, distance_m, fov_deg=None):
         obj = os.path.join(tmp, "probe.obj")
         png = os.path.join(tmp, "probe.png")
         h = size_m / 2.0
-        with open(obj, "w") as f:
+        with open(obj, "w", encoding="utf-8") as f:
             for y in (-h, h):
                 for x in (-h, h):
                     f.write(f"v {x:.6f} {y:.6f} 0.0\n")
@@ -903,7 +903,7 @@ def _rasteriser_px(size_m, distance_m, fov_deg=None):
              "--bg", "255", "0", "255"],
             check=True, capture_output=True)
         import numpy as np
-        a = np.asarray(Image.open(png).convert("RGB")).astype(int)
+        a = np.asarray(Image.open(png, encoding="utf-8").convert("RGB")).astype(int)
         bg = (a[:, :, 0] > 200) & (a[:, :, 1] < 60) & (a[:, :, 2] > 200)
         rows = np.where(~bg.all(axis=1))[0]
         return float(rows.max() - rows.min() + 1) if len(rows) else 0.0
@@ -1119,7 +1119,7 @@ def _selftest():
     # artefact is a guess.
     man_path = os.path.join(GENERATED, "lod_manifest.json")
     if os.path.exists(man_path):
-        built = json.load(open(man_path)).get("levels", [])
+        built = json.load(open(man_path, encoding="utf-8")).get("levels", [])
         by_name = {lv["name"]: lv for lv in built if "triangles" in lv}
         if by_name:
             got = [by_name[lv["name"]]["triangles"] for lv in levels

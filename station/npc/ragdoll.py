@@ -776,7 +776,7 @@ def emit(outdir, species=None, lod=0, quiet=False):
             continue
         d = doc(k, lod=lod)
         p = os.path.join(outdir, f"{k}_ragdoll.json")
-        with open(p, "w") as f:
+        with open(p, "w", encoding="utf-8") as f:
             json.dump(d, f, separators=(",", ":"), sort_keys=True)
         written.append((p, os.path.getsize(p)))
         if not quiet:

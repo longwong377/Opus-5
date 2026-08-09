@@ -1493,7 +1493,7 @@ def crowd_obj(path, place_key, hour, seed="b5", room=True, height_m=5.0,
         for p in by_species[sp]:
             figure_geometry(p, v, t)
         groups.append((f"npc_{sp}", a, len(t)))
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8") as f:
         f.write(f"# crowd preview: {place_key} at {hour:04.1f} h, "
                 f"{len(people)} figures, seed {seed}\n")
         for x, y, z in v:
@@ -1823,7 +1823,7 @@ def _selftest():
     # about not using `str.__hash__` and fails on a clean file, and a check
     # that cannot pass is a check that gets deleted. The AST sees only code.
     import ast
-    tree = ast.parse(open(__file__).read())
+    tree = ast.parse(open(__file__, encoding="utf-8").read())
     hits = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):

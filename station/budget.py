@@ -352,7 +352,7 @@ def occlusion_chain(sector, ring, deck, z_m=None, root=ROOT):
     pg = os.path.join(root, "godot/project.godot")
     txt = ""
     if os.path.exists(pg):
-        with open(pg) as f:
+        with open(pg, encoding="utf-8") as f:
             txt = f.read()
     m = re.search(r"^occlusion_culling/use_occlusion_culling\s*=\s*(\w+)",
                   txt, re.M)
@@ -380,7 +380,7 @@ def occlusion_chain(sector, ring, deck, z_m=None, root=ROOT):
                 continue
             fp = os.path.join(base, n)
             try:
-                with open(fp) as f:
+                with open(fp, encoding="utf-8") as f:
                     s = f.read()
             except OSError:
                 continue
@@ -459,7 +459,7 @@ def shipped_streaming(sector, ring, deck, root=ROOT):
                           "`python3 station/boot.py`; without it nothing here "
                           "can say which path the build takes")
         return out
-    with open(bp) as f:
+    with open(bp, encoding="utf-8") as f:
         boot = json.load(f)
     out["deck"] = boot.get("deck", "")
     cp = boot.get("cells_path", "")
@@ -474,7 +474,7 @@ def shipped_streaming(sector, ring, deck, root=ROOT):
         out["why"].append(f"boot.json names {os.path.basename(cp)} and it is "
                           f"not on disk")
         return out
-    with open(cp) as f:
+    with open(cp, encoding="utf-8") as f:
         man = json.load(f)
     res = man.get("residency", {}) or {}
     out["manifest"] = {
@@ -1148,7 +1148,7 @@ def shipped_camera():
                                        "sets no fov)",
            "near_m": None, "far_m": None, "eye_m": None, "file": path}
     try:
-        src = open(path).read()
+        src = open(path, encoding="utf-8").read()
     except OSError as exc:                                    # noqa: BLE001
         out["fov_src"] = f"could not read player.gd: {exc}"
         return out
@@ -1554,9 +1554,9 @@ def deck_section(args, all_clusters=False):
                             os.path.join(td, "godot"),
                             ignore=shutil.ignore_patterns(".godot"))
             gp = os.path.join(td, "godot/project.godot")
-            with open(gp) as f:
+            with open(gp, encoding="utf-8") as f:
                 src = f.read()
-            with open(gp, "w") as f:
+            with open(gp, "w", encoding="utf-8") as f:
                 f.write(re.sub(r"^occlusion_culling/use_occlusion_culling.*\n",
                                "", src, flags=re.M))
             off = occlusion_chain(sec, ring, dk, root=td)
@@ -2133,7 +2133,7 @@ def main(argv=None):
     if not os.path.exists(MANIFEST):
         print("no manifest -- run station/generate_hull.py first")
         return 1
-    man = json.load(open(MANIFEST))
+    man = json.load(open(MANIFEST, encoding="utf-8"))
 
     tris = man["triangles"]
     draws = len(man["groups"])

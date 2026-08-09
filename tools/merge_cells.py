@@ -220,7 +220,7 @@ def per_deck(cells_dir=CELLS):
         stem = os.path.basename(p)[:-len("_cells.json")]
         if stem == "station":                     # our own output
             continue
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             out.append((stem, json.load(f)))
     return out
 
@@ -458,7 +458,7 @@ def merge(cells_dir=CELLS, out_path=OUT, renumber=True):
                        "(--legacy-index) -- cell_by_index(cell_at(p)) is not "
                        "the identity on this manifest"),
     }
-    with open(out_path, "w") as f:
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(man, f)
     return man
 
@@ -558,7 +558,7 @@ def selftest(cells_dir=CELLS, manifest=None):
     if not os.path.exists(p):
         print("  NO MERGED MANIFEST -- run: python3 tools/merge_cells.py")
         return 1
-    with open(p) as f:
+    with open(p, encoding="utf-8") as f:
         j = json.load(f)
     bad = []
     if not isinstance(j, dict):
@@ -630,7 +630,7 @@ def main():
             print("  NO MERGED MANIFEST at %s -- run: python3 "
                   "tools/merge_cells.py" % p)
             return 1
-        with open(p) as f:
+        with open(p, encoding="utf-8") as f:
             man = json.load(f)
         b = budget_report(man)
         bad = (b["worst_resident"] > b["resident_tris"]) or b["over_cell"]

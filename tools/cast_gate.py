@@ -368,7 +368,7 @@ def packaged(root):
     files = sorted(glob.glob(os.path.join(root, "**", "*_actors.json"),
                              recursive=True))
     for f in files:
-        for a in json.load(open(f)):
+        for a in json.load(open(f, encoding="utf-8")):
             w = a.get("who") or {}
             if w.get("id") in ids:
                 continue

@@ -70,7 +70,7 @@ def main():
     ap.add_argument("--tag", default="measured")
     args = ap.parse_args()
 
-    img = Image.open(args.image).convert("RGB")
+    img = Image.open(args.image, encoding="utf-8").convert("RGB")
     W, H = img.size
     full = ink_mask(img)
 
@@ -126,7 +126,7 @@ def main():
 
     os.makedirs(SCRATCH, exist_ok=True)
     jpath = os.path.join(SCRATCH, f"{args.tag}.json")
-    with open(jpath, "w") as f:
+    with open(jpath, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=1)
 
     # Annotated overlay: km grid + centreline + measured extents.

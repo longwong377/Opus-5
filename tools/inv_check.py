@@ -72,7 +72,7 @@ CITE_RE = re.compile(r"INV-\d+(?![\w-])")
 
 def defined():
     """`{number: line}` for every entry in the register, and the duplicates."""
-    text = open(REGISTER, errors="replace").read()
+    text = open(REGISTER, errors="replace", encoding="utf-8").read()
     seen, dupes = {}, []
     for m in DEFINE_RE.finditer(text):
         n = m.group(1)
@@ -109,7 +109,7 @@ def cited():
                 if os.path.abspath(p) == os.path.abspath(__file__):
                     continue
                 rel = os.path.relpath(p, ROOT)
-                with open(p, errors="replace") as fh:
+                with open(p, errors="replace", encoding="utf-8") as fh:
                     for i, line in enumerate(fh, 1):
                         for n in CITE_RE.findall(line):
                             out.setdefault(n, []).append((rel, i))
@@ -166,7 +166,7 @@ def _selftest():
         nonlocal good
         with tempfile.TemporaryDirectory() as d:
             md = os.path.join(d, "INVENTIONS.md")
-            open(md, "w").write(text_md)
+            open(md, "w", encoding="utf-8").write(text_md)
             sub = os.path.join(d, "station")
             os.makedirs(sub)
             open(os.path.join(sub, "m.py"), "w").write(text_src)

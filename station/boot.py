@@ -194,7 +194,7 @@ def _obj_floor_tris(path):
     .glb is converted from, it is text, and this needs no engine.
     """
     verts, tris, group = [], [], ""
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             if line.startswith("v "):
                 p = line.split()
@@ -431,7 +431,7 @@ def _obj_tris(path):
     if not os.path.exists(path):
         return -1
     n = 0
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         for line in f:
             if line.startswith("f "):
                 n += len(line.split()) - 3
@@ -507,7 +507,7 @@ def cells_for(stem, deck_dir=None, why=None):
         if not os.path.exists(p):
             continue
         try:
-            with open(p) as f:
+            with open(p, encoding="utf-8") as f:
                 man = json.load(f)
         except (OSError, ValueError) as e:
             if why is not None:
@@ -837,7 +837,7 @@ def build(stem=None, hour=None, deck_dir=None, single_deck=False):
     at, rooms = "corridor", []
     actors_p = sidecar(stem, "_actors.json", dd)
     if actors_p:
-        with open(actors_p) as f:
+        with open(actors_p, encoding="utf-8") as f:
             cast = json.load(f)
         rooms = sorted({a.get("place", "") for a in cast if a.get("place")})
         if cast:
@@ -881,7 +881,7 @@ def build(stem=None, hour=None, deck_dir=None, single_deck=False):
     # seventy the comparison is not stale, it is meaningless.
     merged = os.path.join(STATION_CELLS, "station_cells.json")
     if os.path.exists(merged) and not single_deck:
-        with open(merged) as f:
+        with open(merged, encoding="utf-8") as f:
             mman = json.load(f)
         cells = {"path": merged, "count": len(mman.get("cells", [])),
                  "start": start_cell(mman, spawn), "fresh": True,
@@ -997,7 +997,7 @@ def check(man):
     if not os.path.exists(p):
         print("  no arrival sidecar to cross-check against")
         return True
-    with open(p) as f:
+    with open(p, encoding="utf-8") as f:
         other = json.load(f).get("build", {}).get("spawn")
     if not other:
         return True
@@ -1162,7 +1162,7 @@ def gate():
             bad.append(what)
 
     # -- 1. the caller ------------------------------------------------------
-    src = open(MAIN_GD).read()
+    src = open(MAIN_GD, encoding="utf-8").read()
     ok, why = main_gd_sets_cells(src)
     say(ok, "main.gd hands the boot manifest's cells_path to walk.gd", why)
     cut = re.sub(r'.*set\(\s*"cells_path".*\n', "", src)
@@ -1237,7 +1237,7 @@ def gate():
     with tempfile.TemporaryDirectory() as d:
         stem = _fixture(d, cells=2, bands=3, z_len=300.0)
         good = os.path.join(d, "cells_" + stem, stem + "_cells.json")
-        with open(good) as f:
+        with open(good, encoding="utf-8") as f:
             fresh_man = json.load(f)
         stale = json.loads(json.dumps(fresh_man))
         for c in stale["cells"]:
@@ -1246,11 +1246,11 @@ def gate():
         os.makedirs(os.path.dirname(near), exist_ok=True)
         # `_cell_candidates` looks in `cells_<stem>/` BEFORE `cells/`, so to test
         # the tie-break the stale one has to be the one that is looked at first.
-        with open(good) as f:
+        with open(good, encoding="utf-8") as f:
             keep = f.read()
-        with open(good, "w") as f:
+        with open(good, "w", encoding="utf-8") as f:
             json.dump(stale, f)
-        with open(near, "w") as f:
+        with open(near, "w", encoding="utf-8") as f:
             f.write(keep)
         m = build(stem, deck_dir=d)
         say(bool(m.get("cells_fresh")),
@@ -1576,7 +1576,7 @@ def main():
     if a.check:
         return 0 if ok else 1
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
-    with open(a.out, "w") as f:
+    with open(a.out, "w", encoding="utf-8") as f:
         json.dump(man, f, indent=1)
     print("boot: wrote %s" % os.path.relpath(a.out, ROOT))
     return 0 if ok else 1
