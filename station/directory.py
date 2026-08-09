@@ -913,6 +913,49 @@ PLACES = (
 )
 
 
+# ===========================================================================
+# THE ADDRESSES ABOVE ARE THE OLD SECTOR BANDS, AND THEY ARE DERIVED FROM HERE
+# ===========================================================================
+#
+# The literal rows above were authored against `sectors.extents_m`, which came
+# from bracket ticks read as FRACTIONS off a sheet with no scale bar -- the
+# schema marks it `assignment_status: OPEN_BLOCKING` and its own comment says
+# "Do not build interior layout against them." It was built against anyway, and
+# the result is that the station addressed its places with one table and
+# generated its hull from another. Of the 24 landmarks a viewer knows by name,
+# TWELVE sat inside a structure consistent with their sector. C&C -- canon-placed
+# in Observation Dome 1, which `components` builds at z 7000-7240 -- was
+# addressed at 7960, six hundred metres forward of the docking sphere, inside
+# the navigation spike.
+#
+# THE CROSS-CHECK THAT SHOULD HAVE CAUGHT IT COMPARED THE WRONG QUANTITY. The
+# schema recorded "Green agrees to 11.7%, Red to 14.1%" and both figures are
+# right and both are about LENGTH ALONE: the green band and `green_section` are
+# 11.7% apart in length and 732 m apart in position. A check that compares two
+# magnitudes and never their offsets cannot see a translation.
+#
+# So the addresses are RECONCILED here rather than re-typed into the rows above.
+# `station/geography.py` maps each sector onto whole hull features, so a sector
+# edge IS a hull edge -- hard rule 4, inside and outside from the same schema,
+# by construction rather than by discipline. Editing the literals instead would
+# have left two descriptions of one address, which is the defect being fixed.
+#
+# It degrades loudly and never fatally: if the reconciliation cannot run, the
+# register keeps the old addresses and says so, because a station that cannot
+# be addressed at all is worse than one addressed wrongly.
+try:
+    import geography as _geo                                    # noqa: E402
+    _gs, _gp = _geo.load()
+    PLACES = tuple(_geo.reconciled_places(_gs, _gp, PLACES))
+    RECONCILED = True
+except Exception as _ge:                                        # noqa: BLE001
+    RECONCILED = False
+    print(f"directory: ADDRESSES NOT RECONCILED -- {type(_ge).__name__}: {_ge}\n"
+          f"           the register is using the pre-4u sector bands, which put "
+          f"C&C inside the navigation spike. Run station/geography.py --gate.",
+          file=sys.stderr)
+
+
 # Gazetteer rows deliberately NOT addressed yet, each with a reason. This list
 # is what keeps "126 rows" from being a vague backlog: everything is either
 # placed above or named here.

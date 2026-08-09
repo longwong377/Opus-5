@@ -79,14 +79,72 @@ sections:
     outer_length_m:   {value: 2739.3, src: "other map 4.jpg x k", auth: 4}
     function:         "Diplomatic zones, the Garden"
     rotating:         true
-  # Grey, Brown and Yellow have NO dimensional source. Blocked -- see open_work below.
+    # Miller's Green SECTION and this project's Green SECTOR are not the same
+    # extent, and conflating them is what put the Council Chamber inside the
+    # aft hull block. His 2739.3 m spans, on his own drawing, z 3107-6035 --
+    # it includes the 1,100 m aft hull block. The Green BAND below is that
+    # span less the block, which Grey takes. See INV-996 and station/geography.py.
+    sector_band_length_m: {value: 1828.0, src: "derived, INV-996", auth: 5}
+  # OW-002 CLOSED. Grey, Brown and Yellow have no entry in Miller's printed
+  # table, which is exactly what OW-002 said to derive from the OW-001
+  # measurement. Every value below is authority 5 with an INV entry; none of
+  # them is a reading of a sheet.
+  grey:
+    envelope_diameter_m: {value: 948.9, src: "radius_profile.json core hull over aft_hull_block", auth: 4}
+    length_m:            {value: 1100.0, src: "longitudinal.features aft_hull_block", auth: 3}
+    function:   "Industrial zones, manufacturing, construction"
+    rotating:   true
+    # THE UNDECLARED INVENTION THIS SESSION FOUND, NOW DECLARED. 948.9 m is
+    # **45% wider than the widest pressurised section canon names** (Red,
+    # 654.9 m), and the note on `aft_hull_block` below used to call it
+    # "Widest pressurised volume" with no INV entry behind it. The number is a
+    # measurement of the SILHOUETTE, which `radius_profile` says in its own
+    # header is "NOT the pressure hull radius ... Do not conflate them".
+    # It is retained as the envelope, and how much of it is pressurised is
+    # INV-997 -- authority 5, and the single largest extrapolation in this
+    # project.
+    pressurised: unknown
+    inv: INV-997
+  yellow:
+    envelope_diameter_m: {value: 322.9, src: "radius_profile.json longest constant run, z 1933-2267", auth: 4}
+    length_m:            {value: 3107.0, src: "longitudinal.features aft_terminus..hull_flare_aft", auth: 3}
+    function:   "Zero-G storage"
+    # NOT AN ADJECTIVE -- IT IS WHY THE SECTOR IS CALLED THAT. `green_section`
+    # is `kind: rotating_assembly` and begins at z 3107, so nothing aft of
+    # 3107 spins and every point in Yellow is at zero g. It is the only band
+    # on the station that satisfies its own canon function name. INV-995.
+    rotating:   false
+  brown:
+    kind: radial_designation
+    function:   "Residential -- Downbelow"
+    # No length and no diameter, deliberately: Brown is the outermost ring of
+    # whatever band it is in, per INV-009. `validate.py` asserts it never
+    # acquires longitudinal extents.
 
 bio_habitat:
   interior_diameter_m:   {value: 556.6,     src: "other map 4.jpg x k",  auth: 4}
   interior_radius_m:     {value: 278.3,     src: "derived",              auth: 5}
-  interior_length_m:     {value: 2739.3,    src: "other map 4.jpg x k",  auth: 4}
-  interior_surface_m2:   {value: 4787500,   src: "other map 4.jpg x k^2", auth: 4}
-  # Cross-check: pi * 556.6 * 2739.3 = 4789000 m^2. Agrees to 0.03%.
+  # THE DRUM HAD FIVE LENGTHS AND NOW HAS ONE. Before this session:
+  #   2739.3  here, from Miller's printed table
+  #   1209    the `habitat_cylinder` hull feature, read off his drawing
+  #   2586    `interior.drum_interior` / `drum_end_cap`, which default to the
+  #           Green sector extent
+  #   ~2000   docs/gazetteer/LOCATIONS.md, "the ~2,000 m habitat drum"
+  #   2600    directory.the_garden's note, "2.6 km long"
+  # The widest pair differ by 2.3x. The reconciled figure is the Green sector
+  # BAND -- bearing race to the fore face of the habitat cylinder, z 4207-6035
+  # -- because it is the only one of the five derived from the structure the
+  # drum is made of. `station/geography.py --gate` asserts every statement of
+  # it agrees. INV-996.
+  interior_length_m:     {value: 1828.0,    src: "derived, INV-996",     auth: 5}
+  interior_surface_m2:   {value: 3196460,   src: "pi * 556.6 * 1828.0",  auth: 5}
+  # The table values, kept because they are the authority-4 record and because
+  # the 0.03% self-consistency below is a real property of the table:
+  #   pi * 556.6 * 2739.3 = 4789969 m^2 against a printed 4787500. 0.05%.
+  # It is a check of the TABLE against itself, not of the table against the
+  # drawing, and it was read for years as though it were the latter.
+  table_interior_length_m:   {value: 2739.3,  src: "other map 4.jpg x k",   auth: 4}
+  table_interior_surface_m2: {value: 4787500, src: "other map 4.jpg x k^2", auth: 4}
 
 communications_grid:
   span_m:  {value: 2120.5, src: "other map 4.jpg x k", auth: 4}
@@ -108,20 +166,81 @@ sectors:
   # against the Miller-derived longitudinal framework: Green agrees to 11.7%,
   # Red to 14.1%, from two unrelated sources by two unrelated methods.
   model: longitudinal
-  src: "b5-schematics-from-the-security-manual-v0-u8879zcrf36h1.webp Sectional Schematic"
+  src: "DERIVED from longitudinal.features by station/geography.py SECTOR_FEATURES.
+        The Sectional Schematic supplies the ORDER only -- see extents_m below."
   auth: 3
   # WARNING: the two authority-3 sheets disagree about which longitudinal band
-  # is the ~2,000 m habitat drum -- the Green/Brown transposition. The order and
-  # extents below follow the Sectional Schematic. Do not build interior layout
-  # against them until C-003's assignment question closes.
+  # is the habitat drum -- the Green/Brown transposition. The ORDER below
+  # follows the Sectional Schematic. C-003's assignment question is still open
+  # and this flag must stay set: what changed in session 4t is where the band
+  # BOUNDARIES are, not which colour name attaches to which volume.
   assignment_status: OPEN_BLOCKING
   order_aft_to_fore: [yellow, grey, green, red, blue]
+
+  # -------------------------------------------------------------------------
+  # EXTENTS ARE NO LONGER READ FROM THE SCHEMATIC. THEY ARE THE HULL.
+  #
+  # These were bracket ticks read as fractions of station length off a sheet
+  # with no scale bar, and they described a DIFFERENT STATION from the one
+  # `longitudinal.features` builds. Measured in session 4t, over the 24
+  # landmarks a viewer knows by name, **4** sat inside a structure consistent
+  # with their own sector:
+  #
+  #   cnc / obs_dome_1   addressed blue   physically in forward_deflector_spike
+  #   zocalo / casino    addressed red    physically in forward_taper, a cone
+  #   council_chamber    addressed green  physically in aft_hull_block
+  #   fresh_air          addressed green  physically in bearing_neck
+  #   all 20 Grey rows   addressed grey   physically in green_section
+  #
+  # `red_section` (6035-6465) and the old Red band (6425-6794) shared **40 m
+  # of 430 -- 9.3%**. **100% of Grey was inside the feature named
+  # `green_section`.** Command & Control -- canon-placed in Observation Dome 1,
+  # which `components` builds at z 7000-7240 from Contract 5 -- was addressed
+  # at z 7960, 674 m forward of the docking sphere's fore face, inside the
+  # navigation spike.
+  #
+  # AND THE CROSS-CHECK THAT WAS MEANT TO CATCH IT COMPARED THE WRONG THING.
+  # The old comment here claimed "Green agrees to 11.7%, Red to 14.1%". Both
+  # figures are right and both are about LENGTH ONLY: green band 2586 vs
+  # green_section 2928 is -11.7% while the two sit **732 m apart**; red band
+  # 369 vs red_section 430 is -14.2% while they sit **390 m apart**. A check
+  # that compares two magnitudes and never their offsets cannot see a
+  # translation. Cross-check the quantity the failure would show up in.
+  #
+  # Each band is now a union of WHOLE features from `longitudinal.features`,
+  # so a sector edge IS a hull edge and the two cannot drift apart by
+  # construction rather than by care -- hard rule 4. The mapping and the
+  # argument for every row are in `station/geography.py SECTOR_FEATURES`;
+  # `python3 station/geography.py --gate` fails if this table stops agreeing
+  # with it, and `--legacy` reproduces the state above. INV-995.
+  #
+  # `frac` is retained as z/8047 for readers, and is now an OUTPUT of the
+  # derivation rather than the input it used to be.
+  # -------------------------------------------------------------------------
+  extents_src: "station/geography.py sector_bands(); features aft->fore"
   extents_m:
-    yellow: {z0: 0,    z1: 3397, frac: [0.000, 0.422]}
-    grey:   {z0: 3397, z1: 3839, frac: [0.422, 0.477]}
-    green:  {z0: 3839, z1: 6425, frac: [0.477, 0.798]}
-    red:    {z0: 6425, z1: 6794, frac: [0.798, 0.844]}
-    blue:   {z0: 6794, z1: 8047, frac: [0.844, 1.000]}
+    # aft_terminus, primary_fusion_reactor, reactor_spine,
+    # generator_torus_housing, main_truss_spine, explosive_disconnect_neck,
+    # hull_flare_aft -- the whole non-rotating aft assembly, hence zero g,
+    # hence "Zero-G storage".
+    yellow: {z0: 0,    z1: 3107, frac: [0.000, 0.386]}
+    # aft_hull_block -- the widest structure on the station and the one
+    # Miller's table does not name, which is the shape of a sector the table
+    # omits. Schematic bracket midpoint 3618 against this band's 3657: **39 m
+    # apart**, the strongest agreement between the two sheets.
+    grey:   {z0: 3107, z1: 4207, frac: [0.386, 0.523]}
+    # bearing_neck + habitat_cylinder -- the drum. Schematic bracket midpoint
+    # 5132 against this band's 5121: 11 m apart.
+    green:  {z0: 4207, z1: 6035, frac: [0.523, 0.750]}
+    # red_section -- drawn 430 m against a table 445.3 m, which this schema
+    # already calls the strongest drawing-vs-table cross-check on the station.
+    red:    {z0: 6035, z1: 6465, frac: [0.750, 0.803]}
+    # forward_taper + forward_waist + docking_sphere + forward_deflector_spike.
+    # 1582 m against a table Blue Section of 921.7 m: the table figure is the
+    # PRESSURISED section (taper+waist+sphere = 821 m, -10.9%) and the band
+    # also carries the 761 m instrument spike, which pressurises nothing but
+    # must be addressable because `nav_beacon` is a place. INV-995.
+    blue:   {z0: 6465, z1: 8047, frac: [0.803, 1.000]}
   # Brown is NOT bracketed on the sheet. "Down-Below" is labelled on the outer
   # band in the Green region, and the Brown rosette marks DOWNBELOW spanning an
   # outer annular band. Treated as a radial designation. INV-009.
@@ -245,7 +364,16 @@ longitudinal:
              (Red 5.7%, Green diameter 3.9%), so this is consistent error, not a
              new contradiction."
       subfeatures:
-        - {id: aft_hull_block,   z0: 3107, z1: 4207, note: "Widest pressurised volume"}
+        # WAS "Widest pressurised volume" WITH NOTHING BEHIND IT. That was an
+        # authority-5 claim written as a caption: 948.9 m of core hull is 45%
+        # wider than Red, which is the widest section Miller's table names, and
+        # `radius_profile` says in its own header that the trace is the
+        # ENVELOPE and "NOT the pressure hull radius ... Do not conflate them".
+        # How much of this block is pressurised is INV-997. It is Grey Sector.
+        - {id: aft_hull_block,   z0: 3107, z1: 4207, sector: grey,
+           note: "Widest STRUCTURE on the station, 948.9 m core hull. Miller's
+                  table names no section here. How much is pressurised is
+                  INV-997, authority 5."}
         - {id: bearing_neck,     z0: 4207, z1: 4826}
         - {id: habitat_cylinder, z0: 4826, z1: 6035, label: T}
     # --- forward -------------------------------------------------------------
@@ -296,11 +424,37 @@ open_work:
   - id: OW-002
     need: "Grey, Brown and Yellow section dimensions"
     method: "Derive from OW-001 measurement as the remainder of the 8047 m budget."
-    blocks: "Complete longitudinal framework"
+    status: CLOSED
+    closed: "Session 4t. Done exactly as the method said -- Grey is the
+             aft_hull_block (1100 m, 948.9 m envelope), Yellow is everything
+             aft of the rotating assembly (3107 m, 322.9 m), and Brown stays a
+             radial designation with no length. See `sections:` above. Every
+             value is authority 5 with an INV entry: INV-995 the sector bands,
+             INV-997 how much of the aft hull block is pressurised."
+    blocks: "nothing"
   - id: OW-003
     need: "Resolution of C-003 (sector topology) and C-004 (level numbering)"
     method: "Additional reference: wayfinding signage, lift displays, deck plans."
-    blocks: "ALL interior level geometry"
+    status: "NARROWED, still open"
+    note: "Session 4t closed the part of this that was actually blocking
+           geometry. What C-003 disputes is WHICH COLOUR NAME attaches to a
+           band -- the Green/Brown transposition -- and that is a label. Where
+           the band BOUNDARIES are is now decided by the hull rather than by
+           the Sectional Schematic's bracket ticks, so it cannot move when
+           C-003 closes; only the names can. C-004's level-numbering question
+           is untouched and still open."
+    blocks: "the NAMES on interior levels, not the geometry"
+  - id: OW-004
+    need: "Whether the aft hull block is pressurised out to its 948.9 m envelope"
+    method: "Any interior frame, deck plan or sheet showing a pressurised deck
+             outboard of 327.45 m radius in Grey, or a table entry giving Grey
+             a diameter. Miller's table names no section there at all."
+    note: "INV-997. This is the largest undeclared assumption in the project as
+           of session 4t: 45% wider than the widest pressurised section canon
+           names, and it decides how deep the station's basement is and
+           therefore how heavy Downbelow is (1.53 g at the outermost deck)."
+    blocks: "nothing -- the volume is built either way; what is uncertain is
+             how much of it is air"
 
 # ---------------------------------------------------------------------------
 # Radius profile -- 1978 samples at 4.07 m spacing, station/schema/radius_profile.json
