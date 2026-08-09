@@ -2233,6 +2233,16 @@ def ring_run(r, start_deg, degrees, place=True, doors=()):
                    face=fc)
         _slab(v, t, g, G["room_head"], c0, c1, dh, -hw, -hw + WALL_T_M,
               up=False)
+        # A THRESHOLD BAND ON THE RING FLOOR, and it is the only thing in this
+        # corridor that marks a door from a STANDING view along the arc. An
+        # aperture 2.6 m wide at a 13.8 m pitch, seen from the corridor's own
+        # centreline, is edge-on: the first ring frame showed a continuous
+        # tube and the doors were invisible, even though a ray through one of
+        # them travels 97.99 m into the block. A band across the floor is
+        # perpendicular to that sightline, so it is the one element the
+        # foreshortening does not destroy. Two quads a door.
+        _slab(v, t, g, G["unit_sill"], c0, c1, DOOR_SILL_PROUD_M,
+              -hw, -hw + 0.42)
         at = c1
     if at < ln:
         _end(v, t, g, G["ring_wall"], -hw, at, ln, 0.0, h, face=1.0)
@@ -2457,6 +2467,33 @@ def ring_shell(meta, angle_deg, hw_m, ceil_m, z_m, doors, a_m, r):
         a = a0 + (a1 - a0) * k / n
         return radius * math.cos(a), radius * math.sin(a)
 
+    step = (a1 - a0) / n
+
+    def wall(b0, b1, lo, z, want):
+        """One end-wall span, TESSELLATED ON THE SAME ANGULAR STEP.
+
+        A CHORD IS NOT AN ARC, AND OVER A STREAMING CELL IT IS 3.86 m OUT.
+        `collision.room_shell` emits each end wall as ONE flat quad, which is
+        right for it -- a room is 1.24 m of half width, 0.28 deg, and the
+        chord sags 0.7 mm. A Shell B ring corridor spans a whole cell, 20 deg
+        of a 254 m ring, and the same flat quad cut 3.86 m inside the shell:
+        a ray from the corridor's own centreline toward its back wall found
+        NOTHING, because the wall was three metres behind the player. The
+        floor and ceiling were already tessellated at `n`; this puts the walls
+        on the same step.
+        """
+        if b1 - b0 < 1e-9 or lo <= ceil_r + 1e-9:
+            return
+        k = max(1, int(math.ceil((b1 - b0) / step)))
+        for j in range(k):
+            c0 = b0 + (b1 - b0) * j / k
+            c1 = b0 + (b1 - b0) * (j + 1) / k
+            C._quad(verts, tris,
+                    [(lo * math.cos(c0), lo * math.sin(c0), z),
+                     (lo * math.cos(c1), lo * math.sin(c1), z),
+                     (ceil_r * math.cos(c1), ceil_r * math.sin(c1), z),
+                     (ceil_r * math.cos(c0), ceil_r * math.sin(c0), z)], want)
+
     for k in range(n):
         m = a0 + (a1 - a0) * (k + 0.5) / n
         up = (-math.cos(m), -math.sin(m), 0.0)
@@ -2467,12 +2504,7 @@ def ring_shell(meta, angle_deg, hw_m, ceil_m, z_m, doors, a_m, r):
                     [(p0[0], p0[1], z0), (p1[0], p1[1], z0),
                      (p1[0], p1[1], z1), (p0[0], p0[1], z1)], want)
     # The high-z wall is solid; the low-z wall carries the apertures.
-    C._quad(verts, tris,
-            [(rad * math.cos(a0), rad * math.sin(a0), z1),
-             (rad * math.cos(a1), rad * math.sin(a1), z1),
-             (ceil_r * math.cos(a1), ceil_r * math.sin(a1), z1),
-             (ceil_r * math.cos(a0), ceil_r * math.sin(a0), z1)],
-            (0.0, 0.0, -1.0))
+    wall(a0, a1, rad, z1, (0.0, 0.0, -1.0))
     cuts = sorted(((a_m + c - w / 2.0) / r, (a_m + c + w / 2.0) / r, dh)
                   for c, w, dh in doors)
     spans, walk = [], a0
@@ -2487,14 +2519,7 @@ def ring_shell(meta, angle_deg, hw_m, ceil_m, z_m, doors, a_m, r):
     if walk < a1:
         spans.append((walk, a1, rad))
     for b0, b1, lo in spans:
-        if b1 - b0 < 1e-9 or lo <= ceil_r + 1e-9:
-            continue
-        C._quad(verts, tris,
-                [(lo * math.cos(b0), lo * math.sin(b0), z0),
-                 (lo * math.cos(b1), lo * math.sin(b1), z0),
-                 (ceil_r * math.cos(b1), ceil_r * math.sin(b1), z0),
-                 (ceil_r * math.cos(b0), ceil_r * math.sin(b0), z0)],
-                (0.0, 0.0, 1.0))
+        wall(b0, b1, lo, z0, (0.0, 0.0, 1.0))
     return verts, tris
 
 
@@ -2698,7 +2723,14 @@ def scene_camera(frame, plan, prof, slot, cam, look_m, back_m=1.6):
                 "the one `build_deck` built and not a second `deck_slots` "
                 "call's copy -- a fallback here silently framed a camera 6 km "
                 "off the deck and rendered black.")
-        side, zd = d[len(d) // 2]
+        # THE DOOR NEAREST THE MIDDLE OF THE RUN, not `d[len(d)//2]`. The list
+        # is one side's doors then the other's, so its midpoint is the door at
+        # the END of the first side -- and standing `look_m/2` in front of that
+        # one put the eye 1.79 m PAST the block's mouth, in the ring corridor,
+        # while the caption said it was a doorway frame. It rendered
+        # plausibly, which is the point.
+        run_m = slot["plan"].get("unit_run_m", slot["plan"]["length_m"])
+        side, zd = min(d, key=lambda q: abs(q[1] + run_m / 2.0))
         # Offset across the spine, away from the door being looked at, so the
         # shot is oblique rather than square on -- a square-on quad tells you
         # nothing about relief.
