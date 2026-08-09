@@ -360,8 +360,18 @@ def main(argv=None):
 
     godot = godot_binary()
     if godot is None:
-        print("no double-precision Godot binary. run: bash tools/build_godot.sh")
+        print("no Godot binary at all. set $GODOT, or run: bash tools/build_godot.sh")
         return 1
+    # SAY WHICH ENGINE THIS RAN ON, EVERY RUN. The old not-found branch said
+    # "no double-precision Godot binary", which named the only failure this
+    # project had ever had rather than the one in front of it -- on Windows the
+    # binary was present in $GODOT and the finder simply could not see it, and
+    # that message cost three CI runs. Single precision is measured, not
+    # assumed: the same deck baked both ways differs by 4.3 mm at the spawn
+    # point and 1 mm in content_z, on a station 8 km long.
+    import walkable as _W                                      # noqa: PLC0415
+    print(f"  engine: {os.path.basename(godot)} "
+          f"({'double' if _W.godot_is_double(godot) else 'single'} precision)")
     os.makedirs(CELLS, exist_ok=True)
 
     man, t0 = {"decks": [], "started": time.time()}, time.time()

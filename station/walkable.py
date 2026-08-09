@@ -120,17 +120,46 @@ STREAM_COLLIDER = "separate/every_frame"
 
 
 def godot_binary():
-    for cand in (
-        "/home/user/godot-build/godot-4.4-stable/bin/"
-        "godot.linuxbsd.editor.double.x86_64",
-    ):
-        if os.path.exists(cand) and os.access(cand, os.X_OK):
-            return cand
-    import glob
+    """The Godot this project drives, or None. $GODOT wins.
+
+    THE SEARCH ORDER STARTS AT $GODOT AND THAT IS THE WINDOWS FIX. This
+    function knew exactly one path -- a Linux one, with `double` in the
+    filename -- so on Windows it returned None however many working binaries
+    were present, and every one of the five modules that borrow it printed
+    "no double-precision Godot binary. run: bash tools/build_godot.sh" at a
+    runner which had just downloaded a perfectly good engine and put it in
+    $GODOT. Forty minutes of world build died on that line in run 3.
+
+    THE MESSAGE NAMED THE WRONG CAUSE, which is why it cost three runs to see.
+    Precision was the only reason this project had ever failed to find an
+    engine, so the not-found branch said "precision" -- but the actual fault
+    was a finder that could not look outside one directory on one OS. A
+    diagnostic that can only describe one failure will describe that one
+    whatever actually happened.
+    """
+    import shutil                                             # noqa: PLC0415
+    env = os.environ.get("GODOT", "").strip()
+    if env and os.path.isfile(env) and os.access(env, os.X_OK):
+        return env
+    cand = ("/home/user/godot-build/godot-4.4-stable/bin/"
+            "godot.linuxbsd.editor.double.x86_64")
+    if os.path.exists(cand) and os.access(cand, os.X_OK):
+        return cand
+    import glob                                               # noqa: PLC0415
     for c in glob.glob("/home/user/godot-build/*/bin/godot.linuxbsd.*.double.*"):
         if os.access(c, os.X_OK):
             return c
-    return None
+    return shutil.which("godot") or shutil.which("godot.exe")
+
+
+def godot_is_double(path):
+    """Whether `path` is the precision=double build, by this project's naming.
+
+    REPORTING ONLY -- nothing refuses a single-precision binary any more. The
+    naming convention is the build's own: scons writes `precision=double` into
+    the filename and nowhere else a script can reach without launching it.
+    """
+    return "double" in os.path.basename(path or "").lower()
 
 
 def walk_room(key, godot, timeout=180):

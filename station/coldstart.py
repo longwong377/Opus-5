@@ -390,6 +390,17 @@ MAX_DROP_M = 0.30
 
 
 def godot_binary():
+    """The Godot this project drives, or None. $GODOT wins.
+
+    SAME ORDER AS `walkable.godot_binary`, and the duplication is deliberate:
+    `coldstart` is imported by `till` and `journal` and importing `walkable`
+    here would pull the whole deck-walking stack into a cold-start check. The
+    two bodies must stay in step; the shared gate is `--godot-finder`.
+    """
+    import shutil                                             # noqa: PLC0415
+    env = os.environ.get("GODOT", "").strip()
+    if env and os.path.isfile(env) and os.access(env, os.X_OK):
+        return env
     cand = ("/home/user/godot-build/godot-4.4-stable/bin/"
             "godot.linuxbsd.editor.double.x86_64")
     if os.path.exists(cand) and os.access(cand, os.X_OK):
@@ -397,7 +408,7 @@ def godot_binary():
     for c in glob.glob("/home/user/godot-build/*/bin/godot.linuxbsd.*double*"):
         if os.access(c, os.X_OK):
             return c
-    return None
+    return shutil.which("godot") or shutil.which("godot.exe")
 
 
 def parse_verdict(text, tag):

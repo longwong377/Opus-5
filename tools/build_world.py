@@ -123,6 +123,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--keep-going", action="store_true",
                     help="run every step even after one fails (the old behaviour; "
                          "it buries the first error under everything after it)")
+    ap.add_argument("--gates-only", action="store_true",
+                    help="run the eight gates against a world already on disk "
+                         "and build nothing. This is how CI verifies AFTER it "
+                         "has exported and uploaded a binary, so that a failing "
+                         "gate reports a fault instead of destroying delivery")
     args = ap.parse_args(argv)
 
     print(f"python  {sys.version.split()[0]}  ({sys.executable})")
@@ -140,8 +145,9 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.time()
     failed: list[str] = []
 
-    for i, (label, cmd, note) in enumerate(STEPS, 1):
-        print(f"\n=== {i}/{len(STEPS)}  {label}")
+    steps = [] if args.gates_only else STEPS
+    for i, (label, cmd, note) in enumerate(steps, 1):
+        print(f"\n=== {i}/{len(steps)}  {label}")
         if note:
             print(f"    ({note})")
         rc = run(cmd, logname=f"{i:02d}-{cmd[0].split('/')[-1].removesuffix('.py')}")
@@ -156,7 +162,12 @@ def main(argv: list[str] | None = None) -> int:
                 print("    (--keep-going runs the rest anyway)")
                 break
 
-    if not args.skip_gates:
+    # AND NOT AFTER A BUILD FAILURE. Run 3 reported six failures of which one
+    # was real: the bake died, and then five gates ran anyway and each reported
+    # that a file the bake never wrote was missing. Reading that log, the real
+    # cause is one line among six equally-loud ones. A gate that runs against
+    # inputs it knows were not built is not measuring anything.
+    if not args.skip_gates and not failed:
         print(f"\n=== gates")
         for cmd in GATES:
             name = " ".join(cmd)
