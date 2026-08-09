@@ -1423,6 +1423,58 @@ def _bind_pose_reason(species, lod):
     return None
 
 
+# ---------------------------------------------------------------------------
+#  AND THE CASE THE OLD `except` WAS ACTUALLY HIDING, FOUND THE MOMENT IT WENT
+# ---------------------------------------------------------------------------
+# `animation._bind` raises `KeyError: no bone chain declared for mesh part
+# 'epaulette'` on this tree, today, for about 0.7% of the corridor crowd --
+# `npc/costume.py` emits a part named `epaulette` (line 3094) and
+# `animation.PART_CHAINS` has `collar`, `belt`, `skirt` and `cowl` and not that
+# one. Every EarthForce figure wearing one has been shipping IN THE BIND POSE,
+# arms down, not walking, and nothing anywhere said so. It is the same defect
+# the module comment above records for `brow_bar`, in a part nobody re-checked
+# -- CLAUDE.md's "a fix applied to an instance and not to the rule is a fix
+# that will be needed again", landing for the third time on this one table.
+#
+# THE FIX IS ONE LINE IN A FILE THIS SESSION DOES NOT OWN:
+#
+#     "epaulette": ("shoulder_%s",),          # in animation.PART_CHAINS
+#
+# So what happens here has to hold three things at once, and a bare `except`
+# held none of them: the build must survive a defect in another module (this
+# module is imported by `rooms.py`, `deck.py` and every render), the
+# degradation must be IMPOSSIBLE TO MISS, and a gate must be able to fail on
+# it. So it prints once per part, it is COUNTED, `unskinnable_parts()` reports
+# it, and `--variant-gate` part 5 is RED until the chain exists. That is a
+# stated, visible, gated fallback rather than a silent one -- and the day the
+# message in `animation.py` changes, the test below stops matching and this
+# raises instead, which is the safe direction to be wrong in.
+_NO_CHAIN = "no bone chain declared for mesh part"
+
+# part name -> (how many builds hit it, an example species, an example id)
+_UNSKINNABLE = {}
+
+
+def unskinnable_parts():
+    """`{part: (count, species, npc_id)}` for every part with no bone chain.
+
+    NON-EMPTY IS A DEFECT, always, and it is a defect in `animation.PART_CHAINS`
+    rather than here. Read by `--variant-gate` part 5.
+    """
+    return dict(_UNSKINNABLE)
+
+
+def _no_chain_part(exc):
+    """The part name out of `_bind`'s KeyError, or None if it is another one."""
+    if not isinstance(exc, KeyError):
+        return None
+    msg = str(exc)
+    if _NO_CHAIN not in msg:
+        return None
+    bits = msg.split("'")
+    return bits[1] if len(bits) > 2 else "?"
+
+
 # Said ONCE per (species, lod, kind), because a station-wide build asks for the
 # same figure some thousands of times and a per-call print is a log nobody
 # reads, which is the same as no log at all.
@@ -1485,6 +1537,35 @@ def _posed(species, npc_id, lod, kind, g_ms2, seat_h_m, phase=-1):
         # frame, so they keep the bind pose -- and the run SAYS SO, once.
         _say_bind_pose(species, lod, kind, why)
         return _mesh_for(species, npc_id, lod)
+    try:
+        return _pose_or_raise(species, npc_id, lod, kind, g_ms2, seat_h_m,
+                              phase)
+    except KeyError as exc:
+        # THE ONE EXCEPTION THAT IS CAUGHT, BY NAME, AND IT IS NOT SILENT. See
+        # the `_NO_CHAIN` block above for the whole of why: a garment
+        # `animation.py` has no bone chain for is a defect in a DIFFERENT
+        # module, and taking the station's build down for it would block
+        # everyone -- but shipping the crowd standing to attention with nothing
+        # printed is what this session exists to end. Every other exception,
+        # including a KeyError with any other message, goes straight up.
+        part = _no_chain_part(exc)
+        if part is None:
+            raise
+        n, _sp, _id = _UNSKINNABLE.get(part, (0, species, npc_id))
+        _UNSKINNABLE[part] = (n + 1, _sp, _id)
+        if n == 0:
+            print(f"populace: NO BONE CHAIN for mesh part {part!r} -- every "
+                  f"figure wearing one takes the BIND POSE. First: {species} "
+                  f"{npc_id} at lod {lod}. Fix: add {part!r} to "
+                  f"animation.PART_CHAINS. `populace.unskinnable_parts()` and "
+                  f"`--variant-gate` part 5 report it.")
+        return _mesh_for(species, npc_id, lod)
+
+
+def _pose_or_raise(species, npc_id, lod, kind, g_ms2, seat_h_m, phase):
+    """`_posed`'s body, with nothing caught. Split out so the one caught case
+    above reads as one named exception rather than as a wrapper round 60
+    lines."""
     rg = _anim.rig(species, npc_id, lod)
     frame = 0
     if g_ms2 < _stand_min_g(species, npc_id, lod):
@@ -2358,7 +2439,14 @@ def _give_lives(instances, place_key, hour, area, arch, seed, hw, hl,
         r["exit"] = [round(-x, 4),
                      round(way * max(0.0, hl - BODY_R_M) - z, 4)]
         # AND THE DAY. Pure in the hour, transitions only.
-        res = _res.resident(r["who"]["id"], r["species"])
+        # THE BASE SPECIES, because this is a PERSON and not a mesh. `r
+        # ["species"]` is the library token -- `human1` -- and `body.individual`
+        # rightly refuses it; the identicard's own answer is the one that
+        # decides who this is, which is what `who["species"]` has always
+        # carried. `base_species` is the same string and is here for callers
+        # that only have the row.
+        res = _res.resident(r["who"]["id"],
+                            r.get("base_species") or r["who"]["species"])
         rank01 = _u(seed, "presence", i)
         r["rank"] = round(rank01, 4)
         day = occupant_day(res, place_key, rank01, present_at)
@@ -3950,35 +4038,77 @@ def variant_gate(out=print, legacy=False):
         f"{len(wrong)}   {'ok' if not wrong else 'FAIL'}")
 
     # -- 4. THE BARE EXCEPT, INDUCED ----------------------------------------
-    # The whole of job 2, shown rather than described. `animation._bind` raises
-    # `KeyError: no bone chain declared for mesh part ...` when `body.py` grows
-    # a part it cannot skin. `_posed` used to turn that into a bind pose and
-    # print nothing, so the entire crowd would have shipped standing to
-    # attention. Reproduced by removing one chain from `PART_CHAINS`.
+    # The whole of job 2, shown rather than described, and in the two halves
+    # the fix actually has. `_posed` used to end in `except Exception: return
+    # the bind pose`, so EVERY failure looked like Kosh. Now:
+    #
+    #   4a  a missing bone chain -- the failure that nearly shipped -- still
+    #       yields a body, because taking the station's build down for a defect
+    #       in `animation.py` would block everyone, but it is ANNOUNCED and
+    #       COUNTED and part 5 below is red while it lasts.
+    #   4b  anything else RE-RAISES.
+    #
+    # Both are induced rather than argued: 4a by removing a chain from
+    # `PART_CHAINS`, 4b by making a clip fail.
     out("\n4. a body this module cannot pose -- does it STOP, or stand to "
         "attention?")
     victim = "arm"
     saved = _anim.PART_CHAINS.get(victim)
-    _posed.cache_clear()
-    crowd_body.cache_clear()
-    _anim._RIG_CACHE.clear()
-    try:
-        _anim.PART_CHAINS.pop(victim, None)
-        try:
-            m = crowd_body("human", 4, 0)
-            out(f"   FAIL: it returned {len(m[1])} triangles and said nothing "
-                f"-- the crowd would ship in the BIND POSE")
-            fail += 1
-        except KeyError as exc:
-            out(f"   RAISED, as it must: KeyError: {str(exc)[:96]}")
-        except Exception as exc:                                 # noqa: BLE001
-            out(f"   RAISED: {type(exc).__name__}: {str(exc)[:88]}")
-    finally:
-        if saved is not None:
-            _anim.PART_CHAINS[victim] = saved
+    keep_unskinnable = dict(_UNSKINNABLE)
+
+    def _flush():
         _posed.cache_clear()
         crowd_body.cache_clear()
         _anim._RIG_CACHE.clear()
+
+    _flush()
+    try:
+        _anim.PART_CHAINS.pop(victim, None)
+        _UNSKINNABLE.clear()
+        m = crowd_body("human", 4, 0)
+        got = unskinnable_parts()
+        loud = victim in got
+        fail += int(not loud)
+        out(f"   4a  a mesh part with no bone chain:")
+        out(f"       returned {len(m[1])} triangles of bind pose, and it was "
+            f"{'ANNOUNCED and COUNTED: ' + str(got) if loud else 'SILENT'}"
+            f"   {'ok' if loud else 'FAIL'}")
+        out(f"       the old bare `except` returned the same "
+            f"{len(m[1])} triangles ({max(q[1] for q in m[0]):.3f} m tall, "
+            f"arms down, feet together) and printed NOTHING -- which is how "
+            f"'epaulette' in part 5 has been shipping")
+    finally:
+        if saved is not None:
+            _anim.PART_CHAINS[victim] = saved
+        _UNSKINNABLE.clear()
+        _UNSKINNABLE.update(keep_unskinnable)
+        _flush()
+
+    # 4b -- ANYTHING ELSE PROPAGATES. A clip that fails for any other reason is
+    # a defect, and the whole point of the change is that it can no longer be
+    # confused with Kosh. Induced on the clip rather than on the rig, so it
+    # tests the half of `_posed` the bone-chain case does not reach.
+    _real_walk = _anim.walk_clip
+
+    def _broken(*a, **kw):
+        raise RuntimeError("induced: this clip is broken")
+
+    _flush()
+    try:
+        _anim.walk_clip = _broken
+        try:
+            crowd_body("human", 4, 0)
+            out("   4b  any OTHER failure: SWALLOWED   <-- FAIL")
+            fail += 1
+        except RuntimeError as exc:
+            out(f"   4b  any OTHER failure: RE-RAISED, as it must -- "
+                f"RuntimeError: {str(exc)[:60]}   ok")
+        except Exception as exc:                                 # noqa: BLE001
+            out(f"   4b  any OTHER failure: re-raised as "
+                f"{type(exc).__name__}: {str(exc)[:60]}   ok")
+    finally:
+        _anim.walk_clip = _real_walk
+        _flush()
 
     # AND THE CASE THAT IS ALLOWED TO FALL BACK STILL DOES, AND SAYS SO. Kosh's
     # column plan has no legs; `animation.walk_clip` refuses it by name. That is
@@ -3996,6 +4126,33 @@ def variant_gate(out=print, legacy=False):
         f"ANNOUNCED: {said}")
     out(f"     and an ordinary figure has no reason at all: "
         f"human lod 4 -> {_bind_pose_reason('human', 4)}")
+
+    # -- 5. WHAT THE OLD `except` WAS ACTUALLY HIDING -----------------------
+    # This part is RED on the tree it was written on, and that is the point of
+    # it: removing the bare except found a live defect within one build. A
+    # garment part with no bone chain in `animation.PART_CHAINS` means every
+    # figure wearing it is drawn in the bind pose, and the whole reason nobody
+    # knew is that the only thing that could have said so was swallowing it.
+    out("\n5. does anything on this station wear a part animation.py cannot "
+        "skin?")
+    _posed.cache_clear()
+    crowd_body.cache_clear()
+    scanned = 0
+    for sp2 in sorted(_sched.STATION_MIX):
+        for i in range(40):
+            scanned += 1
+            _pose_mesh(sp2, f"chainscan/{sp2}/{i}", 4, "walk", G0_MS2)
+    bad2 = unskinnable_parts()
+    fail += len(bad2)
+    out(f"   {scanned} figures built across {len(_sched.STATION_MIX)} species "
+        f"at lod 4")
+    if not bad2:
+        out("   every part they wear has a bone chain   ok")
+    for part, (n2, sp2, id2) in sorted(bad2.items()):
+        out(f"   {part!r}: {n2} figure(s) fell back to the BIND POSE "
+            f"(e.g. {sp2} {id2})   <-- FAIL")
+        out(f"     costume.py emits it; animation.PART_CHAINS does not have "
+            f"it. One line fixes it, in a file this gate does not own.")
 
     out(f"\n{'VARIANT GATE OK' if not fail else 'VARIANT GATE FAILED'} "
         f"({fail} problem(s))")

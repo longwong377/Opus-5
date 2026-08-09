@@ -1616,10 +1616,153 @@ func _walker_body_xform(w: Walker) -> Transform3D:
 		xf.origin + xf.basis.y * (maxf(w.h_m, 2.0 * w.r_m + 0.01) * 0.5))
 
 
+# ===========================================================================
+#  THE CONTACT SHADOW -- why the crowd read as pasted on
+# ===========================================================================
+# THE PANEL'S WORDS, from a close render: "No contact shadow under anybody.
+# This, more than the geometry, is what makes them read as pasted on." They are
+# right, and the cause is not that MultiMeshes cannot cast: they can, and these
+# do, `cast_shadow` defaults to ON. The cause is that there is almost nothing
+# to cast FROM. `dress_scene.gd` reads `export_scene.INTERIOR_SHADOW_LIGHTS`,
+# which is **2** -- two shadow-casting OmniLights for a whole assembled deck,
+# because an omni shadow is a cube map and each one re-renders the scene six
+# times. A corridor lit by forty fittings of which two cast means a body two
+# metres from the camera is standing in light that arrives from nowhere.
+#
+# RAISING THAT NUMBER IS THE WRONG FIX AND IT IS NOT THIS FILE'S TO MAKE.
+# Thirty-eight more cube maps is thirty-eight more scene re-renders a frame, on
+# a station already at 4.3x its triangle budget. What a player actually reads at
+# two metres is the DARKENING WHERE A FOOT MEETS THE FLOOR, and that is one
+# unlit quad per person.
+#
+# SO IT IS ONE MULTIMESH FOR THE WHOLE CROWD: one draw call, one 64x64
+# procedural radial gradient, one transform per drawn walker -- and that
+# transform is the one `_place_crowd` has just computed for their body, so the
+# geometry costs no trigonometry. `--no-crowd-shadows` is the control and it
+# withholds the whole node, which is the A/B the frame is judged on.
+
+## Blob diameter as a multiple of the body's own capsule radius. MEASURED OFF
+## THE BODY, not written down: `r_m` comes from the same fitted stature
+## `_give_walker_body` builds the capsule from, so a Narn's shadow is a Narn's
+## width without this file knowing what a Narn is.
+const SHADOW_SPAN := 2.7
+## How far off the deck the quad floats, in metres. Below the 22 mm proud grid
+## tile the corridor deck carries -- `station/collision.py`'s own number -- so it
+## reads as contact rather than as a decal hovering over the floor, and far
+## enough above the plane to keep the depth buffer out of the argument.
+const SHADOW_LIFT_M := 0.008
+## Darkest alpha at the centre of the blob.
+const SHADOW_ALPHA := 0.55
+
+var _shadow_mmi: MultiMeshInstance3D = null
+var _shadow_mm: MultiMesh = null
+var _shadow_n := 0
+var _shadow_why := "not built"
+## Scratch for one bucket's transforms. Grown, never shrunk, so a steady crowd
+## allocates nothing per frame.
+var _xf_buf: Array[Transform3D] = []
+
+
+## Build the blob MultiMesh, or grow it. Lazy and idempotent: the crowd arrives
+## cell by cell in a streamed build, so there is no one moment at which the
+## final size is known -- unlike the body buckets, which must be sized up front
+## because there are 2,148 of them and reallocating that many is a hitch.
+## Reallocating ONE is a single buffer.
+var _shadow_off := -1        ## -1 not asked yet, 0 on, 1 withheld by the control
+
+
+func _ensure_shadows(want: int) -> void:
+	if _shadow_off < 0:
+		# ASKED ONCE. `_args()` walks `OS.get_cmdline_user_args()` and splits
+		# every one of them; this function runs on every crowd placement, and a
+		# per-frame string parse to read a flag that cannot change is the kind
+		# of cost that does not show up in any profile as a line of its own.
+		_shadow_off = 1 if _args().has("no-crowd-shadows") else 0
+		if _shadow_off == 1:
+			_shadow_why = "DISABLED (control) -- nobody casts a contact shadow"
+			print("npc: contact shadows %s" % _shadow_why)
+	if _shadow_off == 1:
+		return
+	if want <= 0:
+		return
+	if _shadow_mm != null:
+		if want > _shadow_mm.instance_count:
+			_shadow_mm.instance_count = want + 64
+		return
+	# A RADIAL FALLOFF, GENERATED RATHER THAN SHIPPED. No PNG enters the
+	# project for this: `GradientTexture2D` fills it at load, so there is no
+	# binary to go stale against a change of size and nothing to import.
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.45, 1.0])
+	g.colors = PackedColorArray([
+		Color(0.0, 0.0, 0.0, SHADOW_ALPHA),
+		Color(0.0, 0.0, 0.0, SHADOW_ALPHA * 0.62),
+		Color(0.0, 0.0, 0.0, 0.0)])
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	tex.width = 64
+	tex.height = 64
+	var mat := StandardMaterial3D.new()
+	# UNSHADED, because a contact shadow that is itself lit brightens when the
+	# room does, which is the one thing a shadow must not do.
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_texture = tex
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# NO DEPTH WRITE and NO SHADOW CASTING: a blob must not occlude the floor it
+	# is drawn on, and a shadow that casts a shadow is a black disc in mid air
+	# under the two lights that do cast.
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	mat.disable_receive_shadows = true
+	var q := QuadMesh.new()
+	q.size = Vector2(1.0, 1.0)
+	q.material = mat
+	_shadow_mm = MultiMesh.new()
+	_shadow_mm.transform_format = MultiMesh.TRANSFORM_3D
+	_shadow_mm.mesh = q
+	_shadow_mm.instance_count = want + 64
+	_shadow_mm.visible_instance_count = 0
+	_shadow_mmi = MultiMeshInstance3D.new()
+	_shadow_mmi.name = "crowd_contact_shadow"
+	_shadow_mmi.multimesh = _shadow_mm
+	_shadow_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_shadow_mmi)
+	_shadow_why = "1 MultiMesh, %d slots, 1 draw call" % _shadow_mm.instance_count
+	print("npc: contact shadows -- %s, %.2f m blob per body at %.0f mm off the "
+		% [_shadow_why, maxf(0.12, 0.26) * SHADOW_SPAN, SHADOW_LIFT_M * 1000.0]
+		+ "deck (INTERIOR_SHADOW_LIGHTS is 2 for a whole deck, so almost "
+		+ "nothing casts one)")
+
+
+## The blob's transform, from the body's own. A QuadMesh lies in its local XY
+## plane facing +Z, so local +Z has to become the walker's UP -- which on a spun
+## ring points at the axis and is a different direction for every person.
+##
+## `Basis(x, y, z)` TAKES COLUMNS AND IS RIGHT-HANDED ONLY WHEN x cross y = z.
+## With `x = fwd`, `y = up.cross(fwd)` and `z = up`, that product is `up`, so
+## the determinant is +1. The other pairing looks equally reasonable and is a
+## mirror -- which is the defect session 4q found sitting in this file's own
+## `_walker_xform` for six sessions, so it is checked here rather than assumed.
+func _blob_xform(xf: Transform3D, w) -> Transform3D:
+	var up := xf.basis.y
+	var fwd := xf.basis.z
+	var d: float = maxf(float(w.r_m), 0.12) * SHADOW_SPAN
+	return Transform3D(Basis(fwd * d, up.cross(fwd).normalized() * d, up),
+		xf.origin + up * SHADOW_LIFT_M)
+
+
+func crowd_shadow_report() -> String:
+	return "%s, %d drawn" % [_shadow_why, _shadow_n]
+
+
 ## Refill every MultiMesh from the walkers' current phase. A walker moves
 ## between MultiMeshes as their phase advances, which is a bucket sort of a
-## few hundred items and costs nothing.
+## few lower hundreds of items and costs nothing.
 func _place_crowd() -> void:
+	_ensure_shadows(_walkers.size())
 	for k in _mm.keys():
 		_mm_rows[k] = []
 	for w in _walkers:
@@ -1634,13 +1777,40 @@ func _place_crowd() -> void:
 		var k := "crowd_%s_%d_%d" % [w.species, w.lod, w.phase]
 		if _mm_rows.has(k):
 			_mm_rows[k].append(w)
+	# ONE TRANSFORM PER WALKER, REUSED BY EVERY SURFACE OF THEIR BODY. A body is
+	# several MultiMeshes -- skin, hair, garment, each its own material span --
+	# and this loop used to call `_walker_xform` once per surface per walker,
+	# which is a sin, a cos, two cross products and a normalise repeated for
+	# meshes that are by definition in the same place. Caching it is what pays
+	# for the contact shadows below: they need the same transform a third time
+	# and now cost no extra trigonometry at all.
+	var shade := 0
 	for k in _mm.keys():
 		var rows: Array = _mm_rows[k]
-		for mmi in _mm[k]:
+		var surfaces: Array = _mm[k]
+		if surfaces.is_empty():
+			continue
+		var cap: int = (surfaces[0] as MultiMeshInstance3D).multimesh.instance_count
+		var n: int = mini(rows.size(), cap)
+		_xf_buf.resize(maxi(_xf_buf.size(), n))
+		for i in range(n):
+			var xf := _walker_xform(rows[i])
+			_xf_buf[i] = xf
+			if _shadow_mm != null and shade < _shadow_mm.instance_count:
+				_shadow_mm.set_instance_transform(shade, _blob_xform(xf, rows[i]))
+				shade += 1
+		for mmi in surfaces:
 			var mm: MultiMesh = mmi.multimesh
+			# Sizes within one bucket are equal by construction -- `_index_library`
+			# gives every surface of a key the same `counts[k]` -- but the clamp is
+			# per MultiMesh anyway, because a wrong assumption here writes past a
+			# buffer rather than drawing the wrong number of people.
 			mm.visible_instance_count = mini(rows.size(), mm.instance_count)
 			for i in range(mm.visible_instance_count):
-				mm.set_instance_transform(i, _walker_xform(rows[i]))
+				mm.set_instance_transform(i, _xf_buf[i])
+	if _shadow_mm != null:
+		_shadow_mm.visible_instance_count = shade
+	_shadow_n = shade
 
 
 ## How far round the ring the crowd has travelled, in metres, summed. The
@@ -2286,9 +2456,19 @@ func advance_crowd(delta: float) -> void:
 	var ck := _find_clock()
 	if ck != null:
 		var h: float = float(ck.call("hour"))
-		if h >= 0.0 and absf(h - _occ_hour) > 1e-4:
-			var ch := set_hour(h)
-			if ch > 0 and not _occ_said:
+		if h >= 0.0:
+			# THE REPORTING IS OUTSIDE THE "DID I APPLY IT" BRANCH, and putting
+			# it inside cost the whole hourly log the moment somebody else
+			# started applying the hour. `life.gd`'s Director now hands the hour
+			# over from `apply()` -- it has to, because `main.gd` reads 03:00 and
+			# 13:00 in ONE frame and a follower that waits for the next one
+			# reports the same number twice -- so by the time this runs
+			# `_occ_hour` already equals `h`, the guard below is false, and a
+			# whole station-day printed nothing at all. A log line must not be a
+			# side effect of which of two callers got there first.
+			if absf(h - _occ_hour) > 1e-4:
+				set_hour(h)
+			if not _occ_said and _occ_moved > 0:
 				_occ_said = true
 				print("npc: %s" % occupant_report())
 			if absf(h - _occ_hour0) >= 1.0 and occupant_count() > 0:

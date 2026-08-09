@@ -384,6 +384,23 @@ class Director extends Node3D:
 	var _n_occupant: int = 0
 	var _n_stroller: int = 0
 	var _inst_shown: int = 0
+	var _said_control: bool = false
+	var _flag_cache: Dictionary = {}
+	var _flags_read: bool = false
+
+	## The command line, read once. `bind` runs at every streamed cell boundary
+	## and re-splitting `OS.get_cmdline_user_args()` there would be string work
+	## inside a hitch.
+	func _flags() -> Dictionary:
+		if _flags_read:
+			return _flag_cache
+		_flags_read = true
+		for a in OS.get_cmdline_user_args():
+			var s := a.trim_prefix("--")
+			var eq := s.find("=")
+			_flag_cache[s if eq < 0 else s.substr(0, eq)] = (
+				true if eq < 0 else s.substr(eq + 1))
+		return _flag_cache
 
 	func _init() -> void:
 		# AFTER npc.gd, deliberately. See the integration note at the top.
@@ -448,7 +465,19 @@ class Director extends Node3D:
 		# _search_clock` gives about finding this Director: a name is a second
 		# description of a thing and drifts from it. `walker_list` is a method
 		# only the crowd runtime has.
-		_crowd = _find_crowd(visual)
+		# THE NEGATIVE CONTROL, and it is the build this session started from
+		# rather than a switch invented to fail. `--life-baked-only` withholds
+		# the instanced representation and nothing else, so `bind` falls back to
+		# matching MeshInstance3D names -- and on a station whose cast is
+		# entirely instanced the count must return to **0**. A test that only
+		# ever runs the working configuration cannot tell a binding that works
+		# from a cast that happened to be there.
+		var baked_only := _flags().has("life-baked-only")
+		_crowd = null if baked_only else _find_crowd(visual)
+		if baked_only and not _said_control:
+			_said_control = true
+			print("life: INSTANCED BINDING DISABLED (control) -- meshes only, "
+				+ "which is the build before this session")
 		var by_group := {}
 		var strollers: Array = []
 		if _crowd != null:
