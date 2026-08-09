@@ -1668,6 +1668,7 @@ var _xf_buf: Array[Transform3D] = []
 ## final size is known -- unlike the body buckets, which must be sized up front
 ## because there are 2,148 of them and reallocating that many is a hitch.
 ## Reallocating ONE is a single buffer.
+var _shadow_said := false
 var _shadow_off := -1        ## -1 not asked yet, 0 on, 1 withheld by the control
 
 
@@ -1709,8 +1710,11 @@ func _ensure_shadows(want: int) -> void:
 	# UNSHADED, because a contact shadow that is itself lit brightens when the
 	# room does, which is the one thing a shadow must not do.
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_texture = tex
+	if _args().has("blob-debug"):
+		mat.albedo_color = Color(1, 0, 1, 1)
+	else:
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.albedo_texture = tex
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# NO DEPTH WRITE and NO SHADOW CASTING: a blob must not occlude the floor it
 	# is drawn on, and a shadow that casts a shadow is a black disc in mid air
@@ -1749,7 +1753,7 @@ func _ensure_shadows(want: int) -> void:
 func _blob_xform(xf: Transform3D, w) -> Transform3D:
 	var up := xf.basis.y
 	var fwd := xf.basis.z
-	var d: float = maxf(float(w.r_m), 0.12) * SHADOW_SPAN
+	var d: float = maxf(float(w.r_m), 0.12) * SHADOW_SPAN * (4.0 if _args().has("blob-debug") else 1.0)
 	return Transform3D(Basis(fwd * d, up.cross(fwd).normalized() * d, up),
 		xf.origin + up * SHADOW_LIFT_M)
 
@@ -1811,6 +1815,29 @@ func _place_crowd() -> void:
 	if _shadow_mm != null:
 		_shadow_mm.visible_instance_count = shade
 	_shadow_n = shade
+	# SAY THAT THEY ARE ACTUALLY BEING WRITTEN, once. A MultiMesh that was
+	# allocated and never filled reports exactly like one that is working from
+	# every static angle -- the node exists, the material is bound, the draw call
+	# is counted -- and the only thing that distinguishes them is a number of
+	# instances written on a real frame.
+	if shade > 0 and not _shadow_said:
+		_shadow_said = true
+		print("npc: contact shadows drawing -- %d blob(s), mm aabb %s, node %s "
+			% [shade, str(_shadow_mm.get_aabb()), _shadow_mmi.get_path()]
+			+ "vis=%s layers=%d inst=%d/%d parent_xf=%s sample_mm=%s"
+			% [str(_shadow_mmi.visible), _shadow_mmi.layers,
+				_shadow_mm.visible_instance_count, _shadow_mm.instance_count,
+				str(global_transform), _one_body_mmi()])
+
+
+func _one_body_mmi() -> String:
+	for k in _mm.keys():
+		for mmi in _mm[k]:
+			var m: MultiMeshInstance3D = mmi
+			if m.multimesh.visible_instance_count > 0:
+				return "%s vis=%s layers=%d aabb=%s" % [m.name, str(m.visible),
+					m.layers, str(m.multimesh.get_aabb())]
+	return "none"
 
 
 ## How far round the ring the crowd has travelled, in metres, summed. The
