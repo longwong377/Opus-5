@@ -182,6 +182,19 @@ HEDGE_MIN_M = 6.0
 HEDGE_MAX_M = 18.0
 HEDGE_W_M = 0.8
 HEDGE_H_M = 1.05                    # clipped, so below eye level
+# --- what makes a clipped hedge a hedge and not a kerb, INV-998 --------------
+# Station pitch along a run. 0.9 m is the coarsest spacing at which the crest
+# undulation reads as growth rather than as a zigzag: the crest deviates by
+# HEDGE_CREST * h/2 = 42 mm, and a 42 mm rise over 900 mm is 2.7 deg, which is
+# under `density.py`'s 3.24 deg crease threshold and therefore reads as a soft
+# wander. Halving the pitch would double the cost and cross that threshold into
+# faceting.
+HEDGE_BAY_M = 0.90
+HEDGE_SEG = 7                       # an odd count, so no two faces are parallel
+HEDGE_CREST = 0.08                  # crest wander, as a fraction of the radius
+HEDGE_FLUTE = 0.10                  # surface lumpiness round the section
+HEDGE_SIT = 0.86                    # centre height as a fraction of h/2: buried
+HEDGE_END_F = 0.10                  # the fraction of the run the end taper uses
 STEP_COUNT = 4
 STEP_RISE_M = 0.16
 STEP_GOING_M = 0.34
@@ -283,6 +296,17 @@ NEAR_SWITCH_M = 35.0
 # BELOW by 0.30, under which a broadleaf reads as a conifer; ABOVE by 0.60, at
 # which the crown out-spans the path pitch and the canopies merge into a roof.
 CROWN_FRAC = 0.45
+# Trunk lean and bow, as fractions of the fork height, and branch sag as a
+# fraction of the limb's own rise. INV-997. All three are FREE -- they move
+# vertices that already exist. Bounded above by the thing that would look
+# wrong rather than by cost: at TRUNK_LEAN 0.30 the fork sits 30% of its own
+# height off plumb, which on a 3 m fork is 0.9 m and is a wind-formed tree;
+# past ~0.40 it reads as damaged. TRUNK_BOW is half that because a bow that
+# out-runs the lean makes an S nobody would plant. BRANCH_SAG is bounded above
+# by 0.5, at which the bough tip falls back to the fork and the crown inverts.
+TRUNK_LEAN = 0.30
+TRUNK_BOW = 0.15
+BRANCH_SAG = 0.28
 FLUTE_D = 0.11                      # bark ridge depth, as a fraction of radius
 FLUTE_N = 7                         # ridges round the trunk
 TRUNK_RINGS = 5
@@ -352,6 +376,83 @@ VERGE_W_M = 3.2                     # the planted band that kills the hard edge
 COBBLE_M = 0.42                     # sett module, 29a "small setts"
 COBBLE_PROUD_M = 0.018              # a sett stands this proud of its neighbour
 KEEPOUT_M = 2.0                     # clearance between a tree crown and a wall
+
+# --- irregularity, INV-995 ---------------------------------------------------
+# THE THREE NUMBERS THAT STOP A LOBE BEING A LATHE-TURNED SOLID. See `_lobe`
+# for the arithmetic they answer. All three are free -- they move vertices that
+# already exist -- so the only thing bounding them is the mesh staying valid.
+#
+# LOBE_ROUGH is bounded ABOVE by winding: a vertex scaled by (1 - rough) must
+# stay outside the axis, and at 0.34 the tightest ring of a 3-stack lobe still
+# sits at 0.866 * 0.66 = 0.57 r. It is bounded BELOW by the thing it is for --
+# at 0.15 a seg-5 lobe still reads as a pentagon in silhouette, checked by
+# eye against the magnified before/after crops. 0.34 is the value that makes
+# `_selftest`'s regularity gate fail on the old shape by a factor of ten.
+LOBE_ROUGH = 0.34
+# The polar-division shift. Bounded above by 0.5, at which a ring would reach
+# phi = 0 or pi and collapse onto a pole; 0.30 keeps the extreme ring of a
+# 3-stack lobe at phi = 0.90 rad, i.e. a radius of 0.78 r against its
+# neighbour's 0.99, which is a visible egg rather than a barrel.
+LOBE_TILT = 0.30
+# Ring-height jitter, as a fraction of the mean ring gap. Well under 0.5, which
+# is where two rings could cross and turn the surface inside out.
+LOBE_JITTER = 0.18
+# How far a pole may lean off the axis, as a fraction of `rough * r`.
+LOBE_POLE = 0.55
+
+# THE NEGATIVE CONTROL, and it is a module-level switch ON PURPOSE. Every
+# variety rule in `_lobe` scales with `rough`, and the callers that matter --
+# `ground_cover`, `_leaf_mass`, `drum_dressing`'s four proxy sites -- do not
+# take a `rough` argument and should not have to. `--variety --legacy` sets
+# this, rebuilds the same population, and reports the uniformity that used to
+# ship. Nothing else may set it: it is written once, by the CLI, and read in
+# one place. A flag that production code can flip is a second code path.
+UNIFORM_CONTROL = False
+
+# --- what stands on the near ground, INV-996 ---------------------------------
+# `ground_cover` used to emit exactly two things -- a 1-lobe tussock and a
+# 3-lobe scrub -- both on `garden_hedge`, i.e. ONE material, one green. That is
+# the measured cause of the reviewer's "93.7% of the drum's coloured pixels
+# fall in a single 40-degree yellow-green band": there is nothing else on the
+# ground to be a different colour.
+#
+# So the near field gains four kinds that are NOT vegetation, and every one of
+# them resolves to a material that already exists and was already measured off
+# an authority-1 frame. That matters more than it looks: `check_material_cover-
+# age()` RAISES on a group no rule in `godot/scenes/drum.tscn` can match, and
+# `materials.py` is owned by another agent this session. Resolution is by
+# substring and then longest match, so `garden_lawn_tuft` takes
+# `garden_mown_grass` today and can be given its own entry later WITHOUT this
+# file changing again. Colour that needs a new material is reported, not faked.
+#
+#   name      what it is                     resolves to            reference
+#   tussock   upright mown-grass tuft        garden_mown_grass      29a lawn
+#   scrub     dark low shrub                 garden_foliage         29a "clipped hedges"
+#   brush     mid-tone woody brush           garden_foliage         29a bank ivy
+#   stone     dark stone, half-buried        garden_coping_stone    29a coping
+#   chip      pale gravel/stone spall        garden_flagstone       29a setts
+#   soil      bare earth showing through     garden_bank_planting   garden.png bank
+#
+# Densities are per 100 m2 and fall off sharply from grass to stone, because
+# 29a is a MAINTAINED park: the two mineral kinds are what shows at a path edge
+# and under a shrub, not a scree. Overturned by any eye-level frame of the drum
+# floor in which the ground cover can be counted.
+GROUND_KINDS = (
+    #  name       per100  r_m    lobes    seg  squash  group
+    ("tussock",   4.40,   0.26,  (1, 2),  5,   0.95,  "garden_lawn_tuft"),
+    ("scrub",     1.55,   0.62,  (3, 5),  6,   0.55,  "garden_foliage_scrub"),
+    ("brush",     0.85,   0.44,  (2, 4),  5,   0.72,  "garden_hedge"),
+    ("stone",     1.05,   0.42,  (1, 2),  5,   0.60,  "garden_planter_stone"),
+    ("chip",      1.30,   0.30,  (1, 3),  4,   0.40,  "garden_bed_edge_chip"),
+    ("soil",      0.95,   1.05,  (1, 2),  6,   0.16,  "garden_bank_soil"),
+)
+
+# Above this lobe radius a mass gets four stacks instead of three, so it has a
+# shoulder rather than two straight lines in profile. Set at the size where a
+# lobe is more than a couple of pixels of profile at the near switch: 0.30 m at
+# 35 m is 0.35 deg, about 10 px at the project's FOV 50 / 1440 px. Below it the
+# extra ring is invisible and the two triangles per segment are wasted.
+LOBE_STACK4_M = 0.30
 
 # --- articulation, all INV-072 -----------------------------------------------
 # The old TREE_SEG comment read "a tree at 0.06 tri/m2 is a billboard's cousin",
@@ -689,24 +790,98 @@ def _limb(v, t, g, name, p0, p1, r0, r1, seg=6):
     return v, t, g
 
 
-def _lobe(v, t, g, name, cx, cy, cz, r, seg=8, stacks=4, squash=0.82):
-    """One faceted foliage mass. Deliberately faceted, not smooth.
+def _lobe(v, t, g, name, cx, cy, cz, r, seg=8, stacks=4, squash=0.82,
+          seed=None, rough=None):
+    """One faceted foliage mass. Deliberately faceted, and now IRREGULAR.
 
     A canopy modelled as ONE smooth ellipsoid reads as a balloon and, worse,
     draws almost no line: adjacent facets of a sphere at this segment count sit
     under the crease threshold. Several overlapping lobes give a real silhouette
     AND real creases where they intersect, which is what makes a tree read as
     foliage rather than as a solid.
+
+    SESSION 4t -- WHY THAT ARGUMENT WAS TRUE AND THE RESULT WAS STILL A SOLID
+    OF REVOLUTION, which is the whole of the owner's "sad excuse for a tree"
+    and of the reviewer's "hexagonal truncated pyramids". Read off
+    `/tmp/frames/before-hero5.png` at 9 m on Forward+/Vulkan 1.4, magnified 3x:
+    every shrub in the frame is a flat-topped pyramid with straight silhouette
+    edges and two flat tones, and the hero tree's canopy is a handful of
+    countable flat plates. Two arithmetic causes, neither of which any gate in
+    this project could name, because triangle count, line density, closure,
+    winding and crown-span are ALL satisfied by a faceted drum:
+
+      1. **`stacks=3` IS A PRISM.** The rings sit at `phi = pi*i/stacks`, so
+         for stacks=3 they land at 60 and 120 degrees -- and `sin(60) ==
+         sin(120)`. BOTH RINGS HAVE THE SAME RADIUS, 0.866 r. The mesh is a
+         straight `seg`-sided barrel with a cone on each end: a truncated
+         pyramid, exactly as described. Every level-0 tree lobe (`lstk=3`) and
+         EVERY shrub and tussock in `ground_cover` was one.
+      2. **It is a surface of revolution.** Every vertex sat at exactly
+         `sin(phi)*r` from the axis, so at seg 4-7 the silhouette is a regular
+         polygon and two lobes of the same seg/stacks/squash are THE SAME SHAPE
+         at different scales. That is the reviewer's "identical apart from
+         scale and rotation", and it is true by construction.
+
+    Both are fixed here for **zero triangles and zero vertices** -- the same
+    mesh, at different positions -- which is why this is the first edit of the
+    session and not the last. `rough` deviates each vertex radially, `LOBE_TILT`
+    shifts the whole polar division off the even one so no two rings can share
+    a radius, the poles move off the axis, and the ring heights jitter. A lobe
+    is then a lump rather than a lathe-turned solid.
+
+    `seed` is optional and DEFAULTS TO THE LOBE'S OWN POSITION for a reason
+    that is cross-module: `station/drum_dressing.py` calls `gd._lobe` at four
+    sites for its own tree proxies and this module does not own that file. A
+    required seed would have left those four uniform, which is precisely the
+    "a fix applied to an instance and not to the rule" defect CLAUDE.md records
+    against the `BESPOKE_GEOMETRY` table. Deriving from position means every
+    caller that exists today gets variety without being edited, and a caller
+    that wants control passes a seed. -- INV-995
     """
+    if rough is None:
+        rough = 0.0 if UNIFORM_CONTROL else LOBE_ROUGH
+    # ONE KNOB WITHDRAWS EVERY VARIETY RULE, and that is deliberate: the tilt,
+    # the ring jitter and the pole lean are all scaled by `rough`, so
+    # `rough = 0` reproduces the pre-4t geometry EXACTLY rather than
+    # approximately. A negative control that only half-reverts is a control
+    # that cannot say what it proved.
+    tilt = LOBE_TILT * rough / LOBE_ROUGH
+    # Position-derived by default, so an un-seeded caller is still various.
+    # Quantised so that a lobe does not change shape under floating-point
+    # noise in its own placement, and so the value is byte-reproducible.
+    key = ((seed,) if seed is not None
+           else ("lobe", round(cx, 3), round(cy, 3), round(cz, 3),
+                 round(r, 4)))
+    # The polar division, shifted off the even one. This is the line that kills
+    # the prism: with a bias, `sin(pi*(1+b)/3) != sin(pi*(2+b)/3)` for any
+    # b != 0, so the two rings of a 3-stack lobe can no longer share a radius.
+    bias = tilt * (_u(*key, "phi") - 0.5)
     n0 = len(v)
     for i in range(1, stacks):
-        phi = math.pi * i / stacks
+        phi = math.pi * (i + bias) / stacks
         ry, rr = math.cos(phi) * r * squash, math.sin(phi) * r
+        # Ring height jitter, bounded WELL under the gap to the next ring so a
+        # ring cannot cross its neighbour and turn the surface inside out.
+        # 0.18 of the mean gap is inside that for every stack count used here.
+        dy = (r * squash * LOBE_JITTER * rough / LOBE_ROUGH
+              * (_u(*key, "y", i) - 0.5) / stacks)
         for k in range(seg):
             a = math.tau * k / seg
-            v.append((cx + rr * math.cos(a), cy + ry, cz + rr * math.sin(a)))
+            s = 1.0 + rough * (_u(*key, "d", i, k) - 0.5) * 2.0
+            v.append((cx + rr * s * math.cos(a), cy + ry + dy,
+                      cz + rr * s * math.sin(a)))
     top, bot = len(v), len(v) + 1
-    v += [(cx, cy + r * squash, cz), (cx, cy - r * squash, cz)]
+    # THE POLES MOVE OFF THE AXIS. A lobe with a centred apex reads as a cone
+    # however rough its sides are, because the apex is where the eye reads the
+    # axis of revolution. Leaning it is free and it is what takes the last of
+    # the "pyramid" out of the silhouette.
+    lean = r * rough * LOBE_POLE
+    v += [(cx + lean * (_u(*key, "tx") - 0.5) * 2.0,
+           cy + r * squash * (1.0 - rough * 0.30 * _u(*key, "th")),
+           cz + lean * (_u(*key, "tz") - 0.5) * 2.0),
+          (cx + lean * (_u(*key, "bx") - 0.5) * 2.0,
+           cy - r * squash * (1.0 - rough * 0.30 * _u(*key, "bh")),
+           cz + lean * (_u(*key, "bz") - 0.5) * 2.0)]
     t0 = len(t)
     for i in range(stacks - 2):
         lo, hi = n0 + i * seg, n0 + (i + 1) * seg
@@ -895,8 +1070,17 @@ def _skeleton(seed, h, r0, fork, spread, rise, orders=BRANCH_ORDERS):
         ex, ez = reach * math.cos(a), reach * math.sin(a)
         # A limb leaves the trunk steeply and flattens: the elbow is the crease
         # that reads as a branch. Two segments, so it has one.
+        #
+        # AND THE FAR END SAGS. The old elbow rose monotonically to `top`, so
+        # every limb was a straight-ish ray leaving the trunk and the canopy
+        # sat on a cone of them. A mature open-grown broadleaf carries its
+        # outer boughs BELOW the elbow -- that droop is most of why 29a's
+        # canopies "overhang the frame" -- and expressing it costs nothing but
+        # the height of one point. Drawn per limb so the crown edge is ragged
+        # in section as well as in plan.
         mid = (ex * 0.42, fork + (top - fork) * 0.68, ez * 0.42)
-        end = (ex, top, ez)
+        sag = (top - fork) * BRANCH_SAG * (0.3 + 0.7 * _u(seed, "sg", j))
+        end = (ex, top - sag, ez)
         segs.append((1, (0.0, fork - 0.20, 0.0), mid, br * 1.7, br * 1.15))
         segs.append((1, mid, end, br * 1.15, br * 0.72))
         if orders < 2:
@@ -938,8 +1122,16 @@ def _skeleton(seed, h, r0, fork, spread, rise, orders=BRANCH_ORDERS):
 # triangles for a mass the eye reads as one surface.
 _TREE_LOD = {
     #        orders foliage trunk_seg rings br_seg lobes lobe_seg lobe_r
-    -1:  dict(orders=3, foliage=2, tseg=12, rings=5, bseg=7, lobes=5,
-              lseg=7, lstk=4, lscale=1.00),
+    # 4t: the near level carries SEVEN smaller lobes per tip instead of five
+    # larger ones. `/tmp/frames/after-tree.png` at the module's own hero camera
+    # shows why -- with `_lobe` made irregular the canopy stopped being plates
+    # and became lumps, and the lumps were still big enough to count. Lobe
+    # radius is `crown * LEAF_R_FRAC * lscale`, so dropping lscale 1.00 -> 0.80
+    # while raising the count keeps roughly the same foliage VOLUME and buys
+    # the silhouette twice as many edges. Measured cost over six hero
+    # broadleaves: 20,562 -> 26,214 triangles.
+    -1:  dict(orders=3, foliage=2, tseg=12, rings=5, bseg=7, lobes=7,
+              lseg=7, lstk=4, lscale=0.80),
     0:   dict(orders=1, foliage=1, tseg=TRUNK_SEG, rings=3, bseg=6, lobes=2,
               lseg=5, lstk=3, lscale=1.45),
     1:   dict(orders=1, foliage=1, tseg=6, rings=3, bseg=4, lobes=1,
@@ -974,15 +1166,45 @@ def _broadleaf(seed, level, squat=False):
         rings = [rings[0], rings[1], rings[-1]]
     elif lod["rings"] == 2:
         rings = [rings[0], rings[-1]]
+    # THE TRUNK LEANS AND BENDS, AND IT IS FREE. Every trunk in this module was
+    # `(0.0, y, 0.0)` -- dead vertical, dead straight, at every level -- and
+    # `/tmp/frames/before-hero5.png` shows what that reads as at 9 m: a lamp
+    # post. Nothing in the reference supports it either; 29a's broadleaves
+    # overhang the frame, which a vertical stem cannot do. The lean is a
+    # direction and a magnitude drawn per tree, and the bend is a single
+    # sideways bow applied on a sine so the base stays plumb where it meets the
+    # flare and the fork carries the whole offset. Same vertices, same
+    # triangles, different positions -- and it is the largest single change to
+    # the silhouette in this session. -- INV-997
+    la = _u(seed, "lean_a") * math.tau
+    lm = TRUNK_LEAN * fork * (0.25 + 0.75 * _u(seed, "lean_m"))
+    bow = TRUNK_BOW * fork * (_u(seed, "bow") - 0.5) * 2.0
+    ba = la + math.pi / 2.0
+
+    def _axis(y):
+        f = y / max(fork, 1e-9)
+        s = math.sin(math.pi * min(f, 1.0)) * bow
+        return (lm * f * f * math.cos(la) + s * math.cos(ba), y,
+                lm * f * f * math.sin(la) + s * math.sin(ba))
+
     _sweep(v, t, g, "garden_trunk",
-           [(0.0, y, 0.0) for y, _r in rings], [r for _y, r in rings],
+           [_axis(y) for y, _r in rings], [r for _y, r in rings],
            seg=lod["tseg"], flute=(FLUTE_D if level < 0 else 0.0),
            phase=_u(seed, "ph") * math.tau)
+    # Everything above the fork hangs off the trunk's actual top, not off the
+    # origin. Without this the limbs spring from thin air beside the stem --
+    # which is the class of defect the "no foliage mass on the trunk axis"
+    # gate was written for, arriving from the other direction.
+    apex = _axis(fork)
     if not lod["orders"]:
-        _lobe(v, t, g, "garden_foliage", 0.0, fork + rise * 0.55, 0.0,
-              crown * 0.95, seg=lod["lseg"], stacks=3, squash=0.80)
+        _lobe(v, t, g, "garden_foliage", apex[0], fork + rise * 0.55, apex[2],
+              crown * 0.95, seg=lod["lseg"], stacks=3, squash=0.80,
+              seed=f"{seed}/blob")
         return v, t, g
     segs = _skeleton(seed, h, r0, fork, crown, rise, orders=lod["orders"])
+    segs = [(o, (p0[0] + apex[0], p0[1], p0[2] + apex[2]),
+             (p1[0] + apex[0], p1[1], p1[2] + apex[2]), ra, rb)
+            for o, p0, p1, ra, rb in segs]
     for order, p0, p1, ra, rb in segs:
         _sweep(v, t, g, "garden_branch", [p0, p1], [ra, rb],
                seg=max(3, lod["bseg"] - order + 1))
@@ -1047,6 +1269,68 @@ def _palm(seed, level):
                flat=FROND_FLAT, phase=a)
     _lobe(v, t, g, "garden_foliage", top[0], top[1] + fl * 0.10, top[2],
           fl * 0.20, seg=max(4, fseg + 1), stacks=3, squash=0.75)
+    return v, t, g
+
+
+def _hedge_run(v, t, g, name, x0, x1, z, w, h, seed):
+    """A clipped hedge as a MASS, not as a rectangular prism.
+
+    `hard_landscape` built each of its 24 runs as one `_box`: twelve triangles,
+    a dead-straight top line, four hard arrises and a flat face.
+    `/tmp/frames/before-cover.png` -- 10 m away, Forward+ on Vulkan 1.4 -- is
+    dominated by them, and they read as extruded green concrete kerbs. That is
+    the same "shitty little cubes" finding the owner made about the buildings,
+    on the object that happens to fill the near field of the park.
+
+    A clipped hedge IS a box in intent -- 29a says "clipped hedges" and the
+    silhouette must stay rectangular, so this is deliberately NOT a row of
+    shrubs. What separates a hedge from a kerb at 10 m is that its surface is
+    foliage: the top line undulates by a few centimetres, the arrises are soft,
+    and the face is lumpy rather than flat. All three come out of `_sweep` for
+    free, because it already has the two knobs they need -- `flat` squashes the
+    circular section into a hedge section, and `flute` puts ridges round it.
+
+    The section radius is the hedge's HALF-HEIGHT and `flat` is its width over
+    its height, so a caller that changes `HEDGE_W_M` or `HEDGE_H_M` gets the
+    hedge it asked for and this function has no second copy of either. -- INV-998
+    """
+    ln = x1 - x0
+    if ln <= 0.1:
+        return v, t, g
+    n = max(2, int(round(ln / HEDGE_BAY_M)) + 1)
+    r0 = h / 2.0
+    pts, radii = [], []
+    for i in range(n):
+        f = i / (n - 1)
+        x = x0 + ln * f
+        # THE TOP LINE UNDULATES. A clipped hedge is cut level and then grows,
+        # so the crest wanders by a few centimetres between cuts. This is the
+        # single line that stops the run reading as an extrusion.
+        jit = 1.0 + HEDGE_CREST * (_u(seed, "cr", i) - 0.5) * 2.0
+        # ...and the ends are rounded, because a hedge is not cut square at its
+        # end either. Tapering the last station also gives the cap something
+        # small to close over.
+        end = min(f, 1.0 - f) / max(HEDGE_END_F, 1e-9)
+        pts.append((x, r0 * HEDGE_SIT, z))
+        radii.append(r0 * jit * min(1.0, 0.30 + 0.70 * min(end, 1.0)))
+    t0 = len(t)
+    n_before = len(v)
+    _sweep(v, t, g, name, pts, radii, seg=HEDGE_SEG, flute=HEDGE_FLUTE,
+           flutes=5, flat=w / h)
+    # Cap both ends, so the run is a closed solid rather than an open pipe.
+    # `_sweep` emits ring i at `n_before + i * seg`; the two rings that need
+    # closing are the first and the last.
+    g.pop()                                    # re-tagged below as one span
+    for ring0, tip, out in ((n_before, pts[0], -1),
+                            (n_before + (n - 1) * HEDGE_SEG, pts[-1], 1)):
+        c = len(v)
+        v.append((tip[0] + out * radii[0 if out < 0 else -1] * 0.35,
+                  tip[1], tip[2]))
+        for k in range(HEDGE_SEG):
+            k2 = (k + 1) % HEDGE_SEG
+            t.append((c, ring0 + k, ring0 + k2) if out < 0
+                     else (c, ring0 + k2, ring0 + k))
+    g.append((name, t0, len(t)))
     return v, t, g
 
 
@@ -1527,9 +1811,8 @@ def hard_landscape(seed="garden"):
         ln = HEDGE_MIN_M + (HEDGE_MAX_M - HEDGE_MIN_M) * _u(seed, "hl", i)
         zs = 1.0 if _u(seed, "hs", i) > 0.5 else -1.0
         z = zs * (PATH_W_M + 0.9 + 2.5 * _u(seed, "hz", i))
-        _box(v, t, g, "garden_hedge",
-             (x0, -0.05, z - HEDGE_W_M / 2),
-             (min(x0 + ln, hl - 1.0), HEDGE_H_M, z + HEDGE_W_M / 2))
+        _hedge_run(v, t, g, "garden_hedge", x0, min(x0 + ln, hl - 1.0), z,
+                   HEDGE_W_M, HEDGE_H_M, f"{seed}/hedge/{i}")
 
     # Terrace steps down to the lawn: each tread is two long lines.
     for i in range(STEP_COUNT):
@@ -1732,14 +2015,31 @@ def hard_landscape(seed="garden"):
 LOD_SWITCH_M = (NEAR_SWITCH_M, 113.0, 361.6, 1017.0)
 
 # What the whole townscape may cost. DERIVED, and the derivation is a
-# measurement rather than an allocation: the drum scene at the garden camera
-# built 263,384 triangles against `budget.DRUM["visible_set_tris"]` of 300,000
-# (the render log of `scratchpad/frames/before-tree5.png`), of which this
-# module was 22,620. So the room is 300,000 - 263,384 + 22,620 = 59,236, and
-# this sits under it with 4,236 of margin for the drum's own growth.
-# `_selftest` measures the sum at the garden eye rather than trusting the
-# subtraction, and it FAILS if the near field is grown past it. -- INV-457
-TOWNSCAPE_TRIS = 55_000
+# measurement rather than an allocation. RE-MEASURED IN 4t, because the figure
+# below it was two sessions stale in the FAVOURABLE direction -- which is
+# exactly the case CLAUDE.md warns survives longest, "because nobody re-checks
+# a number that is only going to improve".
+#
+# The 4q derivation read: the drum scene built 263,384 triangles against
+# `budget.DRUM["visible_set_tris"]` of 300,000 with this module at 22,620, so
+# the room is 59,236 and the cap is 55,000.
+#
+# Measured again at the garden eye (113.42 deg, 4885.2 m), from the export log
+# of `/tmp/frames/before-hero5.png`, Vulkan 1.4 Forward+:
+#
+#     drum shot total          258,692   of budget.DRUM's 300,000
+#     of which this module      51,026
+#     everything else          207,666
+#     room for this module      92,334
+#
+# The cap is NOT set to 92,334. That figure is one eye's visible set, and both
+# `drum_ground.visible_set` and `drum_dressing.dressing_set` are eye-dependent,
+# so spending the whole of it would leave the drum's own worst standing
+# position with nothing. 72,000 leaves 20,334 for that -- 9.8% of the current
+# non-townscape load -- and `_selftest` measures the sum at the garden eye
+# rather than trusting the subtraction, so it FAILS if the near field is grown
+# past it. -- INV-457, re-derived
+TOWNSCAPE_TRIS = 72_000
 
 # The near town, INV-457. `The Gardens.webp` reads the settlement as "a dense
 # orthogonal STREET GRID"; the old townscape scattered twelve blocks over 218 m
@@ -1797,9 +2097,7 @@ def ground_cover(seed, eye=(0.0, 0.0), radius=NEAR_SWITCH_M, avoid=()):
     # confetti (session 2n's greebles) and pure noise clumps into holes. The
     # cell is sized from the wanted density, and each occupant is jittered
     # inside its own cell, so the spacing has a floor and no pattern.
-    for name, per100, r0, lobes, seg in (
-            ("tussock", TUSSOCK_PER_100M2, TUSSOCK_R_M, 1, 4),
-            ("scrub", SCRUB_PER_100M2, SCRUB_R_M, 3, 5)):
+    for name, per100, r0, lobe_band, seg, squash, group in GROUND_KINDS:
         cell = math.sqrt(100.0 / per100)
         n = int(math.ceil(2 * radius / cell))
         for i in range(n):
@@ -1809,20 +2107,82 @@ def ground_cover(seed, eye=(0.0, 0.0), radius=NEAR_SWITCH_M, avoid=()):
                 if math.hypot(x - ex, z - ez) > radius or not clear(x, z):
                     continue
                 rr = r0 * (0.7 + 0.7 * _u(seed, name, "r", i, j))
+                # LOBE COUNT IS DRAWN, NOT FIXED. With a constant count every
+                # clump of a kind has the same plan and the eye indexes it --
+                # the "identical apart from scale and rotation" the reviewer
+                # measured. A band costs nothing on average and gives the
+                # population a spread of plans as well as of sizes.
+                lo_n, hi_n = lobe_band[0], lobe_band[-1]
+                lobes = lo_n + int((hi_n - lo_n + 1)
+                                   * _u(seed, name, "n", i, j))
+                lobes = min(lobes, hi_n)
+                # Squash is drawn too, so a kind is a HABIT rather than a
+                # shape: some tussocks are domed and some are flat.
+                sq = squash * (0.78 + 0.44 * _u(seed, name, "q", i, j))
+                if UNIFORM_CONTROL:
+                    # THE CONTROL REPRODUCES THE SHIPPED POPULATION, not just
+                    # `_lobe` with its rules off. The version this session
+                    # replaced drew a RADIUS per clump and nothing else -- a
+                    # fixed lobe count and a fixed squash per kind -- so a
+                    # control that withheld only the `_lobe` rules would leave
+                    # the aspect-ratio draw in and understate what changed.
+                    # `lobe_band[0]` is the old count for both original kinds
+                    # (tussock 1, scrub 3) by construction.
+                    lobes, sq = lo_n, squash
                 for k in range(lobes):
                     a = math.tau * (k + _u(seed, name, "a", i, j, k)) / lobes
-                    # A CLUMP, NOT A LATTICE POINT. One lobe per cell reads as
-                    # a scattering of dark dice on flat grass, which is what
-                    # `after-heroA.png` shows underfoot. Overlapping lobes at
-                    # 0.38 of their own radius merge into a patch of scrub with
-                    # a lumpy edge, for the same triangles.
-                    off = rr * 0.38 * k
-                    _lobe(v, t, g, "garden_hedge",
-                          x + off * math.cos(a), rr * SCRUB_H_FRAC * 0.55,
-                          z + off * math.sin(a),
-                          rr * (0.75 + 0.4 * _u(seed, name, "s", i, j, k)),
-                          seg=seg, stacks=3,
-                          squash=SCRUB_H_FRAC)
+                    # NO LOBE MAY SWALLOW THE CLUMP, and this is `_leaf_mass`'s
+                    # own rule finally applied down here. The version this
+                    # replaces put lobe 0 at the clump centre carrying up to
+                    # 1.15 of the clump radius and offset the rest by only
+                    # 0.30-0.52 of it -- so every satellite was INSIDE the
+                    # first one and the union was a single mass with pimples.
+                    # `/tmp/frames/ab-shrubs.png` shows the consequence: after
+                    # `_lobe` was made irregular the big clumps STILL read as
+                    # one faceted lump, because there was only ever one lump.
+                    #
+                    # Every lobe now sits on a ring at 0.42-0.78 of the clump
+                    # radius carrying 0.42-0.66 of it, so no single lobe
+                    # reaches the clump's own silhouette and the outline is the
+                    # union of several. Same rule, same reason, same words as
+                    # `_leaf_mass`: neighbouring masses must INTERSECT, and the
+                    # crease where they cut each other is the line.
+                    off = rr * (0.42 + 0.36 * _u(seed, name, "o", i, j, k))
+                    if lobes == 1:
+                        off *= 0.0
+                    lr = rr * (0.42 + 0.24 * _u(seed, name, "s", i, j, k))
+                    if lobes == 1:
+                        lr = rr * (0.80 + 0.30 * _u(seed, name, "s", i, j, k))
+                    # The top is ragged too, not just the plan: a clump whose
+                    # lobes all sit at one height has a level top edge however
+                    # lumpy its plan is.
+                    lift = rr * sq * 0.55 * (_u(seed, name, "h", i, j, k)
+                                             - 0.35)
+                    # SIT IT INTO THE GROUND, BY A VARYING AMOUNT. A lobe whose
+                    # underside is tangent to the ground plane draws a clean
+                    # ellipse where it meets it, and a row of clean ellipses is
+                    # what reads as objects PLACED on a floor rather than as
+                    # things growing out of it. Burying 0.10-0.30 of the lobe
+                    # cuts that line irregularly and costs nothing.
+                    bury = lr * sq * (0.10 + 0.20 * _u(seed, name, "b",
+                                                       i, j, k))
+                    if UNIFORM_CONTROL:
+                        off = rr * 0.38 * k
+                        lr = rr * (0.75 + 0.4 * _u(seed, name, "s", i, j, k))
+                        lift = bury = 0.0
+                    # `stacks` is 4 on anything big enough to show a profile
+                    # and 3 on the small stuff. A 3-stack lobe has ONE ring of
+                    # section between its poles, so its profile is two straight
+                    # lines whatever the rings do; 4 gives it a shoulder. The
+                    # split is by radius rather than by kind so it follows the
+                    # draw, and it is where the extra triangles of this session
+                    # actually went.
+                    stk = 3 if (lr < LOBE_STACK4_M or UNIFORM_CONTROL) else 4
+                    _lobe(v, t, g, group,
+                          x + off * math.cos(a), lr * sq - bury + lift,
+                          z + off * math.sin(a), lr,
+                          seg=seg, stacks=stk, squash=sq,
+                          seed=f"{seed}/{name}/{i}/{j}/{k}")
     return v, t, g
 
 
@@ -2282,12 +2642,26 @@ def _selftest():
     # 3.24 deg crease threshold. This is the assertion that the near level
     # actually spends its sections on ridges rather than on smoothness, and it
     # is measured on the emitted ring rather than on `FLUTE_D`.
+    # MEASURED FROM THE RING'S OWN CENTROID, IN 3-SPACE, and the reason is a
+    # defect this gate had and did not know about. It used to read
+    # `hypot(q[0], q[2])` -- the distance from the WORLD ORIGIN, in plan. That
+    # is the flute only while the trunk is exactly vertical and exactly on the
+    # axis, which every trunk in this module was. The moment `_broadleaf` gave
+    # the trunk a lean (INV-997) the base section became a circle in a TILTED
+    # plane, which projects to an ellipse, and the control read 0.0299 and
+    # failed -- on a change that added no flute at all.
+    #
+    # A circle of radius r has every vertex exactly r from its own centroid at
+    # any tilt, so the 3-space form measures the flute and nothing else. This
+    # is the same class as the `ragdoll.gd` finding CLAUDE.md records: the old
+    # assertion was true of the content and was not a statement about the
+    # quantity it was named for.
     def _ring_spread(lv):
         tv, _tt, tg = tree("gate/bark", level=lv, form="broadleaf")
-        g0 = [(a, b) for n, a, b in tg if n == "garden_trunk"][0]
         seg = {-1: 12, 0: TRUNK_SEG}[lv]
         ring = tv[:seg]
-        rr = [math.hypot(q[0], q[2]) for q in ring]
+        cen = tuple(sum(q[i] for q in ring) / len(ring) for i in range(3))
+        rr = [math.dist(cen, q) for q in ring]
         return (max(rr) - min(rr)) / (sum(rr) / len(rr))
 
     check("the near level's trunk is fluted, not smooth",
@@ -2402,6 +2776,154 @@ def _selftest():
           len(bare[1]) == 0 and len(gt) > 400,
           f"{len(gt)} triangles of cover against {len(bare[1])} bare")
 
+    # --- TWO PLANTS OF A KIND MUST NOT BE ONE PLANT ------------------------
+    # The reviewer's finding, in the reviewer's own words: the shrubs are
+    # "identical apart from scale and rotation". That is a statement no gate in
+    # this module could make, because every one of them scores ONE plant
+    # against a standard -- crown span, mass plan, line density, triangle
+    # count, closure, winding -- and 651 copies of one shrub pass all six.
+    # `deck.py --degeneracy` asks this of places; this asks it of plants, by
+    # the same rule: two masses whose normalised shape hashes the same ARE one
+    # mass. See `lobe_shapes` for why translation and SCALE are quotiented out
+    # and rotation deliberately is not.
+    cov = ground_cover("gate")
+    shapes = lobe_shapes(*cov)
+    worst_frac, worst_name, worst_pair = 1.0, "", (0, 0)
+    for name, sigs in shapes.items():
+        d, n = len(set(sigs)), len(sigs)
+        if n >= 8 and d / n < worst_frac:
+            worst_frac, worst_name, worst_pair = d / n, name, (d, n)
+    check("no two ground-cover masses of a kind are the same shape",
+          worst_frac >= 0.98,
+          f"worst kind {worst_name} has {worst_pair[0]} distinct shapes of "
+          f"{worst_pair[1]}")
+    # The control, run rather than described: the population this replaced.
+    global UNIFORM_CONTROL
+    UNIFORM_CONTROL = True
+    try:
+        old_shapes = lobe_shapes(*ground_cover("gate"))
+    finally:
+        UNIFORM_CONTROL = False
+    old_worst = min((len(set(s)) / len(s), n, len(set(s)), len(s))
+                    for n, s in old_shapes.items() if len(s) >= 8)
+    check("...and the gate FIRES on the population it replaced",
+          old_worst[0] <= 0.02,
+          f"withholding the variety rules gives {old_worst[2]} distinct shape"
+          f"(s) of {old_worst[3]} for {old_worst[1]}")
+
+    # --- AND A MASS MUST NOT BE A SOLID OF REVOLUTION ----------------------
+    # Distinctness alone does not answer the OTHER half of the finding -- "a
+    # stack of flat hexagonal plates", "hexagonal truncated pyramids" -- because
+    # 651 lathe-turned solids of 651 different sizes are all distinct and all
+    # read as the same object. What makes them read that way is that every
+    # vertex of a ring sat at exactly `sin(phi) * r` from the axis, so the
+    # silhouette is a regular polygon at any seg count.
+    #
+    # Measured on the emitted ring: the spread of vertex radii about the lobe's
+    # own axis, as a fraction of their mean, worst ring. A solid of revolution
+    # scores EXACTLY 0.0 and there is nothing to tune.
+    def _revolution(lv_v, lv_t, lv_g, seg, stacks):
+        worst = 9.9
+        for _n, lo, hi in lv_g:
+            idx = sorted({j for tri in lv_t[lo:hi] for j in tri})
+            pts = [lv_v[j] for j in idx]
+            cen = tuple(sum(q[i] for q in pts) / len(pts) for i in range(3))
+            for i in range(stacks - 1):
+                ring = pts[i * seg:(i + 1) * seg]
+                if len(ring) < 3:
+                    continue
+                rr = [math.hypot(q[0] - cen[0], q[2] - cen[2]) for q in ring]
+                m = sum(rr) / len(rr)
+                if m > 1e-9:
+                    worst = min(worst, (max(rr) - min(rr)) / m)
+        return worst
+
+    probe = [], [], []
+    _lobe(*probe, "probe", 0.0, 0.0, 0.0, 1.0, seg=6, stacks=3, squash=0.55,
+          seed="gate/rev")
+    check("a foliage mass is not a solid of revolution",
+          _revolution(*probe, 6, 3) > 0.25,
+          f"worst ring spread {_revolution(*probe, 6, 3):.4f} of its mean")
+    flat = [], [], []
+    _lobe(*flat, "probe", 0.0, 0.0, 0.0, 1.0, seg=6, stacks=3, squash=0.55,
+          seed="gate/rev", rough=0.0)
+    check("...and the gate FIRES on a lathe-turned lobe",
+          _revolution(*flat, 6, 3) < 1e-9,
+          f"the shape this replaced scores {_revolution(*flat, 6, 3):.9f}")
+    # AND THE PRISM, NAMED SEPARATELY, because it is a different defect with
+    # the same symptom: at `stacks = 3` the rings land at phi 60 and 120 and
+    # `sin(60) == sin(120)`, so BOTH rings carried the same radius and the mesh
+    # was a straight barrel with a cone on each end -- a truncated pyramid, at
+    # every seg count, for every shrub and every level-0 tree lobe.
+    def _ring_radii(mesh, seg, stacks):
+        vv = mesh[0]
+        cen = tuple(sum(q[i] for q in vv) / len(vv) for i in range(3))
+        return [sum(math.hypot(q[0] - cen[0], q[2] - cen[2])
+                    for q in vv[i * seg:(i + 1) * seg]) / seg
+                for i in range(stacks - 1)]
+
+    # OVER A POPULATION, NOT OVER ONE DRAW, and the difference is not
+    # pedantry: the bias is drawn per lobe on a symmetric interval, so an
+    # individual lobe may legitimately draw a bias near zero and be a barrel.
+    # The defect was that EVERY lobe was one, structurally, whatever it drew.
+    # So the statistic is the median separation over the population, with the
+    # control asserting the old code gives exactly zero on every member of it.
+    def _seps(rough):
+        out = []
+        for i in range(40):
+            m = [], [], []
+            _lobe(*m, "probe", 0.0, 0.0, 0.0, 1.0, seg=6, stacks=3,
+                  squash=0.55, seed=f"gate/prism/{i}", rough=rough)
+            r0_, r1_ = _ring_radii(m, 6, 3)
+            out.append(abs(r0_ - r1_) / max(r0_, r1_))
+        return sorted(out)
+
+    seps = _seps(None)
+    check("a 3-stack lobe's two rings carry different radii, so the "
+          "population is not prisms",
+          seps[len(seps) // 2] > 0.10,
+          f"median separation {seps[len(seps) // 2]:.3f} over 40 lobes, "
+          f"range {seps[0]:.3f}..{seps[-1]:.3f}")
+    old_seps = _seps(0.0)
+    check("...and the gate FIRES on the even polar division",
+          old_seps[-1] < 1e-9,
+          f"the shape this replaced puts both rings at the same radius on "
+          f"{sum(1 for s in old_seps if s < 1e-9)} of 40 lobes, because "
+          f"sin(60 deg) == sin(120 deg)")
+
+    # --- a hedge is a mass, not an extrusion -------------------------------
+    # The park's 24 hedge runs were one `_box` each and they are the object
+    # that fills `/tmp/frames/before-cover.png`. A box has a crest that is one
+    # straight line; this asserts the crest WANDERS, measured on the emitted
+    # mesh, and closes the solid while it is here -- an open hedge would show
+    # the background down its length.
+    hv, ht, hg = [], [], []
+    _hedge_run(hv, ht, hg, "garden_hedge", 0.0, 12.0, 0.0,
+               HEDGE_W_M, HEDGE_H_M, "gate/hedge")
+    edges = {}
+    for a, b, c in ht:
+        for p, q in ((a, b), (b, c), (c, a)):
+            edges[(min(p, q), max(p, q))] = edges.get((min(p, q), max(p, q)),
+                                                      0) + 1
+    check("a hedge run is a closed manifold solid",
+          not [k for k, n in edges.items() if n != 2]
+          and _signed_volume(hv, ht) > 0,
+          f"{sum(1 for n in edges.values() if n == 1)} open, "
+          f"{sum(1 for n in edges.values() if n > 2)} non-manifold, "
+          f"volume {_signed_volume(hv, ht):.3f}")
+    crest = [q[1] for q in hv if q[1] > HEDGE_H_M * 0.6]
+    spread = (max(crest) - min(crest)) / HEDGE_H_M
+    check("a hedge crest wanders, so the run is not an extrusion",
+          spread > 0.03, f"crest spread {spread:.4f} of the hedge height")
+    box_v, box_t, box_g = [], [], []
+    _box(box_v, box_t, box_g, "garden_hedge", (0.0, -0.05, -HEDGE_W_M / 2),
+         (12.0, HEDGE_H_M, HEDGE_W_M / 2))
+    bc = [q[1] for q in box_v if q[1] > HEDGE_H_M * 0.6]
+    check("...and the gate FIRES on the box this replaced",
+          (max(bc) - min(bc)) / HEDGE_H_M < 1e-9,
+          f"one `_box` per run gives a crest spread of "
+          f"{(max(bc) - min(bc)) / HEDGE_H_M:.9f} -- a single straight line")
+
     # --- the swept section is wound outward --------------------------------
     sv, sw_t, sw_g = [], [], []
     _sweep(sv, sw_t, sw_g, "probe", [(0, 0, 0), (0, 4, 0)], [1.0, 1.0], seg=8)
@@ -2469,13 +2991,40 @@ HERO_SHOTS = {
     # 9 m from a level -1 broadleaf, standing under the canopy edge. This is
     # THE frame for the tree, and its before-image is
     # `docs/garden-4q-before-tree.png` at the identical camera.
+    #
+    # SESSION 4t re-took this pair, and they are the evidence for INV-995/997:
+    # `scratchpad/frames/garden-4t-before-tree.png` shows a dead-vertical
+    # trunk carrying a symmetric umbrella of large flat plates, and
+    # `garden-4t-after-tree.png` at the identical camera shows a leaning,
+    # bowed stem with sagging limbs under a canopy of many small irregular
+    # masses with sky between them. Both Vulkan 1.4 / Forward+, checked in the
+    # renderer's own output line, per CLAUDE.md's silent-fallback rule.
     "hero_tree": ('--shot drum --eye " -117.091,243.413,4909.880" '
                   '--target " -116.094,241.341,4918.880" --fov 50'),
     # 14 m off the near corner of a street block, three-quarter, so the tiers,
     # the batter and the wing are all in silhouette at once. A face-on shot of
     # a terraced building looks exactly like a face-on shot of a box.
+    #
+    # `scratchpad/frames/garden-4t-after-block.png` is the current state, and
+    # it is worth citing for what it REFUTES: the 4t brief carried the owner's
+    # session-3r finding that `block_building` "is a box". At this camera the
+    # setbacks, the cantilevered tier slabs, the battered base, the recessed
+    # bands with their cill and lintel reveals and the individual panes are all
+    # legible. The mass was rebuilt in 4q (INV-455) and the brief's claim is
+    # stale. What IS wrong in that frame is the window band clipping to pure
+    # white, which is `garden_window_band`'s emission and belongs to
+    # `materials.py`, not here.
     "hero_block": ('--shot drum --eye " -113.898,245.347,4885.000" '
                    '--target " -124.912,236.429,4900.000" --fov 50'),
+    # THE GROUND COVER'S OWN CAMERA, and it exists because the first 4t
+    # before/after pair was taken at a camera that contained none of it.
+    # `ground_cover` runs to `NEAR_SWITCH_M` about the TERRACE CENTRE and the
+    # terrace itself is in `avoid`, so the cover lives in an annulus between
+    # 24 m and 35 m out along the long axis. An eye on the terrace edge looking
+    # outward is the shot that holds it. Rendering `--omit dressing` at the
+    # first camera is what settled it: every shrub in that frame belonged to
+    # `drum_dressing`, not to this module.
+    "hero_cover": ('--shot drum --stand 112.0,4914 --look 112.0,4928'),
 }
 
 
@@ -2511,6 +3060,109 @@ def _near_report():
     return 0
 
 
+def lobe_shapes(v, t, g, kinds=None):
+    """Shape signatures of every foliage/ground mass in a built mesh.
+
+    THE MEASUREMENT THE REVIEWER MADE BY EYE, made by arithmetic. The finding
+    was "identical apart from scale and rotation", and that phrase names the
+    two transforms a signature has to quotient out or the gate passes for the
+    wrong reason:
+
+      * TRANSLATION -- removed by measuring from each mass's own centroid.
+        Without this, two identical shrubs 4 m apart hash differently and a
+        station of one shrub scores 100% distinct.
+      * SCALE -- removed by dividing by the mass's own mean radius. This is the
+        one that matters, because `ground_cover` ALREADY drew a radius per
+        clump: the old population was various in size and singular in shape,
+        which is exactly what a size-sensitive hash cannot see.
+
+    ROTATION IS NOT QUOTIENTED OUT, and that is deliberate rather than an
+    oversight. `_lobe` always starts its ring at a = 0, so its vertex order is
+    already canonical in its own frame; two lobes that differ only by yaw
+    produce the SAME signature here. So the measure is strictly harsher than
+    the reviewer's phrase -- it calls two masses identical in exactly the cases
+    they said it should, and cannot be passed by spinning a copy.
+
+    Returns {kind: [signature, ...]}, one entry per mass.
+    """
+    want = set(kinds) if kinds else None
+    out = {}
+    for name, lo, hi in g:
+        if want is not None and name not in want:
+            continue
+        idx = sorted({j for tri in t[lo:hi] for j in tri})
+        if len(idx) < 4:
+            continue
+        pts = [v[j] for j in idx]
+        cen = tuple(sum(q[i] for q in pts) / len(pts) for i in range(3))
+        rr = [math.dist(cen, q) for q in pts]
+        mean = sum(rr) / len(rr)
+        if mean <= 1e-9:
+            continue
+        # Quantised at 1/1000 of the mass's own size. Fine enough that the
+        # 0.34 radial deviation separates every lobe, coarse enough that
+        # floating-point noise in placement cannot manufacture distinctness.
+        sig = tuple(sorted(
+            tuple(round((q[i] - cen[i]) / mean, 3) for i in range(3))
+            for q in pts))
+        out.setdefault(name, []).append(sig)
+    return out
+
+
+def _variety_report(legacy=False):
+    """Are two plants of a kind the same plant? -- the acceptance measure.
+
+    `deck.py --degeneracy` asks this of PLACES and CLAUDE.md records why it is
+    the shape of gate that catches what every other gate here misses: "a gate
+    that scores N things must also ask whether the N things are the same
+    thing". Every gate this module had -- crown span, mass plan, line density,
+    triangle count, closure, winding -- scores ONE plant against a standard,
+    and a drum planted with 651 copies of one shrub passes all of them.
+
+    `--legacy` withdraws the variety rules through `UNIFORM_CONTROL` and
+    rebuilds the identical population, so the number this prints has its own
+    control beside it on every run rather than in a comment.
+    """
+    global UNIFORM_CONTROL
+    UNIFORM_CONTROL = bool(legacy)
+    try:
+        schema, profile = it.load()
+        sector = it.drum_sector(schema, profile)
+        dg.configure(schema, profile, sector)
+
+        print("legacy control: variety rules WITHHELD (rough = 0)" if legacy
+              else "variety rules applied")
+        worst = None
+        total_n = total_d = 0
+        for label, built in (
+                ("ground cover", ground_cover("garden")),
+                ("hero broadleaf canopy",
+                 tree("garden/hero/1", level=NEAR_LEVEL, form="broadleaf")),
+                ("level-0 street tree",
+                 tree("garden/stt/1/3", level=0, form="broadleaf")),
+                ("park planting", park_planting("garden", TERRACE_L_M / 2,
+                                                TERRACE_W_M / 2))):
+            shapes = lobe_shapes(*built)
+            for name, sigs in sorted(shapes.items()):
+                d, n = len(set(sigs)), len(sigs)
+                total_d += d
+                total_n += n
+                frac = d / n
+                if worst is None or frac < worst[0]:
+                    worst = (frac, f"{label}/{name}", d, n)
+                print(f"  {label:22s} {name:24s} {d:5d} distinct of {n:5d}"
+                      f"  {100.0 * frac:5.1f}%")
+        print(f"  {'ALL':22s} {'':24s} {total_d:5d} distinct of {total_n:5d}"
+              f"  {100.0 * total_d / max(total_n, 1):5.1f}%")
+        print(f"  worst kind: {worst[1]} at {worst[2]}/{worst[3]}")
+    finally:
+        # The flag is global, so it must be put back even on the way out of an
+        # exception -- a control that leaks into the next call in the same
+        # process is a second code path nobody declared.
+        UNIFORM_CONTROL = False
+    return 0
+
+
 def _cost_report():
     """Where the townscape's triangles go, by material group."""
     schema, profile = it.load()
@@ -2534,6 +3186,8 @@ if __name__ == "__main__":
         sys.exit(_near_report())
     if "--cost" in sys.argv:
         sys.exit(_cost_report())
+    if "--variety" in sys.argv:
+        sys.exit(_variety_report(legacy="--legacy" in sys.argv))
     if "--shots" in sys.argv:
         for name, cmd in HERO_SHOTS.items():
             print(f"tools/render_godot.sh {cmd} --res 960x540 \\\n"

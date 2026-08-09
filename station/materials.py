@@ -3822,6 +3822,181 @@ def _build():
         source="reference/01-station-exterior/welcome to babylon 5.webp (authority 1, 1000x750; reference/00-INDEX.md files it as 'misfiled — this is signage, not exterior' and calls it 'two backlit blue information boards in the customs hall'). MEASURED RAW, NOT BALANCED — see extrapolated. POST, clear of both boa",
         extrapolated="THE LEVEL, and the decision to measure this frame raw. Both are declared in full. (1) GREY-WORLD FAILS ON THIS FRAME, and I checked rather than assumed. Its gains are (1.262, 1.276, 0.702), and its balanced mid-tone population (0.15 < V < 0.85) has median saturation 0.299 and p90 0.469 against the a"))
 
+    # ---- the corridor LEVEL plaque, and it is the other sign class --------
+    #
+    # THE STATION HAS TWO KINDS OF SIGN AND THEY ARE LIT OPPOSITELY. Everything
+    # above in this family is the customs hall's BACKLIT board: `sign_lit_field`
+    # is a black the lettering glows against, and `sign_text_lit` peaks at 21x
+    # the luminance of the structure around it. The corridor level plaque is the
+    # other kind, and treating it as a third variant of the first would have
+    # made the most-seen piece of typography in the show into a lightbox.
+    #
+    # MEASURED, off `reference/07-sector-grey/grey level 1.webp` (authority 1),
+    # balanced through this file's own GREY_WORLD_GAINS for that frame
+    # (0.970/1.087/0.953) -- the same frame and the same method
+    # `sign_deck_plaque` above uses on the OTHER, smaller, amber plaque in it.
+    # `reference/00-INDEX.md` reads the word at 14x: "black ground carrying
+    # white uppercase sans-serif letters ... the word is LEVEL ... on a
+    # landscape plaque set in a recessed dark field at high level."
+    #
+    #   anchor wall plate course   (0.019,0.236)-(0.125,0.293)   V 0.297
+    #   field above the letters    (0.930,0.170)-(1.000,0.200)   V 0.125
+    #   field below the letters    (0.930,0.300)-(1.000,0.335)   V 0.129
+    #   wall beside the plaque     (0.870,0.150)-(0.918,0.340)   V 0.276
+    #
+    # Two readings of the field 0.13 of frame apart agreeing to 3% is one
+    # surface seen twice. Field / wall = 0.127 / 0.276 = **0.46**, and the
+    # field's brightest linear pixel (0.058) never reaches the wall's (0.113):
+    # **NOTHING ON THIS PLATE IS EMISSIVE.** A backlit plate cannot be darker
+    # than its own surround, which is the same argument `sign_deck_plaque`
+    # already makes about the amber one 0.84 of a frame away.
+    a(Material(
+        "sign_field_level", "Level Plaque Field — the dark ground LEVEL is signed on",
+        albedo=(0.197, 0.197, 0.190), roughness=0.74, metallic=0.0,
+        specular=0.30,
+        binds=("sign_field_level",), scenes=("interior",),
+        source="07-sector-grey/grey level 1.webp (authority 1), balanced with "
+               "materials.GREY_WORLD_GAINS (0.970/1.087/0.953). Field measured "
+               "in two regions either side of the lettering, (0.930,0.170)-"
+               "(1.000,0.200) V 0.125 and (0.930,0.300)-(1.000,0.335) V 0.129. "
+               "Anchor wall plate course (0.019,0.236)-(0.125,0.293) V 0.297 -- "
+               "the region materials.ALBEDO_ANCHOR is calibrated on and the "
+               "same one sign_deck_plaque cites. Wall immediately beside the "
+               "plaque (0.870,0.150)-(0.918,0.340) V 0.276.",
+        extrapolated="The absolute level only, via ALBEDO_ANCHOR: 0.127/0.297 "
+                     "= 0.428 of the anchored wall plate, so 0.46 x 0.428 = "
+                     "0.197. The 3% blue trim is the measured cast, which at V "
+                     "0.13 is inside the frame's own chroma noise and is kept "
+                     "small for that reason. NOT emissive, and that is a "
+                     "decision with a measurement behind it rather than an "
+                     "omission: the plate's brightest linear pixel is 0.058 "
+                     "against the wall's 0.113. Overturned by a frame of a "
+                     "corridor placard in the dark."))
+
+    a(Material(
+        "sign_text_level", "Level Plaque Lettering — white sans-serif, matte, unlit",
+        albedo=(0.720, 0.718, 0.705), roughness=0.62, metallic=0.0,
+        specular=0.35,
+        binds=("sign_text_level",), scenes=("interior",),
+        source="07-sector-grey/grey level 1.webp (authority 1). "
+               "reference/00-INDEX.md, the 14x re-examination: 'a black ground "
+               "carrying WHITE UPPERCASE SANS-SERIF letters, and the first four "
+               "are clearly L, E, V, E'. The white is authority 1; its VALUE is "
+               "not measurable from this frame and this entry says so rather "
+               "than quoting a number it cannot support -- the strokes are "
+               "about 2 px on a 1000 px frame and blur into the field, so the "
+               "brightest decile inside the lettering band reads V 0.212, "
+               "which is a FLOOR and not a value.",
+        extrapolated="The albedo. 0.72 is a matte white paint: above the "
+                     "measured floor of 0.46 x 0.212/0.297 = 0.328, above "
+                     "ALBEDO_ANCHOR's 0.46 station grey by 1.57x, and short of "
+                     "a pure white because nothing in the reference set is "
+                     "pure white and a sign that clips has no letterforms left. "
+                     "NO EMISSION, unlike sign_text_lit's amber: the two are "
+                     "different objects, one backlit and one painted, and the "
+                     "measurement that separates them is that this plate never "
+                     "out-glows the wall it is screwed to. Overturned by a "
+                     "higher-resolution frame of any corridor placard.",
+        note=("Also carries the hazard strips' legend. A warning plate is the "
+              "same painted white lettering on the same painted plate; giving "
+              "it a lettering material of its own would be two descriptions of "
+              "one surface.")))
+
+    # The hazard strip. Its FIELD is the level plaque's -- one painted plate --
+    # and only the chevron band is its own material, because the band is the
+    # one thing on it that is a different colour.
+    a(Material(
+        "sign_field_hazard", "Hazard Plate — the ground a warning is painted on",
+        albedo=(0.197, 0.197, 0.190), roughness=0.74, metallic=0.0,
+        specular=0.30,
+        binds=("sign_field_hazard",), scenes=("interior",),
+        source="Identical to sign_field_level and deliberately not re-measured: "
+               "07-sector-grey/grey level 1.webp shows one plate construction on "
+               "the corridor wall and a warning plate is that plate with a "
+               "stripe on it. Two entries rather than one bind because the "
+               "hazard plate is the thing a later session will want to give a "
+               "yellow ground to, and a shared name would make that edit reach "
+               "the level plaque as well.",
+        extrapolated="Everything sign_field_level extrapolates, by reference."))
+
+    # NO MATERIAL FOR THE CHEVRON BAND, AND THAT IS THE FIX RATHER THAN THE
+    # GAP. The first version of this pass added a `sign_hazard_stripe` entry
+    # with its own yellow -- and this library ALREADY HAS ONE: `hazard_chevron`
+    # (0.900, 0.720, 0.060), measured off `Cobra Bays with starfurries.webp`'s
+    # bay lip and `dock.webp`'s deck marking, bound to `hazard_stripe` and
+    # `bay_lip`. Two entries for one paint is the defect this project has paid
+    # for repeatedly, and longest-substring-wins would have made mine SHADOW the
+    # measured one on every plaque while the bay lip kept the original. So
+    # `signage.hazard_plate` names its band `sign_hazard_stripe`, which contains
+    # `hazard_stripe`, and the station's one hazard yellow reaches it.
+
+    # ---- the Zocalo wordmark and the "5" roundel -------------------------
+    # Both have their own gazetteer row at authority 1 and both were blank
+    # rectangles until `signage.zocalo_wordmark` and `signage.five_roundel`
+    # existed. The wordmark's COLOUR is already decided in this file --
+    # `zoc_neon_face` argues the cyan-over-orange-red choice at length -- so
+    # the tube takes that emission rather than opening the question again.
+    a(Material(
+        "sign_wordmark", "Zocalo Wordmark — the neon tube itself",
+        albedo=(0.060, 0.070, 0.075), roughness=0.28, metallic=0.0,
+        specular=0.30, emission=(0.444, 1.000, 0.939), emission_energy=4.5,
+        binds=("sign_wordmark",), scenes=("interior",),
+        source="11-props-and-technology/Zocalo neon signage in background.jpg "
+               "(authority 1). Emission reproduced exactly from this file's "
+               "sign_neon_venue, measured on the wordmark's own 5-cluster over "
+               "(0.47,0.03)-(0.65,0.16): 33.3% rgb(0.591,0.999,0.921) H 168.",
+        extrapolated="emission_energy 4.5 rather than sign_neon_venue's 1.3, "
+                     "and the reason is a change of subject rather than a "
+                     "second opinion. 1.3 is a flux match for a BOARD -- a "
+                     "1.60 x 0.10 x 0.55 m box standing in for sign plus "
+                     "backing plate, with the lit fraction measured at 0.283 -- "
+                     "so it radiates what the whole sign radiates while being "
+                     "unable to say where the tube is. signage.zocalo_wordmark "
+                     "IS the tube: 242 triangles of 40 mm ribbon on the "
+                     "centreline, nothing else lit. 4.5 is emissive_signage's "
+                     "value for a bare neon tube, which is what this now is. "
+                     "The albedo is the unlit glass. Overturned by a frame of "
+                     "the Zocalo with the sign off."))
+
+    a(Material(
+        "sign_roundel_ink", "The '5' Roundel — the ink of the mark",
+        albedo=(0.041, 0.040, 0.040), roughness=0.58, metallic=0.0,
+        specular=0.30,
+        binds=("sign_roundel_ink",), scenes=("interior",),
+        source="docs/gazetteer/LOCATIONS.md X-216 (authority 1, "
+               "reference/04-sector-red/more zocalo.png and "
+               "reference/16-signage-typography-ui/babylon 5 shield.webp): 'a "
+               "bold slab numeral with a BLACK OUTER KEYLINE and a WHITE "
+               "INLINE, applied large to CREAM drum panels ... the same glyph "
+               "as the shield patch and the floor inlay -- one decal asset, "
+               "three applications.'",
+        extrapolated="The value of the black. 0.041 is the darkest printed ink "
+                     "this library carries and is set at ALBEDO_ANCHOR x 0.09; "
+                     "a true 0.0 would be the only pure black on the station "
+                     "and AAA-STANDARD's materials checklist forbids it "
+                     "('nothing pure black, nothing pure white, checked on the "
+                     "histogram'). Overturned by a square-on frame of a chair "
+                     "back."))
+
+    a(Material(
+        "sign_roundel_field", "The '5' Roundel — the cream panel it is applied to",
+        albedo=(0.556, 0.540, 0.486), roughness=0.55, metallic=0.0,
+        specular=0.30,
+        binds=("sign_roundel_field",), scenes=("interior",),
+        source="docs/gazetteer/LOCATIONS.md X-216 (authority 1): the mark is "
+               "applied to CREAM drum panels. Cream is warm-neutral and lighter "
+               "than the station's structural grey; ALBEDO_ANCHOR is 0.46 for "
+               "that grey.",
+        extrapolated="The value and the warmth. 0.556 is ALBEDO_ANCHOR x 1.21, "
+                     "which is the lightest surface in the interior library "
+                     "short of the drum's own pale panels, and the channels "
+                     "carry S 0.126 -- warm enough to read as cream beside grey "
+                     "and inside STRUCTURAL_SAT_MAX. It doubles as the WHITE "
+                     "INLINE the gazetteer names, which is why the inline is "
+                     "the field colour rather than a fourth material: on a "
+                     "cream panel a white inline IS the panel showing through. "
+                     "Overturned by a square-on frame of a chair back."))
+
     # =====================================================================
     # LAYER 3 -- THE DRUM LANDSCAPE
     # =====================================================================
@@ -4609,7 +4784,24 @@ UNTEXTURED_BY_DESIGN = {
     "glass": ("device_screen_glass", "dome_glazing", "viewport_glazing",
               "tram_glass", "garden_glass", "garden_town_window",
               "garden_pool_water", "garden_falling_water", "ground_water"),
+    # PAINTED SIGN PLATES, AND THE REASON IS NOT THE EMITTERS' REASON. Every
+    # entry in `emitters` below is bare because it is its own light source and
+    # has no microstructure to show. These five are bare for the opposite
+    # reason: they are the surfaces a player's eye lands ON, and the thing that
+    # has to read on them is the LETTERFORM. `signage.py` builds lettering as
+    # geometry -- 5x7 spans and swept ribbons, because nothing in this project
+    # ships UVs -- so a trim sheet here would put plate grain UNDER a glyph and
+    # compete with the only detail that matters at the distance a sign is read
+    # from. The stroke IS the microstructure.
+    #
+    # NAMED AS THE JOB THAT WOULD REPLACE THEM: once any generator emits `vt`,
+    # these five want a fine matte-paint sheet at about 4 mm of grain, which is
+    # under the 6.5 mm inline on the roundel and would read at 1 m without
+    # touching the letterforms.
+    "sign plates": ("sign_field_level", "sign_text_level", "sign_field_hazard",
+                    "sign_roundel_ink", "sign_roundel_field"),
     "emitters": ("emissive_signage", "sign_lit_field", "sign_text_lit",
+                 "sign_wordmark",
                  "sign_neon_venue", "zoc_neon_face", "zoc_neon_back",
                  "zoc_deck_light", "zoc_rib_lamp", "zoc_stall_light",
                  "zoc_stall_sign", "bar_pendant_lamp", "bay_floodlight",

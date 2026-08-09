@@ -228,6 +228,17 @@ def legible_at_m(cap_height_m=None):
 # reference has 0.52%. Signage is not a fix for that on its own. It is the one
 # piece of content on the station that is black by construction.
 
+## THE NEGATIVE CONTROL FOR THE WHOLE TYPOGRAPHY LAYER, and it is one
+## environment variable because a control that needs a patch is a control that
+## stops being run (this file's own `--gate-frames --rerender` lesson, and
+## `export_scene`'s note that moving a vista JSON aside "works and is clumsy").
+## `SIGNAGE_LETTERING=0` builds every board, plaque, level plate and hazard
+## strip with its plate, its frame and its recess intact and NOT ONE GLYPH on
+## any of them -- which is exactly the station a visual reviewer described this
+## session. Render the same camera both ways and the difference is the
+## lettering and nothing else.
+LETTERING = os.environ.get("SIGNAGE_LETTERING", "1") != "0"
+
 GLYPH_W, GLYPH_H = 5, 7
 
 # THE FACE IS A DECLARED EXTRAPOLATION -- INV-086 -- and the reason is worth
@@ -290,6 +301,15 @@ _FONT = {
     "&": ("01100", "10010", "10100", "01000", "10101", "10010", "01101"),
     "+": ("00000", "00100", "00100", "11111", "00100", "00100", "00000"),
     '"': ("01010", "01010", "01010", "00000", "00000", "00000", "00000"),
+    # THE ONLY THREE GLYPHS IN THIS FACE THAT ARE NOT LETTERFORMS -- INV-468.
+    # A 5x7 lattice has no arrow and a station of 250,000 people cannot be
+    # signed without one, so three were drawn in the same idiom as the rest:
+    # one cell of stroke, a head two rows deep, nothing that needs a diagonal
+    # the lattice cannot hold. `wayfinding_lines` picks between them from the
+    # register's own bearings.
+    ">": ("00000", "00100", "00010", "11111", "00010", "00100", "00000"),
+    "<": ("00000", "00100", "01000", "11111", "01000", "00100", "00000"),
+    "^": ("00100", "01110", "10101", "00100", "00100", "00100", "00100"),
 }
 
 ## An unknown character draws this rather than nothing. A missing glyph that
@@ -436,7 +456,7 @@ def letter_mesh(lines, face_w, face_h, cap_m=None, header=0, z=0.0,
     reference does to "WELCOME TO" above the station's own name.
     """
     lines = [str(x).upper() for x in lines if str(x).strip() != ""]
-    if not lines:
+    if not lines or not LETTERING:
         return [], [], []
     inner_w = face_w * (1.0 - 2 * pad_frac)
     # THE HEADER IS SIZED FIRST AND THE BODY FOLLOWS FROM IT, and the first
@@ -676,6 +696,212 @@ SECTOR_LABEL = {
     "grey": "GREY", "brown": "BROWN", "yellow": "YELLOW",
 }
 
+
+# ---------------------------------------------------------------------------
+# THE ADDRESS, AND IT IS THE SHOW'S OWN GRAMMAR RATHER THAN OURS
+# ---------------------------------------------------------------------------
+# WHAT WAS WRONG. `door_text` used to compose `SECTOR RING-DECK BEARING` --
+# "GREEN 0-00 000" -- and defended it on the grounds that it is the coordinate
+# every other module addresses a place by, so a sign could be checked against
+# the register. That argument is good about CHECKABILITY and wrong about
+# FIDELITY, and fidelity is what a sign is for. `canon/00-MASTER.md` §3,
+# authority 1: *"On-screen location references take the form `<Colour>
+# <number>` -- Grey 17, Red 3, Blue 12, Brown 2, Green 2."* Nobody on the show
+# ever says a bearing. A station signed in a private three-part coordinate is a
+# station signed in a grammar the source does not use, which is the same defect
+# as a corridor built to the wrong width.
+#
+# WHY THE NUMBER IS HARD, AND WHY THAT IS NOT A REASON TO OMIT IT. C-004 is
+# OPEN and BLOCKING: no source we hold numbers a ring, the direction is unknown
+# (`interior.LEVEL_NUMBERING` is marked UNCONFIRMED for exactly this), and
+# `docs/gazetteer/LOCATIONS.md` §1 raises a third possibility -- that the
+# number is a 10-degree ANGULAR REGION and not a radial level at all.
+# `docs/AAA-STANDARD.md` says under Interaction: *"No interaction may assume a
+# level NUMBER. C-004 is open. Address by (sector, ring_index) and let
+# bind_labels() attach names later."*
+#
+# So the number is built the way that document prescribes for every unsourced
+# mechanism (*"switchable in one edit"*, the INV-008 pattern):
+#
+#   * the DIRECTION is not decided here. `interior.LEVEL_NUMBERING` already
+#     owns it and is already marked UNCONFIRMED; this reads it. One edit there
+#     inverts every sign on the station and every other consumer at once.
+#   * WHAT THE NUMBER INDEXES is `LEVEL_READING` below, and both surviving
+#     readings are implemented rather than one being assumed.
+#   * the number itself is a VIEW of `interior.place_floor_radius` -- the same
+#     function `directory.gravity_of` and `rooms.room_extent_m` resolve a place
+#     with -- so a sign cannot disagree with the geometry a player is standing
+#     on. It is not a table.
+#
+# AND THE DERIVATION CORROBORATES ITSELF ON THE ONE ADDRESS EVERYBODY KNOWS.
+# Nothing about Grey was tuned; the ladder falls out of the hull profile and
+# the 3.6 m deck pitch. Grey's occupied levels come out
+# {4, 5, 11, 13, 16, 17, 18, 20, 22, 23} -- **GREY 17 EXISTS ON THIS STATION**,
+# and `_selftest` asserts it, so a change to the hull or the pitch that pushed
+# the show's most famous address off the register would fail the build. Red
+# reaches 51 and Blue 30, which is the right order of magnitude for a station
+# whose placards run to `Brown-57`.
+
+## WHAT `<number>` INDEXES. C-004 lists two surviving readings and this
+## implements both; the third (a level that is neither, i.e. the numbers are
+## arbitrary) cannot be built from and is not a reading.
+##
+##   "radial"  -- a deck. The radial ladder of the sector, from its outermost
+##                canonical ring radius inward at `interior.DECK_PITCH_M`.
+##   "angular" -- one of 36 ten-degree regions round the circumference, per
+##                LOCATIONS.md §1's authority-4 wiki reading.
+##
+## Switching this line switches every sign on the station and nothing else.
+LEVEL_READING = "radial"
+
+## ADDRESSES A SOURCE ACTUALLY GIVES, and they are recorded rather than used.
+## Every one is authority 4 (fan wiki / fan site), which `canon/CONFLICTS.md`
+## says outright cannot close what two authority-3 sheets could not -- and
+## `docs/gazetteer/LAW-CRIME-DOWNBELOW.md` has already RULED on the Zocalo's:
+## *"the authority-4 'Red 5' is wrong by four rings"* under our own model.
+## They are here so that the disagreement between what a source claims and what
+## our geometry derives is VISIBLE and asserted, instead of being rediscovered
+## every few sessions. `_selftest` prints the delta for each.
+ATTESTED_ADDRESS = {
+    "zocalo":        ("red",  5, "https://babylon5.fandom.com/wiki/Z%C3%B3calo"),
+    "sanctuary_blue": ("blue", 3, "https://babylon5.fandom.com/wiki/Blue_Sector"),
+}
+
+_SCHEMA_CACHE = []
+_ANCHOR_CACHE = {}
+_LEVEL_CACHE = {}
+
+
+def _schema():
+    """`interior.load()` once per process. 74 ms, and this is called per door."""
+    if not _SCHEMA_CACHE:
+        _SCHEMA_CACHE.extend(it.load())
+    return _SCHEMA_CACHE[0], _SCHEMA_CACHE[1]
+
+
+def _anchor_r(sector):
+    """The radius level 1 is counted from: the sector's outermost ring.
+
+    Taken UNCUT -- `ring_radii` with no `z_m` -- on purpose. The z-aware form
+    returns the rings that survive the hull taper at one axial station, so the
+    forward end of Blue would count from a different zero than the aft end and
+    one deck would carry two level numbers along its own length. A level number
+    has to be a property of a radius, not of where you are standing on it.
+    """
+    if sector not in _ANCHOR_CACHE:
+        schema, profile = _schema()
+        rings = it.ring_radii(schema, profile, sector)
+        _ANCHOR_CACHE[sector] = rings[0]["r_outer"] if rings else 0.0
+    return _ANCHOR_CACHE[sector]
+
+
+def level_from_radius(sector, r_m):
+    """The level standing at radius `r_m` in `sector` is on.
+
+    THE RADIUS IS THE PRIMITIVE AND THE PLACE IS THE CONVENIENCE, and that
+    ordering is what lets a CORRIDOR carry a level number. A corridor is not a
+    register place: `interior.ring_arc` builds it from a radius and a sector and
+    has no `place` to hand, which is precisely why every corridor plate on the
+    station says something generic. This is the entry point that fixes that, and
+    `level_number` below is a two-line wrapper on it.
+    """
+    rungs = int(round((_anchor_r(sector) - float(r_m)) / it.DECK_PITCH_M))
+    if it.LEVEL_NUMBERING == "outermost_is_1":
+        return max(1, rungs + 1)
+    # Innermost is 1: count the same ladder from the other end. The sector's own
+    # depth in rungs is the anchor less the core radius, so the two readings are
+    # exact mirrors of one number rather than two derivations that could drift.
+    schema, profile = _schema()
+    rings = it.ring_radii(schema, profile, sector)
+    core = rings[-1]["r_inner"] if rings else 0.0
+    depth = int(round((_anchor_r(sector) - core) / it.DECK_PITCH_M))
+    return max(1, depth - rungs)
+
+
+def level_number(place):
+    """The `<number>` of this place's address. See the block comment above.
+
+    Returns an int >= 1. Deterministic, cached per place key, and derived --
+    never stored, so it cannot go stale against the geometry the way a table
+    would.
+    """
+    key = (place.get("key"), LEVEL_READING, it.LEVEL_NUMBERING)
+    if key in _LEVEL_CACHE:
+        return _LEVEL_CACHE[key]
+    if LEVEL_READING == "angular":
+        n = int((float(place["angle_deg"]) % 360.0) // 10.0) + 1
+    else:
+        schema, profile = _schema()
+        r, _ri, _di, _dk = it.place_floor_radius(schema, profile, place)
+        n = level_from_radius(place["sector"], r)
+    _LEVEL_CACHE[key] = n
+    return n
+
+
+def corridor_plate_lines(address):
+    """What a CORRIDOR wall plate says: where you are, in the show's grammar.
+
+    THIS IS THE FUNCTION `interior_kit.CORRIDOR_NOTICES` IS WAITING FOR, and its
+    own comment names it: *"WHAT WOULD REPLACE THIS TABLE: one line in
+    `interior.ring_arc` handing `corridor_section` the (sector, ring, deck) it
+    already has in scope."* Until that line lands, 164 sign plates a deck carry
+    eight generic notices and no address, because the kit is addressless by
+    construction and *"a sign that says the wrong bay number is worse than no
+    sign"*.
+
+    `address` is a dict with `sector` and either `r_floor_m` or `angle_deg`,
+    depending on `LEVEL_READING`. Nothing else is needed and nothing else is
+    read: a corridor knows its own radius, and that is the whole address.
+
+    Returns two lines -- the sector big, the level under it -- rather than one,
+    because a corridor plate is read at a walking glance from further away than
+    a door plaque and two short lines set larger than one long one.
+    """
+    sec = SECTOR_LABEL.get(address.get("sector"),
+                           str(address.get("sector", "")).upper())
+    if LEVEL_READING == "angular":
+        n = int((float(address.get("angle_deg", 0.0)) % 360.0) // 10.0) + 1
+    else:
+        n = level_from_radius(address["sector"], address["r_floor_m"])
+    return [sec, f"LEVEL {n}"]
+
+
+def address_of(place):
+    """`BLUE 12` -- the whole address a player reads, in the show's grammar."""
+    sec = SECTOR_LABEL.get(place["sector"], str(place["sector"]).upper())
+    return f"{sec} {level_number(place)}"
+
+
+def address_report():
+    """Every place's address and WHERE ITS NUMBER CAME FROM, one row each.
+
+    The brief for this work said: *"If the register cannot supply a show-style
+    number for a place, say so per place rather than inventing one silently."*
+    This is that per-place statement, and it is a function rather than a
+    comment so it can be printed, diffed and asserted. `basis` is one of:
+
+      `derived`  -- from `interior.place_floor_radius`, under `LEVEL_READING`
+                    and `interior.LEVEL_NUMBERING`. Authority 5 for the NUMBER;
+                    the grammar it is written in is authority 1.
+      `attested` -- a source gives this place an address in as many words.
+                    None is currently USED (see `ATTESTED_ADDRESS`); the row
+                    records the claim and our delta from it.
+    """
+    import directory as _dr                                    # noqa: PLC0415
+    out = []
+    for p in _dr.PLACES:
+        n = level_number(p)
+        att = ATTESTED_ADDRESS.get(p["key"])
+        out.append({
+            "key": p["key"], "sector": p["sector"], "level": n,
+            "text": address_of(p),
+            "basis": "derived",
+            "attested": None if att is None else f"{att[0]} {att[1]}",
+            "delta": None if att is None else n - att[1],
+            "attested_src": None if att is None else att[2],
+        })
+    return out
+
 # SIZED BY LEGIBILITY, not by taste, and the gate below is what set it. At
 # 0.30 m the longest place name on the station fitted at 20.9 mm caps, and a
 # 5x7 lattice needs about 7 arc-minutes a CELL to resolve, so those caps stop
@@ -692,17 +918,16 @@ PLAQUE_CENTRE_H_M = 1.55
 
 
 def door_text(place):
-    """The lines on one door's plaque: address first, then what it is.
+    """The lines on one door's plaque: what it is, then where you are.
 
-    The address is `SECTOR RING-DECK BEARING` -- the same coordinate every
-    other module in this project addresses a place by, so a player reading a
-    sign and an agent reading `directory.py` are reading the same thing. A
-    station whose signage uses a private numbering nobody else uses is a
-    station where a sign cannot be checked against anything.
+    The address is `<Colour> <number>` -- `canon/00-MASTER.md` §3, authority 1,
+    the grammar the show actually signs. It replaced `SECTOR RING-DECK BEARING`
+    ("GREEN 0-00 000"), which was our coordinate rather than the station's; see
+    the block comment above `LEVEL_READING`. It is also 5 to 8 characters
+    instead of 13, so every plaque on the station got cheaper and its caps got
+    bigger in the same edit.
     """
-    sec = SECTOR_LABEL.get(place["sector"], str(place["sector"]).upper())
-    addr = (f"{sec} {place['ring']}-{int(place['deck']):02d} "
-            f"{int(round(place['angle_deg'])) % 360:03d}")
+    addr = address_of(place)
     # A DOOR IS NOT A CATALOGUE ENTRY. `directory.py`'s `name` is a gazetteer
     # description -- "Babylon 5 Advisory Council Chamber", "Rotation drivers
     # and mag-lev bearing" -- and a door in a corridor says "COUNCIL CHAMBER".
@@ -729,38 +954,655 @@ def door_text(place):
     return lines + [addr]
 
 
-def door_plaque(place):
-    """The sign beside one door, in its own frame: +X across, +Y up, +Z out."""
+# THE FIELD WAS PROUD OF ITS FRAME AND THE REFERENCE HAS IT RECESSED, which is
+# a one-line defect with a visible consequence. `door_plaque` used to lay a
+# full-size backplate 0.0099 m thick and then stand a SMALLER box on top of it
+# from 0.0099 to 0.022 -- so the dark field projected 12 mm out of its own
+# frame, and the lettering projected further still. `reference/00-INDEX.md`,
+# `07-sector-grey/grey level 1.webp` re-examined at 14x, authority 1:
+# *"a landscape plaque set in a RECESSED dark field"*. A recess is not a
+# decorative preference: it is what puts the frame's own shadow across the top
+# of the letters, which is most of how a matte unlit plate reads as a plate
+# rather than as a sticker. `board()` has always built its lit face this way
+# and the plaques did not.
+PLAQUE_REBATE_M = 0.006     # how far the field sits BEHIND the frame face
+PLAQUE_BEZEL_M = 0.012      # width of the frame rail
+
+
+def _quad(m, x0, y0, x1, y1, z, group):
+    """One front-facing rectangle in the plane z. Two triangles, not twelve."""
+    b = len(m.v)
+    m.v.extend([(x0, y0, z), (x1, y0, z), (x1, y1, z), (x0, y1, z)])
+    m.t.append((b, b + 1, b + 2))
+    m.t.append((b, b + 2, b + 3))
+    m.g.extend([group] * 2)
+
+
+def _recessed_plate(m, hw, hh, thick, bezel, rebate, frame_g, field_g,
+                    cx=0.0, cy=0.0, z0=0.0):
+    """A framed plate whose field is set BACK inside its own frame.
+
+    Same construction as `board()` -- four rails at full thickness and one
+    recessed field spanning the opening -- rather than a third convention. The
+    caller gets the field's front z back so it can put lettering a hair proud
+    of the field and still inside the rebate.
+    """
+    m.box(cx - hw, cx + hw, cy + hh - bezel, cy + hh, z0, z0 + thick, frame_g)
+    m.box(cx - hw, cx + hw, cy - hh, cy - hh + bezel, z0, z0 + thick, frame_g)
+    m.box(cx - hw, cx - hw + bezel, cy - hh + bezel, cy + hh - bezel,
+          z0, z0 + thick, frame_g)
+    m.box(cx + hw - bezel, cx + hw, cy - hh + bezel, cy + hh - bezel,
+          z0, z0 + thick, frame_g)
+    m.box(cx - hw + bezel, cx + hw - bezel, cy - hh + bezel, cy + hh - bezel,
+          z0, z0 + thick - rebate, field_g)
+    return z0 + thick - rebate
+
+
+def _merge_letters(m, lines, face_w, face_h, z, cx=0.0, cy=0.0, header=0,
+                   group=None, cap_m=None):
+    """`letter_mesh` merged into an `_M`, optionally renamed to one group."""
+    lv, lt, lg = letter_mesh(lines, face_w, face_h, header=header, z=z,
+                             cx=cx, cy=cy, cap_m=cap_m)
+    base = len(m.v)
+    m.v.extend(lv)
+    m.t.extend([(a + base, c + base, d + base) for a, c, d in lt])
+    m.g.extend([group] * len(lt) if group else lg)
+    return len(lt)
+
+
+# ---------------------------------------------------------------------------
+# The LEVEL plaque -- the most-seen piece of typography in the show, and until
+# now a 0.42 x 0.03 x 0.26 m BLANK BOX
+# ---------------------------------------------------------------------------
+# `rooms.PROPS["level_plaque"]`, `docking_bay.py` and `shuttle.py` all place a
+# `prop_level_plaque`, and every one of them is an untextured slab. This builds
+# the thing they are standing in for.
+#
+# THE REFERENCE, and it is the only authority-1 frame of station wayfinding
+# typography we hold that is NOT the customs board. `reference/00-INDEX.md`,
+# `07-sector-grey/grey level 1.webp` re-examined at 14x:
+#
+#   "black ground carrying white uppercase sans-serif letters, and the first
+#    four are clearly L, E, V, E. The word is LEVEL. The number is off-frame.
+#    LEVEL is a wayfinding word physically signed on station corridor walls, in
+#    white-on-black uppercase, on a landscape plaque set in a recessed dark
+#    field at high level."
+#
+# RE-MEASURED HERE RATHER THAN TAKEN ON TRUST, because a claim about colour is
+# exactly the kind that rots. Balanced through `materials.GREY_WORLD_GAINS` for
+# this frame (0.970/1.087/0.953), same method `materials.sign_deck_plaque` uses
+# on the OTHER plaque in the same frame:
+#
+#   anchor wall plate course (0.019,0.236)-(0.125,0.293)   V 0.297
+#   LEVEL field, above the letters (0.930,0.170)-(1,0.200) V 0.125
+#   LEVEL field, below the letters (0.930,0.300)-(1,0.335) V 0.129
+#   wall beside the plaque         (0.870,0.150)-(0.918,0.340) V 0.276
+#
+# So the field is **0.46x the wall it hangs on** and its brightest pixel
+# (linear 0.058) never reaches the wall's (0.113). **IT IS NOT EMISSIVE.** That
+# is the finding worth carrying: the customs board peaks at 21x the structure
+# around it and this plate peaks BELOW it, so the station has two sign classes
+# and they are lit oppositely. `materials.sign_field_level` and
+# `sign_text_level` carry these numbers.
+#
+# The plaque's left edge is at x = 0.924 of frame and it runs off the right
+# edge, so its WIDTH cannot be measured -- only that it is landscape and at
+# least 0.076 of frame wide. Absolute size is INV-467.
+LEVEL_PLATE_W_M = 0.40
+LEVEL_PLATE_H_M = 0.125
+LEVEL_PLATE_T_M = 0.018
+## "AT HIGH LEVEL" IS A CONSTRAINT, NOT A NUMBER, AND THE CORRIDOR OWNS THE
+## NUMBER. This took two wrong answers and an engine frame, and both wrong
+## answers are worth keeping because each was refuted by a different kind of
+## evidence.
+##
+## FIRST: a flat 2.30 m, reasoned from a 2.60 m ceiling this module had
+## remembered. `interior_kit.PROVISIONAL` says the corridor is 3.00 m with a
+## 0.50 m head chamfer, so the flat wall runs to 2.50 m and 2.30 m was
+## legitimately on it. A render aimed straight at the plate came back with
+## BARE WALL, so the chamfer was never the problem.
+##
+## SECOND: the volume was already occupied. Querying the assembled deck for
+## everything within 1.2 m of the plate's own angle and 0.30 m of its z shows
+## `dress_conduit_c00` and `light_bezel_c00` running through it -- the
+## corridor's clamped high-level services occupy **r 209.0-209.6 m**, which on
+## a floor at 211.55 m is **1.95-2.55 m above the deck**. The plate was behind
+## the conduit run. Nothing could have failed for this: `collision.prop_boxes`
+## does not see decals, and every closure and coverage gate in the project
+## measures one mesh at a time. It is the tram-through-a-spoke defect at
+## plaque scale.
+##
+## SO THE PLATE GOES IN THE HIGHEST CLEAR BAND, which is derived from the
+## mount below it and bounded by the measured service band above it: the door
+## plaque's top (1.680 m), a 0.070 m reveal, and half a plate. It is still
+## above a 1.7 m eye and still read at a raised glance, which is what the
+## authority-1 frame shows; what it is not is "as high as the wall goes", and
+## the wall is why. `_selftest` asserts both bounds.
+SERVICE_BAND_M = (1.95, 2.55)   # measured off station/generated/.../shot_blue_0_0.obj
+LEVEL_PLATE_GAP_M = 0.070
+
+
+def _level_plate_centre_h():
+    return (PLAQUE_CENTRE_H_M + PLAQUE_H_M / 2.0
+            + LEVEL_PLATE_GAP_M + LEVEL_PLATE_H_M / 2.0)
+
+
+LEVEL_PLATE_CENTRE_H_M = 1.8125
+## Whether `door_plaque` carries one. It is the negative control for the whole
+## level-plate feature: one edit here and the station has door plaques and no
+## level plaques, which is what it had before this session.
+LEVEL_PLATE_ON_DOOR = True
+
+
+def level_text(place):
+    """`LEVEL 12` -- one line, the word the frame shows and our own number.
+
+    ONE LINE AND NOT TWO, and the sector is deliberately absent. The authority-1
+    frame shows the word `LEVEL` followed by a number that runs off the edge; it
+    does not show a colour. The colour is on the door plaque 0.75 m below this
+    one, which is exactly how the show distributes it -- `Grey 17` is what
+    people SAY, and what is painted on the wall is `LEVEL 17`.
+    """
+    return f"LEVEL {level_number(place)}"
+
+
+def level_plaque(place, text=None):
+    """The corridor level plate: white on black, in a recessed field.
+
+    Own frame: +X across, +Y up, +Z out of the face, centred on (0, 0).
+    """
+    m = _M()
+    hw, hh = LEVEL_PLATE_W_M / 2.0, LEVEL_PLATE_H_M / 2.0
+    b = 0.010
+    face_z = _recessed_plate(m, hw, hh, LEVEL_PLATE_T_M, b, PLAQUE_REBATE_M,
+                             "sign_frame", "sign_field_level")
+    # `sign_text_level`, a THIRD lettering group, because this lettering is a
+    # different material from every other sign on the station: white, matte and
+    # unlit, against `sign_text_lit`'s emissive amber. The name keeps the
+    # `sign_text` prefix on purpose -- `deck.py`'s watertightness check and
+    # `interior_kit.DECAL_GROUPS` both exempt lettering by that substring, and
+    # a decal group that did not carry it would be counted as a hole in the
+    # deck.
+    _merge_letters(m, [text or level_text(place)],
+                   LEVEL_PLATE_W_M - 2 * b, LEVEL_PLATE_H_M - 2 * b,
+                   z=face_z + 0.0015, group="sign_text_level")
+    return m.as_tuple()
+
+
+# ---------------------------------------------------------------------------
+# Warning signage, and it is the register's own declaration rather than a list
+# ---------------------------------------------------------------------------
+# A warning that is placed by hand is a warning that will be missing from the
+# next room somebody adds. Every row below keys on a `functions` or `interacts`
+# value that `directory.py` ALREADY declares, so a new place with a reactor in
+# it gets a radiation legend for the same reason it gets a reactor.
+#
+# The legends are authority 5 and are the plainest form of the words the show's
+# own signage uses -- `signage.BOARDS`' authority-1 register is flat imperative
+# uppercase ("FOLLOW ALL CUSTOMS PROCEDURES.", "SEE MONITORS FOR DETAILS"), and
+# the same voice is used here rather than a modern pictogram vocabulary. INV-468.
+HAZARD_BY_FUNCTION = (
+    ("radiation_boundary",    ("RADIATION", "AUTHORISED PERSONNEL ONLY")),
+    ("power_generation",      ("RADIATION", "AUTHORISED PERSONNEL ONLY")),
+    ("reactor_control",       ("RADIATION", "AUTHORISED PERSONNEL ONLY")),
+    ("eva_egress",            ("VACUUM", "PRESSURE SUITS BEYOND THIS POINT")),
+    # `sealed_volume` IS NOT VACUUM, and reading it as vacuum put
+    # "PRESSURE SUITS BEYOND THIS POINT" on the Markab quarter -- a pressurised
+    # room sealed after a plague, whose whole point is that it is intact and
+    # nobody may go in. The register holds exactly two: `markab_quarter` and
+    # `welded_shut`, and both are sealed by ORDER rather than by pressure.
+    ("sealed_volume",         ("SEALED BY ORDER", "NO ADMITTANCE")),
+    ("quarantine",            ("QUARANTINE", "NO ADMITTANCE")),
+    # Kosh's quarters are a non-human atmosphere held at pressure, not a
+    # medical quarantine: the hazard is the air, and the customs board's own
+    # authority-1 line -- "SIX DIFFERENT ATMOSPHERES ARE CURRENTLY AVAILABLE" --
+    # is the fact this legend points at.
+    ("sealed_environment",    ("ATMOSPHERE", "NON-STANDARD - SEE MONITOR")),
+    ("atmosphere_containment", ("ATMOSPHERE", "NON-STANDARD - SEE MONITOR")),
+    ("multi_environ",         ("ATMOSPHERE", "NON-STANDARD - SEE MONITOR")),
+    ("hazardous_storage",     ("HAZARDOUS STORES", "NO NAKED LIGHT")),
+    ("fuel_storage",          ("HAZARDOUS STORES", "NO NAKED LIGHT")),
+    ("fuel_transfer",         ("HAZARDOUS STORES", "NO NAKED LIGHT")),
+    ("starfury_launch",       ("LAUNCH BAY", "CLEAR THE DECK ON ALARM")),
+    ("microgravity_handling", ("ZERO GRAVITY", "USE HANDHOLDS")),
+    ("variable_gravity",      ("VARIABLE GRAVITY", "USE HANDHOLDS")),
+    ("coolant_loop",          ("HOT SURFACES", "DO NOT TOUCH")),
+    ("heat_rejection",        ("HOT SURFACES", "DO NOT TOUCH")),
+    ("detention",             ("RESTRICTED", "SECURITY ESCORT REQUIRED")),
+    ("waste_processing",      ("BIOHAZARD", "PROTECTIVE EQUIPMENT REQUIRED")),
+)
+HAZARD_BY_INTERACT = (
+    ("welded_door",           ("SEALED BY ORDER", "NO ADMITTANCE")),
+    ("airlock_door",          ("AIRLOCK", "CHECK PRESSURE BEFORE CYCLING")),
+    ("launch_tube",           ("LAUNCH BAY", "CLEAR THE DECK ON ALARM")),
+    ("blast_door",            ("BLAST DOOR", "KEEP CLEAR")),
+    ("isolation_door",        ("QUARANTINE", "NO ADMITTANCE")),
+)
+
+## A HEADING IS AS BIG AS ITS LONGEST LINE LETS IT BE, so the heading length is
+## a legibility constant and not a wording preference. On a 0.384 m face a 16-
+## character heading sets at 27.5 mm and reads to 1.93 m; at 23 characters
+## ("NON-STANDARD ATMOSPHERE", the first draft) it sets at 18.8 mm and reads to
+## 1.32 m -- inside the corridor's own half-width. `_selftest` asserts the bound
+## so a longer wording cannot be added without the reading distance being
+## re-checked.
+HAZARD_HEAD_MAX = 16
+HAZARD_W_M = 0.40
+HAZARD_H_M = 0.175
+HAZARD_T_M = 0.014
+## The chevron band. `docs/gazetteer/LOCATIONS.md` records the Zocalo deck's
+## "band of yellow/red/blue diagonal chevron striping" at authority 1, so a
+## diagonal hazard stripe is a motif the station already has; this is that
+## motif at plaque scale.
+HAZARD_CHEVRONS = 9
+
+
+def hazard_of(place):
+    """The warning this place's own declaration earns it, or None.
+
+    FUNCTIONS FIRST, AND THE FIRST VERSION HAD IT THE OTHER WAY ROUND with a
+    result the gate caught: `fusion_core`, `reactor_hall` and `generator_hall`
+    all declare `blast_door`, so all three were signed `BLAST DOOR / KEEP CLEAR`
+    and NOT ONE PLACE ON THE STATION carried a radiation legend. A blast door
+    is how the door behaves; the hazard is what is behind it, and a warning
+    names the hazard. So the place's function decides and the door type is the
+    fallback for places whose function is not itself dangerous.
+    """
+    fn = set(place.get("functions") or ())
+    for k, legend in HAZARD_BY_FUNCTION:
+        if k in fn:
+            return legend
+    ia = set(place.get("interacts") or ())
+    for k, legend in HAZARD_BY_INTERACT:
+        if k in ia:
+            return legend
+    return None
+
+
+def hazard_plate(legend, cy=0.0):
+    """A chevron-banded warning strip. +X across, +Y up, +Z out."""
+    m = _M()
+    hw, hh = HAZARD_W_M / 2.0, HAZARD_H_M / 2.0
+    b = 0.008
+    face_z = _recessed_plate(m, hw, hh, HAZARD_T_M, b, 0.004,
+                             "sign_frame", "sign_field_hazard", cy=cy)
+    # The chevrons run along the TOP of the plate and the legend under them, so
+    # the stripe reads as a band rather than as a background the words sit on.
+    band_h = (HAZARD_H_M - 2 * b) * 0.26
+    y1 = cy + hh - b
+    y0 = y1 - band_h
+    step = (HAZARD_W_M - 2 * b) / HAZARD_CHEVRONS
+    for i in range(HAZARD_CHEVRONS):
+        x0 = -hw + b + i * step
+        # FLAT QUADS, NOT BOXES. A stripe is paint on the field, and a box is
+        # 12 triangles where a decal is 2 -- 108 against 18 for the band. The
+        # first version used `m.box` and the whole door mount came out 1,078
+        # triangles against a 589 bar, of which the stripe alone was 90.
+        _quad(m, x0, y0, x0 + step * 0.55, y1, face_z + 0.0012,
+              "sign_hazard_stripe")
+    # WRAPPED, NOT SHRUNK. `wrap`'s own docstring gives the reason -- "shrinking
+    # is how a sign stops being readable at the distance it exists to be read
+    # from" -- and the gate below caught this file ignoring its own rule: set on
+    # one line, "PRESSURE SUITS BEYOND THIS POINT" came out at 13.5 mm and
+    # legible from 0.95 m, which is closer than a body can stand to a wall.
+    lines = [legend[0]] + wrap(legend[1], 20)
+    _merge_letters(m, lines, HAZARD_W_M - 2 * b,
+                   (HAZARD_H_M - 2 * b) - band_h,
+                   z=face_z + 0.0015, cy=(cy - hh + b + (y0 - (cy - hh + b)) / 2.0),
+                   header=1, group="sign_text_level")
+    return m.as_tuple()
+
+
+def door_plaque(place, level_plate=None, hazard=True):
+    """The sign beside one door, in its own frame: +X across, +Y up, +Z out.
+
+    Three plates on one mount, and each is there because the register says so:
+
+      * the plaque itself -- what the room is, and `<Colour> <number>`;
+      * a LEVEL plate above it, when `LEVEL_PLATE_ON_DOOR`. The authority-1
+        frame puts one "at high level" on a corridor wall, and this is the only
+        shipped caller that knows which level it is standing on;
+      * a hazard strip below it, when `hazard_of(place)` returns one -- so a
+        reactor hall is signed because it is a reactor hall.
+    """
     m = _M()
     hw, hh = PLAQUE_W_M / 2.0, PLAQUE_H_M / 2.0
-    b = 0.012
-    m.box(-hw, hw, -hh, hh, 0.0, PLAQUE_T_M * 0.45, "sign_frame")
+    b = PLAQUE_BEZEL_M
     # `sign_field`, NOT `sign_face`. The two are different signs in the show
     # and both are authority 1: `sign_face` is the customs hall's large backlit
     # BLUE information board, and `sign_field` is the black-fielded display
     # panel this module's palette was measured off. A door plaque has no
     # reference of its own -- INV-086 says so -- and takes the black, because
     # the black is the half of the reference our corridor does not have.
-    m.box(-hw + b, hw - b, -hh + b, hh - b, PLAQUE_T_M * 0.45, PLAQUE_T_M,
-          "sign_field")
+    face_z = _recessed_plate(m, hw, hh, PLAQUE_T_M, b, PLAQUE_REBATE_M,
+                             "sign_frame", "sign_field")
     lines = door_text(place)
     # Every NAME line takes the large face and the trailing address line does
     # not, so a two-line name does not have its second line demoted to small
     # print. `door_text` puts the address last precisely so this is
     # `len(lines) - 1` and not a magic number that drifts when the layout does.
-    lv, lt, lg = letter_mesh(lines, PLAQUE_W_M - 2 * b, PLAQUE_H_M - 2 * b,
-                             header=len(lines) - 1, z=PLAQUE_T_M + 0.0015)
-    base = len(m.v)
-    m.v.extend(lv)
-    m.t.extend([(a + base, c + base, d + base) for a, c, d in lt])
-    m.g.extend(lg)
+    _merge_letters(m, lines, PLAQUE_W_M - 2 * b, PLAQUE_H_M - 2 * b,
+                   z=face_z + 0.0015, header=len(lines) - 1)
+
+    want_level = LEVEL_PLATE_ON_DOOR if level_plate is None else level_plate
+    if want_level:
+        dy = LEVEL_PLATE_CENTRE_H_M - PLAQUE_CENTRE_H_M
+        lv, lt, lg = level_plaque(place)
+        base = len(m.v)
+        m.v.extend([(x, y + dy, z) for x, y, z in lv])
+        m.t.extend([(a + base, c + base, d + base) for a, c, d in lt])
+        m.g.extend(lg)
+    legend = hazard_of(place) if hazard else None
+    if legend:
+        # Directly under the plaque with a 20 mm reveal, so the two read as one
+        # mount rather than as two signs somebody put near each other.
+        hv, ht, hg = hazard_plate(legend,
+                                  cy=-(hh + 0.020 + HAZARD_H_M / 2.0))
+        base = len(m.v)
+        m.v.extend(hv)
+        m.t.extend([(a + base, c + base, d + base) for a, c, d in ht])
+        m.g.extend(hg)
+    return m.as_tuple()
+
+
+# ---------------------------------------------------------------------------
+# Wayfinding: the sign that says which way, which no station of 250,000 lacks
+# ---------------------------------------------------------------------------
+# THE DESTINATIONS ARE THE REGISTER'S OWN ADJACENCY, not a hand-written list.
+# `directory.PLACES[i]["adjacent"]` already states what is next to what, and a
+# direction board built from anything else would be a second map that drifts
+# from the first. The ARROW is the only invention here (INV-468): a 5x7 lattice
+# has no arrow, so three were drawn into `_FONT` in the same idiom as the rest
+# of the face, and they are the only glyphs in it that are not letterforms.
+ARROW_LEFT, ARROW_RIGHT, ARROW_AHEAD = "<", ">", "^"
+DIRECTION_W_M = 0.62
+DIRECTION_H_M = 0.30
+DIRECTION_T_M = 0.020
+DIRECTION_ROWS = 4
+
+
+def wayfinding_lines(place, rows=DIRECTION_ROWS):
+    """`> ZOCALO` and friends: where you can get to from here.
+
+    The arrow is assigned from the destination's BEARING relative to this
+    place's, on the ring both stand on: a place further round in +theta is to
+    the right of somebody facing along the arc, one behind is left, and one at
+    the same bearing on another radius is straight on. It is arithmetic on the
+    register rather than a choice, so it cannot be wrong in a way nobody
+    notices -- and it is stated here that it assumes the reader faces +theta,
+    which is the one thing a caller has to honour when it places the board.
+    """
+    import directory as _dr                                    # noqa: PLC0415
+    out = [f"LEVEL {level_number(place)}"]
+    here = float(place["angle_deg"]) % 360.0
+    for k in (place.get("adjacent") or ())[:rows]:
+        try:
+            q = _dr.by_key(k)
+        except KeyError:               # `adjacent` may name a non-place row
+            continue
+        if q is None:
+            continue
+        d = (float(q["angle_deg"]) - here + 540.0) % 360.0 - 180.0
+        arrow = (ARROW_AHEAD if abs(d) < 2.0
+                 else ARROW_RIGHT if d > 0 else ARROW_LEFT)
+        name = wrap(q["name"].upper(), 20)
+        label = name[0] if len(name) == 1 else str(q["key"]).replace("_", " ").upper()
+        out.append(f"{arrow} {label[:20]}")
+    if len(out) == 1:
+        out.append(f"{ARROW_AHEAD} {address_of(place)}")
+    return out
+
+
+def direction_board(place, rows=DIRECTION_ROWS):
+    """A wayfinding board. +X across, +Y up, +Z out of the face.
+
+    NOT WIRED INTO THE SHIPPED DECK, and saying so is the point. Nothing in
+    `station/deck.py` or `station/interior.py` places one, because a direction
+    board belongs at a JUNCTION and `interior.ring_arc` does not yet tell the
+    corridor kit where it is (see this module's return note and
+    `interior_kit`'s `CORRIDOR_NOTICES` comment). It is built, gated and costed
+    here so that the wiring is one call rather than a session; it is exercised
+    by `write_obj` so its groups are inside `test_materials_layer3`'s coverage.
+    """
+    m = _M()
+    hw, hh = DIRECTION_W_M / 2.0, DIRECTION_H_M / 2.0
+    b = 0.014
+    face_z = _recessed_plate(m, hw, hh, DIRECTION_T_M, b, PLAQUE_REBATE_M,
+                             "sign_frame", "sign_field")
+    _merge_letters(m, wayfinding_lines(place, rows),
+                   DIRECTION_W_M - 2 * b, DIRECTION_H_M - 2 * b,
+                   z=face_z + 0.0015, header=1)
+    return m.as_tuple()
+
+
+# ---------------------------------------------------------------------------
+# The Zocalo wordmark and the "5" roundel -- two gazetteer entries of their own
+# ---------------------------------------------------------------------------
+# `docs/gazetteer/LOCATIONS.md` gives each its own row, both authority 1, and
+# both were BLANK RECTANGLES: `zocalo.neon_sign()` builds a 1.9 x 0.84 m
+# `zoc_neon_face` slab and its own docstring says "the six glyphs are a decal
+# on `zoc_neon_face`, not geometry" -- and there is no decal, because there are
+# no UVs anywhere in this project (see the block comment above `_FONT`). So the
+# station's most recognisable sign renders as a lit rectangle.
+#
+# THE WORDMARK CANNOT BE SET IN THE 5x7 FACE and it is worth saying why rather
+# than doing it badly. LOCATIONS.md X-215, authority 1:
+#
+#   "'Zocalo' in Latin letterforms, a rounded SINGLE-STROKE TUBE SCRIPT with a
+#    DOT IN THE COUNTER OF EACH 'o', a SWASHED Z and a TRIANGULAR COUNTER in
+#    the 'a'. Orange-red hung under the gallery deck in one frame, cyan over a
+#    portal in another -- glyph-for-glyph the same wordmark."
+#
+# A single-stroke tube script is a PATH, and a path is exactly what a bitmap
+# lattice cannot hold: every feature named above -- the swash, the dots, the
+# triangular counter -- is a property of a stroke centreline. So the wordmark
+# is authored as centrelines and swept into ribbons, which is also what the
+# object physically is: bent glass tube. INV-469 records the six paths as an
+# extrapolation in style; what is authority 1 is the letter sequence, the case,
+# the single-stroke construction, the dots, the swash and the counter.
+TUBE_W = 0.105                      # stroke width as a fraction of cap height
+## SIZED TO THE BOARD IT HANGS ON, not chosen. `zocalo.MEASURED` gives the sign
+## 1.90 x 0.84 m and `neon_sign` insets its lit face by 0.06 m a side, so the
+## wordmark has 1.78 m of face to cross. The six advances below sum to 4.56 cap
+## heights, and 1.78 / 4.56 = 0.390 -- so 0.38 leaves a 0.09 m margin and the
+## first attempt at 0.40 overran the board by 40 mm, which the gate caught.
+WORDMARK_CAP_M = 0.38
+
+## Stroke centrelines in a unit em: x from 0, y from the baseline, cap = 1.0.
+## `loop` closes the path; `dot` is a filled disc in the counter.
+_WORDMARK = (
+    ("Z", 0.98, dict(paths=[[(0.04, 0.84), (0.10, 0.96), (0.82, 0.96),
+                             (0.08, 0.10), (0.70, 0.10), (0.86, 0.05),
+                             (0.96, -0.10)]])),
+    ("o", 0.80, dict(loops=[((0.38, 0.31), 0.30)], dots=[((0.38, 0.31), 0.085)])),
+    ("c", 0.74, dict(arcs=[((0.38, 0.31), 0.30, 42.0, 318.0)])),
+    ("a", 0.84, dict(paths=[[(0.64, 0.58), (0.22, 0.55), (0.05, 0.30),
+                             (0.26, 0.05), (0.64, 0.10)],
+                            [(0.64, 0.62), (0.64, 0.01)]])),
+    ("l", 0.40, dict(paths=[[(0.04, 0.86), (0.16, 0.98), (0.16, 0.06),
+                             (0.30, -0.02)]])),
+    ("o", 0.80, dict(loops=[((0.38, 0.31), 0.30)], dots=[((0.38, 0.31), 0.085)])),
+)
+
+
+def _ribbon(m, pts, w, z, group, close=False):
+    """Sweep a polyline into a flat ribbon of width `w` in the plane z.
+
+    Segments are separate quads with a square plug at every joint. A proper
+    miter would be fewer triangles and would need a degenerate case for the
+    reversal in the Z's diagonal; a plug is 2 triangles and cannot fold.
+    """
+    n = len(pts)
+    seq = list(range(n)) + ([0] if close else [])
+    for i in range(len(seq) - 1):
+        (x0, y0), (x1, y1) = pts[seq[i]], pts[seq[i + 1]]
+        dx, dy = x1 - x0, y1 - y0
+        ln = math.hypot(dx, dy)
+        if ln < 1e-9:
+            continue
+        px, py = -dy / ln * w / 2.0, dx / ln * w / 2.0
+        b = len(m.v)
+        m.v.extend([(x0 + px, y0 + py, z), (x0 - px, y0 - py, z),
+                    (x1 - px, y1 - py, z), (x1 + px, y1 + py, z)])
+        m.t.append((b, b + 1, b + 2))
+        m.t.append((b, b + 2, b + 3))
+        m.g.extend([group] * 2)
+    joints = seq if close else seq[1:-1]
+    for i in joints:
+        x, y = pts[i]
+        h = w / 2.0
+        b = len(m.v)
+        m.v.extend([(x - h, y - h, z), (x + h, y - h, z),
+                    (x + h, y + h, z), (x - h, y + h, z)])
+        m.t.append((b, b + 1, b + 2))
+        m.t.append((b, b + 2, b + 3))
+        m.g.extend([group] * 2)
+
+
+def _disc(m, cx, cy, r, z, group, seg=14):
+    b = len(m.v)
+    m.v.append((cx, cy, z))
+    for i in range(seg):
+        a = 2.0 * math.pi * i / seg
+        m.v.append((cx + r * math.cos(a), cy + r * math.sin(a), z))
+    for i in range(seg):
+        m.t.append((b, b + 1 + i, b + 1 + (i + 1) % seg))
+    m.g.extend([group] * seg)
+
+
+def zocalo_wordmark(cap_m=None, z=0.0, group="sign_wordmark"):
+    """`Zocalo` as bent tube. +X across, +Y up from the baseline, +Z out.
+
+    Returns (verts, tris, groups). Sized by CAP HEIGHT rather than by overall
+    width so a caller can hang it on any board and the stroke stays the same
+    weight relative to the letters, which is what makes a tube script read as
+    one continuous tube rather than as six drawings.
+    """
+    m = _M()
+    cap_m = WORDMARK_CAP_M if cap_m is None else cap_m
+    w = TUBE_W * cap_m
+    x = 0.0
+    for _ch, adv, spec in _WORDMARK:
+        for p in spec.get("paths", ()):
+            _ribbon(m, [(x + px * cap_m, py * cap_m) for px, py in p],
+                    w, z, group)
+        for (cx, cy), r in spec.get("loops", ()):
+            pts = [(x + (cx + r * math.cos(2 * math.pi * i / 16)) * cap_m,
+                    (cy + r * math.sin(2 * math.pi * i / 16)) * cap_m)
+                   for i in range(16)]
+            _ribbon(m, pts, w, z, group, close=True)
+        for (cx, cy), r, a0, a1 in spec.get("arcs", ()):
+            n = 12
+            pts = [(x + (cx + r * math.cos(math.radians(a0 + (a1 - a0) * i / (n - 1)))) * cap_m,
+                    (cy + r * math.sin(math.radians(a0 + (a1 - a0) * i / (n - 1)))) * cap_m)
+                   for i in range(n)]
+            _ribbon(m, pts, w, z, group)
+        for (cx, cy), r in spec.get("dots", ()):
+            _disc(m, x + cx * cap_m, cy * cap_m, r * cap_m, z, group, seg=10)
+        x += adv * cap_m
+    return m.as_tuple()
+
+
+def wordmark_extent_m(cap_m=None):
+    """(width, height) the wordmark occupies, so a caller can fit its board."""
+    cap_m = WORDMARK_CAP_M if cap_m is None else cap_m
+    w = sum(adv for _c, adv, _s in _WORDMARK) * cap_m
+    return w, 1.10 * cap_m
+
+
+## The "5" roundel. LOCATIONS.md X-216, authority 1: "a BOLD SLAB NUMERAL with
+## a BLACK OUTER KEYLINE and a WHITE INLINE, applied large to cream drum panels
+## forming chair backs and table pedestals. The same glyph as the shield patch
+## and the floor inlay -- ONE DECAL ASSET, THREE APPLICATIONS." One asset is
+## the design rule and this is the asset: `five_roundel` is called for the
+## chair back, the table pedestal and the terrazzo floor inlay, at three sizes.
+##
+## THE LETTERFORM IS THE MODULE'S OWN 5x7 '5' AND THAT IS THE INVENTION --
+## INV-469, the same argument INV-086 already makes for the notice face. The
+## show's numeral is a drawn slab serif; a 5x7 lattice cannot hold a serif. What
+## it CAN hold is the numeral; what it CANNOT hold is the inline, and that took
+## two failed attempts to establish rather than one guess.
+##
+## ATTEMPT 1 -- a `5` at 0.46 laid over a `5` at 1.0, both centred on the same
+## origin. An inline is a stroke inside each STROKE, and a smaller copy of the
+## whole glyph follows no stroke at all: it punched an unrelated hole through
+## the middle and the mark read as a broken numeral. A flat raster showed it in
+## one look, which is the argument for rendering geometry before believing it.
+##
+## ATTEMPT 2 -- inset every stroke rectangle by a hairline. Correct in
+## principle and impossible on this lattice, which is the useful finding: a 5x7
+## stroke is ONE CELL wide, so any inline that is visible at all eats most of
+## the stroke and the bold slab numeral becomes an outline drawing. The show's
+## numeral is a drawn slab whose stroke is several times the inline; ours has
+## no room inside itself.
+##
+## SO THE ROUNDEL IS A STROKE PATH, exactly like the wordmark above, and for
+## exactly the same reason -- the features the gazetteer names are properties
+## of a centreline. One centreline, swept twice: a bold ink ribbon, and a
+## narrower field-coloured ribbon down the middle of it. That IS a slab numeral
+## with an inline, and the disc's own ring is the keyline. It also honours
+## LOCATIONS.md X-216's "ONE DECAL ASSET, three applications", because the
+## chair back, the table pedestal and the floor inlay are now three sizes of
+## one path rather than three bitmaps.
+##
+## The 5's skeleton: in from the top right, along the top, down the shoulder,
+## across the waist, down the bowl and back along the foot.
+_FIVE_PATH = ((0.60, 0.97), (0.06, 0.97), (0.06, 0.57), (0.40, 0.57),
+              (0.58, 0.44), (0.58, 0.16), (0.40, 0.03), (0.06, 0.03))
+ROUNDEL_STROKE = 0.23           # ink stroke, as a fraction of the cap height
+ROUNDEL_INLINE = 0.075          # the field-coloured line down the middle of it
+
+
+def five_roundel(d_m=0.36, z=0.0, disc=True):
+    """The station's `5` mark. +X across, +Y up, centred on (0, 0), +Z out."""
+    m = _M()
+    if disc:
+        _disc(m, 0.0, 0.0, d_m / 2.0, z, "sign_roundel_field", seg=24)
+        # The keyline is an outer ring, drawn as a closed ribbon rather than as
+        # a second disc, so it cannot z-fight with the field it sits on.
+        r = d_m / 2.0 * 0.94
+        pts = [(r * math.cos(2 * math.pi * i / 24), r * math.sin(2 * math.pi * i / 24))
+               for i in range(24)]
+        _ribbon(m, pts, d_m * 0.035, z + 0.0008, "sign_roundel_ink", close=True)
+    cap = d_m * 0.62
+    pts = [((x - 0.32) * cap, (y - 0.50) * cap) for x, y in _FIVE_PATH]
+    _ribbon(m, pts, ROUNDEL_STROKE * cap, z + 0.0016, "sign_roundel_ink")
+    _ribbon(m, pts, ROUNDEL_INLINE * cap, z + 0.0024, "sign_roundel_field")
     return m.as_tuple()
 
 
 def write_obj(path):
-    v, t, g = board_pair()
-    it.write_grouped_obj(path, v, t, g)
-    return path, len(v), len(t)
+    """Every group this module can emit, in one file.
+
+    NOT just `board_pair()` any more, and that matters for a reason outside
+    this module: `station/test_materials_layer3.py::BESPOKE_BUILDERS` reaches
+    signage through `write_obj`, so whatever this function does not build is
+    invisible to the station's material-coverage gate. It emitted three groups
+    of the eleven this module has; a new lettering group could have shipped on
+    the glTF default -- white plastic -- and layer 3 would still have read
+    503/503.
+    """
+    import directory as _dr                                    # noqa: PLC0415
+    m = _M()
+
+    def add(triple, dx=0.0, dy=0.0):
+        v, t, g = triple
+        base = len(m.v)
+        m.v.extend([(x + dx, y + dy, z) for x, y, z in v])
+        m.t.extend([(a + base, b + base, c + base) for a, b, c in t])
+        m.g.extend(g)
+
+    add(board_pair())
+    # A place with a hazard and one without, so both branches are in the file.
+    haz = next((p for p in _dr.PLACES if hazard_of(p)), _dr.PLACES[0])
+    add(door_plaque(_dr.PLACES[0]), dx=-3.0, dy=1.6)
+    add(door_plaque(haz), dx=-2.2, dy=1.6)
+    add(level_plaque(_dr.PLACES[0]), dx=-3.0, dy=2.6)
+    add(direction_board(_dr.PLACES[0]), dx=2.4, dy=1.6)
+    add(zocalo_wordmark(), dx=-1.2, dy=3.2)
+    add(five_roundel(), dx=2.4, dy=3.2)
+    it.write_grouped_obj(path, m.v, m.t, m.g)
+    return path, len(m.v), len(m.t)
 
 
 # ---------------------------------------------------------------------------
@@ -902,25 +1744,73 @@ def _selftest():
 
     # Every letter inside its own panel. A sign whose text overruns its frame
     # is worse than a blank one: it reads as a bug rather than as a sign.
-    pv, pt, pg = door_plaque(_dr.PLACES[0])
-    over = [(pv[i][0], pv[i][1]) for k, tri in enumerate(pt)
-            if pg[k].startswith("sign_text") for i in tri
-            if abs(pv[i][0]) > PLAQUE_W_M / 2.0 + 1e-9
-            or abs(pv[i][1]) > PLAQUE_H_M / 2.0 + 1e-9]
-    check("every letter is inside its own plaque", not over, str(over[:3]))
+    #
+    # ASKED PER PLATE, and the widening is a real one rather than a loosening.
+    # A door mount is now THREE plates -- the plaque, a LEVEL plate 0.75 m above
+    # it and, where the register earns one, a hazard strip below -- so the old
+    # test (one rectangle, `abs(y) < PLAQUE_H_M/2`) failed on all 129 the moment
+    # the level plate landed, for a reason that was not a defect. Testing the
+    # bounding box of the assembly instead would have been the loosening: it
+    # cannot see a letter that has left its own plate and landed on the next
+    # one. So each plate is bounded by the FIELD IT IS PRINTED ON, found from
+    # the geometry rather than from the constants, and a letter is checked
+    # against the nearest field. That can still fail, and the control below
+    # shows it failing.
+    FIELDS = ("sign_field", "sign_field_level", "sign_field_hazard")
+
+    def _stray(v, t, g, pad=1e-6):
+        """Lettering vertices that lie on no field of the assembly."""
+        boxes = []
+        for k, tri in enumerate(t):
+            if g[k] in FIELDS:
+                xs = [v[i][0] for i in tri]
+                ys = [v[i][1] for i in tri]
+                boxes.append([min(xs), min(ys), max(xs), max(ys)])
+        merged = []
+        for bx in boxes:                       # one box per field, not per tri
+            for o in merged:
+                if (bx[0] <= o[2] + 1e-6 and bx[2] >= o[0] - 1e-6
+                        and bx[1] <= o[3] + 1e-6 and bx[3] >= o[1] - 1e-6):
+                    o[0], o[1] = min(o[0], bx[0]), min(o[1], bx[1])
+                    o[2], o[3] = max(o[2], bx[2]), max(o[3], bx[3])
+                    break
+            else:
+                merged.append(list(bx))
+        out = []
+        for k, tri in enumerate(t):
+            if not g[k].startswith("sign_text"):
+                continue
+            for i in tri:
+                x, y = v[i][0], v[i][1]
+                if not any(o[0] - pad <= x <= o[2] + pad
+                           and o[1] - pad <= y <= o[3] + pad for o in merged):
+                    out.append((round(x, 4), round(y, 4)))
+        return out
+
+    check("every letter is inside a field of its own mount",
+          not _stray(*door_plaque(_dr.PLACES[0])),
+          str(_stray(*door_plaque(_dr.PLACES[0]))[:3]))
 
     # ...on ALL of them, because the failure is data-driven: one long place
-    # name is all it takes and there are 118 of them.
-    spill = []
-    for p in _dr.PLACES:
-        qv, qt, qg = door_plaque(p)
-        if any(abs(qv[i][0]) > PLAQUE_W_M / 2.0 + 1e-9
-               or abs(qv[i][1]) > PLAQUE_H_M / 2.0 + 1e-9
-               for k, tri in enumerate(qt) if qg[k].startswith("sign_text")
-               for i in tri):
-            spill.append(p["key"])
+    # name is all it takes and there are 129 of them.
+    spill = [p["key"] for p in _dr.PLACES if _stray(*door_plaque(p))]
     check("no plaque on the station overruns its frame", not spill,
           f"{len(spill)} do: {spill[:4]}")
+    # THE CONTROL. Widen the lettering past its plate and the check must fire;
+    # without this the test above is one that cannot fail, which this file's own
+    # standard calls worse than no test.
+    bv, bt, bg = door_plaque(_dr.PLACES[0])
+    bv = [(x * 1.6, y, z) if g else (x, y, z)
+          for (x, y, z), g in zip(bv, [False] * len(bv))]
+    wv, wt, wg = door_plaque(_dr.PLACES[0])
+    wv = [(x, y, z) for x, y, z in wv]
+    tex = {i for k, tri in enumerate(wt) if wg[k].startswith("sign_text")
+           for i in tri}
+    wv = [(x * 3.0, y, z) if i in tex else (x, y, z)
+          for i, (x, y, z) in enumerate(wv)]
+    check("...and the containment check fires when lettering leaves its plate",
+          bool(_stray(wv, wt, wg)),
+          f"{len(_stray(wv, wt, wg))} strays with the text scaled x3")
 
     # A SIGN NOBODY CAN READ IS SET DRESSING, and legibility is arithmetic
     # rather than taste. A 5x7 lattice needs roughly 7 arc-minutes a CELL to
@@ -982,26 +1872,381 @@ def _selftest():
     check("a glyph averages under 6 rectangles", per_glyph < 6.0,
           f"{per_glyph:.2f} rectangles a glyph over {len(_FONT)} glyphs")
     # 2. AND NO SINGLE SIGN MAY BE A BUDGET EVENT ON THE DECK IT HANGS ON.
-    #    `blue/0/0` is 589,216 triangles; 0.1% of it is 589, so the worst
-    #    plaque on the station at 508 passes and one twice this size does not.
-    #    This is the bound that can actually fail for a reason a reader can
-    #    check, because it names both quantities.
+    #    `blue/0/0` is 589,216 triangles; 0.1% of it is 589. That bound was
+    #    written when a door carried ONE plate and it is kept exactly, applied
+    #    to each PLATE -- worst 448, the hazard strip on `waste_green`.
+    #
+    #    A SECOND BOUND IS OWED BECAUSE A DOOR NOW CARRIES THREE PLATES, and it
+    #    is derived rather than picked. The shipped `shot_blue_0_0.obj` carries
+    #    16 door mounts per streaming cell (`sign_field_c00` is 192 triangles
+    #    and a field is one 12-triangle box). At the measured mean of 495 a
+    #    deck spends 1.34% of itself on typography and at the worst mount 2.68%
+    #    -- against `dress_conduit` at 2.8% and `light_pilaster_strip` at 7.0%
+    #    on that same deck. So a mount is allowed 0.25%, which puts sixteen of
+    #    them under 4%: less than the deck already spends on one light fitting,
+    #    for the layer a player actually reads. Both quantities are named, so
+    #    the bound can fail for a reason a reader can check.
     DECK_TRIS = 589216
-    check("no plaque is more than 0.1% of the deck it hangs on",
-          max(each) < DECK_TRIS * 0.001,
+    MOUNTS_PER_CELL = 16
+    plates = []
+    for p in _dr.PLACES:
+        plates.append(len(door_plaque(p, level_plate=False, hazard=False)[1]))
+        plates.append(len(level_plaque(p)[1]))
+        hz = hazard_of(p)
+        if hz:
+            plates.append(len(hazard_plate(hz)[1]))
+    check("no plate is more than 0.1% of the deck it hangs on",
+          max(plates) < DECK_TRIS * 0.001,
+          f"worst plate {max(plates)} tri against {DECK_TRIS * 0.001:.0f}")
+    check("no door mount is more than 0.25% of the deck it hangs on",
+          max(each) < DECK_TRIS * 0.0025,
           f"worst {max(each)} tri "
           f"({_dr.PLACES[each.index(max(each))]['key']}) against "
-          f"{DECK_TRIS * 0.001:.0f}")
-    deck_share = 6 * (tot / len(each)) / float(DECK_TRIS)
-    check("six plaques on a deck are under 1% of it", deck_share < 0.01,
-          f"{deck_share * 100:.2f}% of blue/0/0")
+          f"{DECK_TRIS * 0.0025:.0f}")
+    deck_share = MOUNTS_PER_CELL * (tot / len(each)) / float(DECK_TRIS)
+    worst_share = MOUNTS_PER_CELL * max(each) / float(DECK_TRIS)
+    check("a cell's sixteen mounts are under 4% of it", worst_share < 0.04,
+          f"{worst_share * 100:.2f}% at the worst mount, "
+          f"{deck_share * 100:.2f}% at the mean")
+    n_haz = sum(1 for p in _dr.PLACES if hazard_of(p))
     print(f"  {len(_FONT)} glyphs; {tot:,} triangles for {len(_dr.PLACES)} "
-          f"plaques ({tot / len(_dr.PLACES):.0f} each, worst {max(each)}), "
+          f"door mounts ({tot / len(_dr.PLACES):.0f} each, worst {max(each)}, "
+          f"worst plate {max(plates)}), "
           f"caps {worst * 1000:.1f} mm readable to {read_m:.1f} m, "
-          f"{deck_share * 100:.2f}% of a deck")
+          f"{deck_share * 100:.2f}% of a deck; {n_haz} hazard legends")
     print(f"  customs board: {len(bt):,} triangles, {n_text:,} of them "
           f"lettering, {len(BOARDS['customs_atmosphere']['lines'])} "
           f"transcribed lines")
+
+    # --- THE ADDRESS IS THE SHOW'S GRAMMAR ---------------------------------
+    import re as _re                                            # noqa: PLC0415
+    addrs = [address_of(p) for p in _dr.PLACES]
+    check("every address is <Colour> <number> and nothing else",
+          all(_re.fullmatch(r"(BLUE|RED|GREEN|GREY|BROWN|YELLOW) [1-9]\d*", a)
+              for a in addrs),
+          str([a for a in addrs
+               if not _re.fullmatch(r"[A-Z]+ [1-9]\d*", a)][:3]))
+    # The defect this replaced, asserted so it cannot come back by accident: a
+    # bearing on a plaque is our coordinate system, not the station's.
+    check("no plaque carries a bearing or a ring-deck pair",
+          not any(_re.search(r"\d-\d|\b\d{3}\b", ln)
+                  for p in _dr.PLACES for ln in door_text(p)),
+          str([ln for p in _dr.PLACES for ln in door_text(p)
+               if _re.search(r"\d-\d|\b\d{3}\b", ln)][:3]))
+
+    # THE CORROBORATION, AND IT IS THE POINT OF DERIVING THE NUMBER RATHER THAN
+    # WRITING ONE DOWN. Nothing about Grey was tuned. The ladder comes out of
+    # the hull profile, `interior.DECK_PITCH_M` and the sector's own outermost
+    # ring radius, and Grey's occupied levels contain **17**. If a change to the
+    # hull, the pitch or the numbering pushed the show's most famous address off
+    # this station, this line goes red and says so.
+    grey = sorted({level_number(p) for p in _dr.PLACES if p["sector"] == "grey"})
+    # ASSERTED AS "REACHES 17", NOT "CONTAINS 17", and the weakening is a
+    # correction rather than a retreat. What `Grey 17` establishes at authority
+    # 1 is that Grey has AT LEAST seventeen levels -- it does not say a register
+    # place sits on the seventeenth. The first version of this line demanded
+    # `17 in grey` and went red in the middle of this session when another agent
+    # edited `station/schema/station.yaml`: a hull change of a few metres slides
+    # every place a rung along the ladder, which moves WHICH levels are
+    # occupied without changing HOW MANY exist. The canon claim is about depth,
+    # so depth is what is checked, and it still fails if Grey stops being a deep
+    # industrial sector.
+    check("Grey reaches level 17, which is where the show puts a level",
+          max(grey) >= 17, f"grey levels are {grey}")
+    span = sorted({(p["sector"], level_number(p)) for p in _dr.PLACES})
+    check("the level numbers span a plausible station",
+          max(n for _s, n in span) <= 80 and min(n for _s, n in span) >= 1,
+          f"{min(n for _s, n in span)}..{max(n for _s, n in span)} "
+          f"against on-screen Grey 17 and placard Brown-57")
+    for sec in sorted({p["sector"] for p in _dr.PLACES}):
+        lv = sorted({level_number(p) for p in _dr.PLACES if p["sector"] == sec})
+        print(f"  {SECTOR_LABEL.get(sec, sec):7s} levels {lv}")
+
+    # THE READING IS A SWITCH, NOT AN ASSUMPTION -- C-004 is OPEN and this is
+    # what "switchable in one edit" has to mean to be worth anything: flipping
+    # it changes every sign, and the test proves it rather than the comment
+    # claiming it.
+    global LEVEL_READING
+    _keep = LEVEL_READING
+    try:
+        LEVEL_READING = "angular"
+        ang = [address_of(p) for p in _dr.PLACES]
+        check("switching LEVEL_READING re-addresses the whole station",
+              ang != addrs and all(1 <= int(a.split()[1]) <= 36 for a in ang),
+              f"{sum(1 for a, b in zip(ang, addrs) if a != b)} of "
+              f"{len(addrs)} addresses change; angular range "
+              f"{min(int(a.split()[1]) for a in ang)}.."
+              f"{max(int(a.split()[1]) for a in ang)}")
+    finally:
+        LEVEL_READING = _keep
+    check("...and the switch is restored", LEVEL_READING == _keep)
+
+    # WHAT A SOURCE CLAIMS, BESIDE WHAT WE DERIVE. Not used, printed, and
+    # asserted only in that every attested key is a real place -- a table
+    # naming a room that no longer exists is a table nobody is maintaining.
+    _known = {q["key"] for q in _dr.PLACES}
+    check("every attested address names a place in the register",
+          set(ATTESTED_ADDRESS) <= _known,
+          str(sorted(set(ATTESTED_ADDRESS) - _known)))
+    for k, (_sec, n, _src) in sorted(ATTESTED_ADDRESS.items()):
+        q = _dr.by_key(k) if k in _known else None
+        if q is not None:
+            print(f"  attested {k}: source says {_sec} {n}, we derive "
+                  f"{address_of(q)} (delta {level_number(q) - n:+d}) "
+                  f"-- authority 4, NOT USED")
+
+    # A CORRIDOR CAN NOW BE ADDRESSED FROM A RADIUS, which is what the kit
+    # needs and what it has never had. Asserted here, in the module that owns
+    # the grammar, so the one-line change in `interior.ring_arc` has something
+    # to call the day it lands rather than a parameter nobody passes.
+    schema_, profile_ = _schema()
+    r0, _a, _b, _c = it.place_floor_radius(schema_, profile_, _dr.PLACES[0])
+    cl = corridor_plate_lines({"sector": _dr.PLACES[0]["sector"],
+                               "r_floor_m": r0,
+                               "angle_deg": _dr.PLACES[0]["angle_deg"]})
+    check("a corridor plate can be addressed from a radius alone",
+          len(cl) == 2 and cl[0] == SECTOR_LABEL[_dr.PLACES[0]["sector"]]
+          and cl[1].startswith("LEVEL "), str(cl))
+    check("...and it agrees with the door plaque on the same deck",
+          cl[1].split()[1] == address_of(_dr.PLACES[0]).split()[1],
+          f"corridor {cl} against door {address_of(_dr.PLACES[0])!r}")
+    # It must MOVE with the radius, or it is a constant dressed as an address.
+    up = corridor_plate_lines({"sector": _dr.PLACES[0]["sector"],
+                               "r_floor_m": r0 - 5 * it.DECK_PITCH_M,
+                               "angle_deg": 0.0})
+    check("...and five decks inward reads five levels different",
+          abs(int(up[1].split()[1]) - int(cl[1].split()[1])) == 5,
+          f"{cl[1]!r} against {up[1]!r}")
+
+    # --- THE LEVEL PLAQUE IS RECESSED, WHICH IS THE WHOLE FIDELITY CLAIM ----
+    lv, lt, lg = level_plaque(_dr.PLACES[0])
+    fld = [lv[i][2] for k, tri in enumerate(lt)
+           if lg[k] == "sign_field_level" for i in tri]
+    frm = [lv[i][2] for k, tri in enumerate(lt)
+           if lg[k] == "sign_frame" for i in tri]
+    txt = [lv[i][2] for k, tri in enumerate(lt)
+           if lg[k] == "sign_text_level" for i in tri]
+    check("the level plate's field is set BACK inside its frame",
+          max(fld) < max(frm) - 1e-6,
+          f"field front {max(fld):.4f}, frame face {max(frm):.4f}")
+    check("...and the lettering stays inside the rebate rather than on top",
+          max(txt) < max(frm) - 1e-6,
+          f"letters at {max(txt):.4f}, frame face {max(frm):.4f}")
+    check("the level plate is landscape, as the frame shows",
+          LEVEL_PLATE_W_M > 2.0 * LEVEL_PLATE_H_M,
+          f"{LEVEL_PLATE_W_M} x {LEVEL_PLATE_H_M}")
+    check("it is above a standing eye",
+          LEVEL_PLATE_CENTRE_H_M - LEVEL_PLATE_H_M / 2.0 >= 1.70,
+          f"underside at {LEVEL_PLATE_CENTRE_H_M - LEVEL_PLATE_H_M / 2.0:.3f} m")
+    # AND ITS TOP CLEARS THE CORRIDOR'S HEAD CHAMFER, which is the assertion
+    # that would have caught the plate being swallowed by the soffit. Both
+    # numbers come from `interior_kit.PROVISIONAL`, so a change to the corridor
+    # section fails this rather than silently burying every level plate on the
+    # station.
+    _flat = (_K.PROVISIONAL["ceiling_height_m"]
+             - _K.PROVISIONAL["wall_chamfer_m"])
+    check("the level plate's top clears the corridor's head chamfer",
+          LEVEL_PLATE_CENTRE_H_M + LEVEL_PLATE_H_M / 2.0 <= _flat - 0.05,
+          f"plate top {LEVEL_PLATE_CENTRE_H_M + LEVEL_PLATE_H_M / 2.0:.3f} m "
+          f"against a flat wall ending at {_flat:.2f} m")
+    # THE ONE A RENDER HAD TO FIND, now an assertion. The corridor's clamped
+    # services run 1.95-2.55 m above the deck and a plate inside that band is
+    # invisible however correct it is.
+    check("the level plate is clear of the corridor's high-level services",
+          LEVEL_PLATE_CENTRE_H_M + LEVEL_PLATE_H_M / 2.0 <= SERVICE_BAND_M[0],
+          f"plate top {LEVEL_PLATE_CENTRE_H_M + LEVEL_PLATE_H_M / 2.0:.3f} m "
+          f"against services from {SERVICE_BAND_M[0]:.2f} m")
+    check("...and clear of the plaque under it",
+          LEVEL_PLATE_CENTRE_H_M - LEVEL_PLATE_H_M / 2.0
+          >= PLAQUE_CENTRE_H_M + PLAQUE_H_M / 2.0,
+          f"plate bottom {LEVEL_PLATE_CENTRE_H_M - LEVEL_PLATE_H_M / 2.0:.3f} m "
+          f"against plaque top {PLAQUE_CENTRE_H_M + PLAQUE_H_M / 2.0:.3f} m")
+    check("...and the height is the kit's, not a number this module remembers",
+          abs(LEVEL_PLATE_CENTRE_H_M - _level_plate_centre_h()) < 1e-9,
+          f"{LEVEL_PLATE_CENTRE_H_M} against {_level_plate_centre_h():.4f}")
+    check("it carries the authority-1 word",
+          all(level_text(p).startswith("LEVEL ") for p in _dr.PLACES))
+    lcaps = min(fit_cap_m([level_text(p)], LEVEL_PLATE_W_M - 0.020)
+                for p in _dr.PLACES)
+    lread = (lcaps / GLYPH_H) / math.tan(math.radians(7.0 / 60.0))
+    check("the level plate is legible from further than the corridor is wide",
+          lread > 2.4,
+          f"{lcaps * 1000:.1f} mm caps, readable to {lread:.1f} m")
+    # AND THE NEGATIVE CONTROL FOR THE WHOLE FEATURE: with the flag off, the
+    # station has door plaques and no level plaques, which is exactly what it
+    # had before this session.
+    off = door_plaque(_dr.PLACES[0], level_plate=False)
+    check("with LEVEL_PLATE_ON_DOOR off the level plate is gone",
+          "sign_field_level" not in set(off[2])
+          and "sign_field_level" in set(door_plaque(_dr.PLACES[0])[2]),
+          f"off={sorted(set(off[2]))}")
+
+    # --- WARNING SIGNAGE COMES FROM THE REGISTER ---------------------------
+    haz = {p["key"]: hazard_of(p) for p in _dr.PLACES}
+    n_h = sum(1 for v in haz.values() if v)
+    check("warnings are earned by declaration, not placed by hand",
+          0 < n_h < len(_dr.PLACES),
+          f"{n_h} of {len(_dr.PLACES)} places declare a hazard")
+    # The one a reader can check by name: the Markab quarter is sealed, and
+    # `directory.py` says so with a `welded_door`.
+    mk = _dr.by_key("markab_quarter")
+    check("the sealed Markab quarter is signed as sealed",
+          mk is not None and hazard_of(mk) == ("SEALED BY ORDER", "NO ADMITTANCE"),
+          str(hazard_of(mk) if mk else None))
+    react = [k for k, v in haz.items() if v and v[0] == "RADIATION"]
+    check("every reactor-side place is signed for radiation", react,
+          str(react[:4]))
+    # A WARNING MUST BE READABLE FURTHER AWAY THAN THE THING IT WARNS ABOUT, or
+    # it is decoration. Measured off the emitted mesh rather than off the
+    # constants -- `letter_mesh` shrinks a block that will not fit, so the cap a
+    # caller ASKS for and the cap that ships are different numbers, and this
+    # asserts the one that ships. The first hazard plate was 0.085 m tall and
+    # the header measured 1.06 m of legibility, which is closer than a body can
+    # stand to a wall; 0.130 m puts it past the corridor's own half-width.
+    # TWO TIERS, TWO BARS, and separating them is the point rather than a way
+    # of passing. A warning plate is a road sign: the HEADING is what you read
+    # walking past and it must carry across the corridor; the instruction under
+    # it is small print you read standing at the door. One bar over both was
+    # the wrong question -- it graded a deliberate hierarchy as a defect.
+    def _tiers(v, t, g):
+        # CAP HEIGHT PER LINE, NOT RECTANGLE HEIGHT -- and the difference is a
+        # factor of seven. `_spans` merges a glyph into rectangles, so the
+        # SMALLEST rectangle on a plate is the crossbar of an `E`, one cell
+        # tall; a min over rectangles reported the small print at 1.6 mm and
+        # "readable to 0.12 m", which measures a crossbar and not a letter.
+        #
+        # CLUSTERING BY BASELINE DOES NOT WORK EITHER, and that was the second
+        # wrong answer: a merged span's bottom edge is wherever its own strokes
+        # end, so one line's rectangles have many different bottoms. What IS
+        # true of a line is that its rectangles all OVERLAP the band its caps
+        # occupy, so the y-intervals are merged by overlap and each merged
+        # interval is one line. Its height is that line's cap.
+        iv = sorted((min(v[i][1] for i in tri), max(v[i][1] for i in tri))
+                    for k2, tri in enumerate(t) if g[k2] == "sign_text_level")
+        lines = []
+        for lo, hi in iv:
+            if lines and lo <= lines[-1][1] + 1e-9:
+                lines[-1][1] = max(lines[-1][1], hi)
+            else:
+                lines.append([lo, hi])
+        caps = sorted(hi - lo for lo, hi in lines)
+        return caps[-1], caps[0]
+
+    def _read(h):
+        return (h / GLYPH_H) / math.tan(math.radians(7.0 / 60.0))
+
+    heads, smalls = [], []
+    for _k, _v in haz.items():
+        if _v:
+            a_, b_ = _tiers(*hazard_plate(_v))
+            heads.append(a_)
+            smalls.append(b_)
+    check("the worst hazard HEADING on the station reads from 1.5 m",
+          _read(min(heads)) >= 1.5,
+          f"{min(heads) * 1000:.1f} mm stroke, readable to "
+          f"{_read(min(heads)):.2f} m")
+    check("...and its small print reads at arm's length",
+          _read(min(smalls)) >= 0.7,
+          f"{min(smalls) * 1000:.1f} mm stroke, readable to "
+          f"{_read(min(smalls)):.2f} m")
+    # ...and a mess hall is not. A hazard table that fires on everything is a
+    # table that says nothing.
+    mess = _dr.by_key("mess_hall")
+    check("an ordinary room carries no warning",
+          mess is not None and hazard_of(mess) is None, str(hazard_of(mess)))
+
+    # --- WAYFINDING ARROWS POINT THE RIGHT WAY -----------------------------
+    # Arithmetic on the register's own bearings, so it is checkable: a
+    # destination further round in +theta must take the right arrow.
+    import directory as _d2                                     # noqa: PLC0415
+    wrong = []
+    for p in _d2.PLACES:
+        here = float(p["angle_deg"]) % 360.0
+        for ln in wayfinding_lines(p)[1:]:
+            arrow = ln[0]
+            for kk in (p.get("adjacent") or ()):
+                try:
+                    q = _d2.by_key(kk)
+                except KeyError:
+                    continue
+                if q is None:
+                    continue
+                dd = (float(q["angle_deg"]) - here + 540.0) % 360.0 - 180.0
+                want = (ARROW_AHEAD if abs(dd) < 2.0
+                        else ARROW_RIGHT if dd > 0 else ARROW_LEFT)
+                nm = wrap(q["name"].upper(), 20)
+                lab = nm[0] if len(nm) == 1 else str(q["key"]).replace("_", " ").upper()
+                if ln[2:] == lab[:20] and arrow != want:
+                    wrong.append((p["key"], q["key"], arrow, want))
+    check("every wayfinding arrow agrees with the register's bearings",
+          not wrong, str(wrong[:3]))
+    check("the arrows are in the face",
+          all(c in _FONT for c in (ARROW_LEFT, ARROW_RIGHT, ARROW_AHEAD)))
+    dv, dt, dg = direction_board(_dr.PLACES[0])
+    check("a direction board renders lettering",
+          sum(1 for x in dg if x.startswith("sign_text")) > 40,
+          f"{sum(1 for x in dg if x.startswith('sign_text'))} lettering tris")
+
+    # --- THE WORDMARK AND THE ROUNDEL --------------------------------------
+    wv, wt, wg = zocalo_wordmark(WORDMARK_CAP_M)
+    ww, wh = wordmark_extent_m(WORDMARK_CAP_M)
+    check("the wordmark is one group of tube, not a rectangle",
+          set(wg) == {"sign_wordmark"} and len(wt) > 200,
+          f"{len(wt)} triangles in {sorted(set(wg))}")
+    check("the wordmark fits the board zocalo.neon_sign builds",
+          ww <= 1.9 - 0.12 and wh <= 0.84 - 0.12,
+          f"{ww:.2f} x {wh:.2f} m in a 1.90 x 0.84 m board")
+    # It is a SCRIPT and not a lattice: no glyph in it may coincide with the
+    # 5x7 face, which is the whole reason it is authored as paths.
+    xs = [q[0] for q in wv]
+    ys = [q[1] for q in wv]
+    check("the wordmark is a baseline-relative script with a descender",
+          min(ys) < -0.02 and max(ys) > 0.90 * WORDMARK_CAP_M,
+          f"y {min(ys):.3f}..{max(ys):.3f} at cap {WORDMARK_CAP_M}")
+    check("...and it runs left to right without gaps",
+          max(xs) - min(xs) > 3.0 * WORDMARK_CAP_M,
+          f"{max(xs) - min(xs):.2f} m across")
+    rv, rt, rg = five_roundel()
+    check("the roundel has a field, an ink glyph and an inline",
+          {"sign_roundel_field", "sign_roundel_ink"} == set(rg)
+          and len(rt) > 60, f"{sorted(set(rg))}, {len(rt)} tris")
+    ink = [rv[i][2] for k, tri in enumerate(rt)
+           if rg[k] == "sign_roundel_ink" for i in tri]
+    inl = [rv[i][2] for k, tri in enumerate(rt)
+           if rg[k] == "sign_roundel_field" for i in tri]
+    check("the inline sits proud of the ink it is cut out of",
+          max(inl) > max(ink) - 1e-9,
+          f"inline z {max(inl):.4f}, ink z {max(ink):.4f}")
+
+    # --- EVERY GROUP THIS MODULE EMITS IS INSIDE THE MATERIAL GATE ---------
+    # `test_materials_layer3.BESPOKE_BUILDERS` reaches signage through
+    # `write_obj` alone, so a group `write_obj` does not build is a group the
+    # station's material coverage cannot see. This asserts the two agree.
+    import tempfile as _tf, os as _os                            # noqa: PLC0415
+    fd, tmp = _tf.mkstemp(suffix=".obj")
+    _os.close(fd)
+    try:
+        write_obj(tmp)
+        emitted = {ln[2:].strip() for ln in open(tmp, encoding="utf-8")
+                   if ln.startswith("g ")}
+    finally:
+        _os.unlink(tmp)
+    reachable = set()
+    for f in (board_pair(), board_lit("customs_atmosphere"),
+              arrivals_board(), notice_board(),
+              door_plaque(_dr.PLACES[0]), door_plaque(haz_place := next(
+                  (p for p in _dr.PLACES if hazard_of(p)), _dr.PLACES[0])),
+              level_plaque(_dr.PLACES[0]), direction_board(_dr.PLACES[0]),
+              zocalo_wordmark(), five_roundel()):
+        reachable |= set(f[2])
+    check("write_obj emits every group this module can build",
+          not (reachable - emitted), str(sorted(reachable - emitted)))
+    import materials as _mt                                      # noqa: PLC0415
+    unbound = sorted(g for g in reachable if _mt.resolve_any(g) is None)
+    check("every group this module emits has a material", not unbound,
+          str(unbound))
+    print(f"  groups: {len(reachable)}; wordmark {len(wt)} tri, "
+          f"roundel {len(rt)} tri, direction board {len(dt)} tri")
 
     # --- the pair ----------------------------------------------------------
     pv, pt, pg = board_pair()
