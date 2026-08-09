@@ -272,16 +272,32 @@ jobs:
       # tick here means "the binary is on the release page and something about
       # it is wrong", which is a true and useful statement. What it no longer
       # means is nothing.
+      # AND IT IS WRITTEN IN POWERSHELL, BECAUSE THIS RUNNER'S DEFAULT SHELL IS
+      # POWERSHELL. The first version of this step was bash -- `if [ "..." !=
+      # "success" ]; then` -- and pwsh answered `Missing '(' after 'if' in if
+      # statement` and exited 1. Every time. Whatever the gates did.
+      #
+      # So the step written to stop a green tick hiding a failed gate was itself
+      # A STEP THAT COULD ONLY EVER FAIL, which is worth exactly as much as one
+      # that can only ever pass -- the same defect it was built to prevent, in
+      # the prevention. Run 17 exported a working Babylon5.exe, staged the whole
+      # world beside it, uploaded 1.53 GB of playable build, and reported
+      # FAILURE because of a shell dialect.
+      #
+      # `shell: bash` is available on windows-latest and would also have worked.
+      # pwsh is used instead because it is this job's default everywhere else,
+      # and one dialect per file is what stops the next person guessing.
       - name: did any gate fail? -- the tick is worthless without this
         if: always()
+        shell: pwsh
         run: |
-          if [ "${{ steps.sgates.outcome }}" != "success" ]; then
-            echo "FAILED: sgates -- tools/build_world.py --gates-only"
-            echo "The .exe is uploaded and at least one gate is red. Read the"
-            echo "gate-logs artifact; build_world names every failing gate."
+          if ("${{ steps.sgates.outcome }}" -ne "success") {
+            Write-Host "FAILED: sgates -- tools/build_world.py --gates-only"
+            Write-Host "The .exe is uploaded and at least one gate is red. Read"
+            Write-Host "the gate-logs artifact; build_world names every failure."
             exit 1
-          fi
-          echo "every gate passed"
+          }
+          Write-Host "every gate passed"
 
       - name: keep the gate logs too
         if: always()
