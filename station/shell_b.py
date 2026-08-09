@@ -1983,7 +1983,15 @@ def integration_note():
 tools/export_station.py :: work_list()  (the function at line 70)
 
   It enumerates decks from `routes.clusters()` -- "every deck that CARRIES A
-  LOCATION" -- which is 71 of the station's 251. Shell B owns the other 180.
+  LOCATION" -- which is 71 of the station's 251. Shell B plans 86 decks, 38 of
+  them at an address Shell A already owns (`decks.setdefault` leaves those to
+  Shell A), so the change adds 48 decks and the station builds 119.
+
+  IT WAS 101 PLANNED / 63 ADDED BEFORE SESSION 4v. Fifteen of those decks were
+  a clamp: `deck_slots` resolved any deck index past the hull-narrowed stack to
+  the innermost radius the stack had, so blue ring 0 built 8 decks at 4 radii
+  and grey ring 0 built 23 at 12. `tools/merge_cells.py` refused the export
+  over it and was right to. See `ring_stack`.
 
   AFTER the `decks[k[:3]].append(k[3])` loop and BEFORE `rings = ...`, add:
 
@@ -2376,6 +2384,23 @@ def _cli(argv=None):
               % ("{:,.0f}".format(tot["built_m2"]),
                  "{:,.0f}".format(tot["target_m2"]),
                  100.0 * tot["built_m2"] / max(tot["target_m2"], 1)))
+        # A CAP IS NEVER SILENT. The belts as written want more decks than the
+        # hull leaves over their own z; the blocks redistribute over the decks
+        # that remain, so the dwellings and the gross are unchanged and the
+        # DENSITY per deck is what moves. Printed with the axial station the
+        # sector's stacks were taken at, because that is the number that
+        # decides it.
+        c = caps()
+        print("")
+        if not c:
+            print("  no belt capped -- every belt's decks all exist at its z")
+        for (bid, sec, ring), (want, kept, why) in sorted(c.items()):
+            print("  CAPPED  %-9s %s ring %d: %d decks asked, %d built  (%s)"
+                  % (bid, sec, ring, want, kept, why))
+        for (_i, sec), (z, dep) in sorted(_SECTOR_Z.items(),
+                                          key=lambda t: t[0][1]):
+            print("  %-6s stacks taken at z %.1f m (belt depth %.0f m)"
+                  % (sec, z, dep))
         return 0
 
     if a.deck:

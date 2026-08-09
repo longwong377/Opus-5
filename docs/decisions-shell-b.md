@@ -1,9 +1,14 @@
 # SHELL B — the decision, what it generates, and what would overturn it
 
-*Session 4u. Builder: `station/shell_b.py`. Gate: `python3 station/shell_b.py --selftest`
-(11 claims), control: `--selftest --legacy` (4 of the 11 fail). Not a plan document — it
+*Sessions 4u–4v. Builder: `station/shell_b.py`. Gate: `python3 station/shell_b.py --selftest`
+(**12 claims**), control: `--selftest --legacy` (**5 of the 12 fail**). Not a plan document — it
 records one decision and its measurements. `docs/spec/PLACES.md` §2 stays the authority on
 what Shell B IS; nothing here amends it.*
+
+> **4v CHANGED THE DECK COUNT, AND EVERY FIGURE BELOW THAT SAYS 101 DECKS IS STALE.**
+> The live numbers are **86 decks**, **4,636,727 m²**, **222,580 dwellings**. §9 is the
+> new section and it supersedes §4's deck column. Nothing else in this file moved:
+> the dwellings, the belts, the gross and the per-m² costs are unchanged.
 
 ---
 
@@ -63,19 +68,26 @@ nodes"* (a lead-in, not four rooms) and on SHB-05's trailing camp-fringe sentenc
 
 ## 4. What it generates, measured
 
-`python3 station/shell_b.py --plan`
+`python3 station/shell_b.py --plan` — **the deck column and the total are as of 4v; the two
+rows 4v moved are marked, and §9 says why.**
 
 | belt | decks | generated m² | annex m² | ratio | dwellings |
 |---|---|---|---|---|---|
-| SHB-01 Blue r0 crew country | 8 | 94,267 | 93,700 | 100.6% | 3,720 |
+| SHB-01 Blue r0 crew country | **4** (was 8) | 93,700 | 93,700 | 100.0% | 3,720 |
 | SHB-02 Blue r1 dockers | 4 | 172,400 | 172,400 | 100.0% | 7,680 |
 | SHB-03 Red r0 market back-of-house | 13 | 28,001 | 28,000 | 100.0% | 0 |
 | SHB-04 Red r1–2 civilian mass | 32 | 3,747,126 | 3,706,900 | 101.1% | 184,020 |
 | SHB-05 Red r3 plant support | 12 | 14,000 | 14,000 | 100.0% | 0 |
 | SHB-06 Green r0 diplomatic/rosette | 8 | 369,700 | 369,700 | 100.0% | 14,160 |
-| SHB-08 + 08.f Grey r0 industrial + refugee | 23 | 199,800 | 199,800 | 100.0% | 13,000 |
+| SHB-08 + 08.f Grey r0 industrial + refugee | **12** (was 23) | 199,800 | 199,800 | 100.0% | 13,000 |
 | SHB-09 Yellow worked nodes | 1 | 12,000 | 12,000 | 100.0% | 0 |
-| **total** | **101** | **4,637,295** | **4,596,500** | **100.89%** | **222,580** |
+| **total** | **86** | **4,636,727** | **4,596,500** | **100.88%** | **222,580** |
+
+**Dwellings, gross and blocks are unchanged by the cap**, which is the point of capping at
+belt level: `_split_evenly` sums to the belt total whatever the deck count, and `deck_slots`
+shares the belt's gross by units-on-this-deck rather than by deck index. SHB-01's ratio
+actually *improved*, 100.6% → 100.0%, because 62 blocks divide 16/16/15/15 over four decks
+where over eight they divided 8/8/8/8/8/8/7/7 and the flat-share residue showed.
 
 **Dwellings are exact**: 209,580 units + 13,000 partitions, against the annex's own
 209,580 and 13,000. Not approximately — the split of a belt's blocks over its decks is
@@ -114,7 +126,8 @@ fifteen-hundredth of the detail per square metre.
 `build_deck()` / `build_cell()` on demand — `interior.cell_manifest`'s architecture and ADR
 0003's rule, *the repository stores the rule rather than the result*. A cold build of one
 deck is ~20 s, of which ~19 s is the one-off ray cast that measures the collision profile;
-warm, a deck is **0.1–0.4 s**. The whole 101-deck shell is under a minute of CPU.
+warm, a deck is **0.1–0.4 s**. The whole 86-deck shell is under a minute of CPU, and
+`station_plan()` — every deck's metadata, including 4v's sector fixed point — is **0.87 s**.
 
 ## 5. The four decisions inside the build that were not obvious
 
@@ -226,13 +239,204 @@ should be the same material by construction. `_sidecars`' `_tail()` already stri
   The belt's 12,000 m² is built there. Whether the four *worked nodes* are four decks or one
   is a register question, not a builder question.
 - **Grey's camps (509,750 m² @25 m²/person, 20,390 lurkers)** are in §4 TOTALS' Shell B
-  column and are PLC-028/089 places, not belts. Adding them to the 4,637,295 above gives
-  **5,147,045 m² ≈ the §4 headline of ≈5.12 M m²**, which is the check that nothing is
+  column and are PLC-028/089 places, not belts. Adding them to the 4,636,727 above gives
+  **5,146,477 m² ≈ the §4 headline of ≈5.12 M m²**, which is the check that nothing is
   missing between the two tables.
-- **101 of 251 decks.** The belts as specified do not reach Blue rings 2–3, Grey rings 1–3,
-  or most of Yellow — 148 decks. That is the spec's own decision (SHC-05's plant-zone void,
-  SHC-07's undecked aft flanks), not an omission here, and it is worth stating plainly
-  because "Shell B covers the empty decks" is the sentence a future session will otherwise
-  believe.
+- **86 of 251 decks** (101 before 4v). The belts as specified do not reach Blue rings 2–3,
+  Grey rings 1–3, or most of Yellow — and after 4v they do not reach the *outer* decks of
+  Blue ring 0 or the *inner* decks of Grey ring 0 either, because the hull does not leave
+  them over those belts' own z. That is partly the spec's own decision (SHC-05's plant-zone
+  void, SHC-07's undecked aft flanks) and partly a fact about the ship, and it is worth
+  stating plainly because "Shell B covers the empty decks" is the sentence a future session
+  will otherwise believe.
 - **No NPCs, no dressing, no props, no audio, no signage, no lighting rig, no navmesh.**
   A Shell B deck is architecture. Everything that makes it inhabited is a later pass.
+
+---
+
+## 9. SESSION 4v — FIFTEEN DECKS WERE AT A RADIUS ANOTHER DECK ALREADY HAD
+
+Shell B went on the shipped path, a Windows build ran 48.8 minutes and 126 decks, and
+step 6 of 9 refused:
+
+```
+merge_cells: derived deck headroom below 2.0 m ... median 3.600
+  -- floor radii are not one per deck and a band this thin is a fall through the world
+```
+
+**The refusal is correct and was not weakened.** `tools/merge_cells.py::deck_headroom`
+derives streaming residency as a *containment test on radius* — a deck floor is opaque, so
+a deck occupies the band from its own floor radius inward to its neighbour's — and it needs
+one radius per deck. It refused rather than emitting the convenient reading, which is
+exactly what a gate is for; it found this on its first real run.
+
+### The cause, in one line of code
+
+`deck_slots` read `decks_in_ring(...)[min(deck, len(decks_list) - 1)]`. The belts claim
+their decks against the ring at the sector's **widest** cylinder; the radius was taken from
+the ring as the **hull** leaves it, which is a shorter stack. Every deck index past the end
+of the shorter stack resolved to its innermost radius:
+
+| ring | decks planned | distinct radii | the decks that collided |
+|---|---|---|---|
+| blue ring 0 | 8 | **4** | 5, 6, 7, 8, 9 — all at **179.50 m** |
+| grey ring 0 | 23 | **12** | 11 … 22 — all at **390.80 m** |
+
+Fifteen zero-metre gaps. Two decks at one radius *are* one deck.
+
+### And the fixed point that was supposed to prevent it had never run
+
+`deck_slots` carried a documented three-pass hull recursion guarded by `if _pass < 3:` —
+and seventy lines above it `for _pass in range(6):` **rebinds the same name**, so `_pass`
+was always 5 by the time the guard was read and the recursion was dead code. Every radius
+in the module came from pass 0, probed at the sector's own `z0`. It was invisible because
+`z0` is the narrow end of most sectors here, so the dead loop's answer was usually the
+conservative one anyway. *A parameter and a loop variable sharing a name is a silent
+`if False:`.*
+
+### The fix: one stack per ring, one axial station per sector, and a cap that is announced
+
+1. **`ring_stack(sector, ring)`** is now the single source of every radius in the module,
+   memoised per `(schema, sector, ring)`. Two decks of a ring can no longer answer from two
+   different stacks, so distinct deck indices give distinct radii **by construction**,
+   `DECK_PITCH_M` = 3.600 m apart. There is nothing left to clamp: an index past the end
+   raises.
+2. **`belt_decks` caps the belt** to what the stack holds and **`_split_evenly` redistributes
+   the blocks over the decks that remain**. Rule 1's existing spec-sanity raise is unchanged
+   (a row naming a deck the ring never stacks at *any* z is still an error); the cap is the
+   different question — what the hull leaves over this belt's own z — and it is recorded in
+   `caps()`, printed by `--plan`, and asserted on. A belt whose *first* deck is already
+   outside what the hull leaves raises instead of building nothing quietly.
+3. **`_settle_sector` runs the depth/stack fixed point for real**, at sector level.
+
+### Two things that bound the deepening, both found by a number moving
+
+**One axial station per sector.** Settling each *ring* against its own belt's depth was tried
+first. It gave every ring distinct radii — and put **red ring 2 on red ring 3's exact radii**
+(101.86, 98.26, 94.66 …), because SHB-04 runs 300 m deep and the hull at that station carries
+a ring 2 no bigger than the ring 3 at red's near end. Each ring was individually correct and
+the pair was a solid interpenetrating a solid. `interior.ring_radii` partitions the whole
+cross-section, so **ring indices are only comparable within one station**; all of a sector's
+stacks now come from one `z`.
+
+**A deepening that deletes a ring is refused.** At red's deep station (z 6,687.5) ring 3 does
+not stack at all, so adopting it would have silently deleted SHB-05's twelve decks. The rule
+is `spec_registry`'s — refuse the ambiguity rather than emit the convenient reading — so the
+last station at which every ring the sector's belts name still exists is kept, and `--plan`
+prints which one that was:
+
+```
+  blue   stacks taken at z 6901.6 m (belt depth 108 m)     grey   z 3397.0 (76 m)
+  green  stacks taken at z 3839.0 m (belt depth   0 m)     red    z 6425.0 ( 0 m, deepening refused)
+  yellow stacks taken at z    0.0 m (belt depth  56 m)
+```
+
+### Before and after, per ring
+
+| ring | before: decks / distinct / min gap | after: decks / distinct / min gap |
+|---|---|---|
+| blue 0 | 8 / **4** / **0.000 m** | 4 / 4 / 3.600 m |
+| blue 1 | 4 / 4 / 3.600 m | 4 / 4 / 3.600 m |
+| green 0 | 8 / 8 / 3.600 m | 8 / 8 / 3.600 m |
+| grey 0 | 23 / **12** / **0.000 m** | 12 / 12 / 3.600 m |
+| red 0 | 13 / 13 / 3.600 m | 13 / 13 / 3.600 m |
+| red 1 | 16 / 16 / 3.600 m | 16 / 16 / 3.600 m |
+| red 2 | 16 / 16 / 3.600 m | 16 / 16 / 3.600 m |
+| red 3 | 12 / 12 / 3.600 m | 12 / 12 / 3.600 m |
+| yellow 0 | 1 / 1 / — | 1 / 1 / — |
+| **total** | **101 decks, 15 gaps at 0.000 m** | **86 decks, tightest gap 3.600 m** |
+
+Blue ring 0's four surviving radii also moved 2.00 m inward (190.30 → 188.30 and so on),
+because blue is the one sector whose fixed point actually deepens: 108 m of belt takes the
+probe from z 6,794 to z 6,901.6, where ring 0 stacks six decks with `r_outer` 195.50 instead
+of 197.50.
+
+### The gate, shown failing first
+
+Claim 12, `no two decks of a ring share a radius`. **`MIN_HEADROOM_M` is imported out of
+`tools/merge_cells.py` rather than restated**, so this gate cannot pass a build that tool
+would reject. `--selftest --legacy` withholds the cap *and* restores `min(deck, len - 1)`
+*and* pins the probe back to `z0`, so the control is the shipped behaviour of 4u:
+
+```
+LEGACY   no two decks of a ring share a radius  FAIL  9 rings, 103 decks, tightest gap
+         0.000 m against 2.000 m demanded by merge_cells; NOT DISTINCT:
+         [(('blue', 0), 8, 4, [[5, 6, 7, 8, 9]]),
+          (('grey', 0), 23, 12, [[11,12,13,14,15,16,17,18,19,20,21,22]])];
+         15 gap(s) under the bar
+
+SHIPPED  no two decks of a ring share a radius  PASS  9 rings, 86 decks, tightest gap
+         3.600 m against 2.000 m demanded by merge_cells
+```
+
+`--selftest` is **0 of 12**; `--selftest --legacy` is **5 of 12** (the four of 4u, unchanged
+word for word, plus this one). The legacy run reproduces 4u's numbers exactly — 103 decks,
+4,907,466 m², 210,240 units — which is the evidence the control is the old behaviour and not
+a different one.
+
+### One deck built from each affected ring
+
+```
+blue/0/2   r 188.30 m  1183 m around  18 cells  0.68 g   16 blocks x 60,  11 rooms
+           24,181 m2 built == 24,181 m2 the annex states     960 dwellings
+           34,668 render tri (lod 1), 1,076 collision (3.1%)   1.43 tri/m2
+
+blue/0/5   r 177.50 m  1115 m around  12 cells  0.64 g   15 blocks x 60,  11 rooms
+           22,669 m2 built == 22,669 m2 the annex states     900 dwellings
+           32,524 render tri (lod 1), 1,036 collision (3.2%)   1.43 tri/m2
+
+grey/0/11  r 390.80 m  2455 m around  18 cells  1.40 g   19 blocks,       23 rooms
+           16,646 m2 built == 16,646 m2 the annex states       0 dwellings (refugee halls)
+           30,714 render tri (lod 1), 1,280 collision (4.2%)   1.85 tri/m2
+```
+
+`blue/0/5` was the first of the five decks that shared 179.50 m; `grey/0/11` was the first of
+the twelve that shared 390.80 m. Both now stand at their own radius, and both hit their
+annex gross exactly.
+
+### THE EXPORT WILL STILL BE REFUSED, AND THE REST IS NOT THIS MODULE'S TO FIX
+
+Measured on the merged set `merge_cells` actually sees — Shell A's 71 located decks
+(`routes.clusters()` → `interior.ring_cells`) plus Shell B's, Shell A winning the 38 shared
+addresses:
+
+| | gaps under 2.0 m | Shell A ↔ A | A ↔ B | B ↔ B |
+|---|---|---|---|---|
+| before | **25** | 14 | 3 | **8** |
+| after | **17** | 14 | 3 | **0** |
+
+**Every Shell B duplicate is gone. Seventeen remain and none of them is in this file.**
+
+- **Fourteen at 0.000 m, entirely inside Shell A.** `grey_0_22, 24, 26, 30, 40, 42, 50, 55,
+  60, 65, 70, 75, 80` all sit at **392.05 m**, and `yellow_0_6, 8, 30` all at **133.85 m** —
+  because `interior.ring_cells` applies the *same* `min(deck_index, len(decks) - 1)` clamp to
+  register deck NUMBERS the ring cannot index. Its own comment documents the clamp and names
+  the fifteen places. **This is the identical defect one file over, and it is the larger
+  half.** Owner: whoever owns `interior.ring_cells` / `deck.deck_index` / the register's grey
+  and yellow deck numbers.
+- **Three at 1.250 m, mixed.** `grey_0_18` (A, 406.45) vs `grey_0_7` (B, 405.20);
+  `grey_0_20` (A, 399.25) vs `grey_0_9` (B, 398.00); `grey_0_22` (A, 392.05) vs `grey_0_11`
+  (B, 390.80). The two shells read grey ring 0 at two different axial stations — Shell A at
+  the sector's widest (`r_outer` 471.25), Shell B at z 3,397 (`r_outer` 430.40) — so their
+  3.6 m ladders are 1.25 m out of phase. Shell B cannot close this alone: snapping to Shell
+  A's ladder would put its outer decks outside the pressure hull over their own z span, which
+  is what claim 6 exists to prevent and what cost 14 decks to fix in 4u. **The real fix is
+  one radius ladder per ring, shared by both shells**, and it is an `interior.py` change.
+
+### What I could not verify
+
+- **The CI message named `grey_0_1` at 0.000 m and my model does not produce that.** In
+  every reading I can take, `grey_0_1` is a Shell B deck at 426.80 m with a clean 3.600 m
+  gap. The failing build reported 126 decks where the union of Shell A and Shell B is 134
+  before this change, so that run was not the full set and I cannot reconstruct which decks
+  it held. The fifteen duplicates I did reproduce are real, are the ones the message's shape
+  describes, and are fixed; whether `grey_0_1`'s 0.000 m came from a deck outside my file or
+  from a partial build is **open**.
+- **Nothing here has been rendered or walked.** Same as §7: no engine frame, no
+  `walkable.py`. `station/rooms.py`, `deck.py --sweep`, `budget.py`, `walkable.py` and the
+  exporters were all off limits this session.
+- **The mixed-shell numbers above come from `interior.ring_cells`, not from a written
+  manifest.** They are the radii that function returns for the 71 located decks, which is
+  what `export_station` builds from — but I did not run the export and did not read a
+  manifest, so an export that transforms a radius between those two points would not be
+  visible to me.
