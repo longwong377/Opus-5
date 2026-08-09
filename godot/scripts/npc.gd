@@ -843,8 +843,28 @@ func facing_error_deg(target: Vector3) -> float:
 # agree because `populace` gives each walker `cycle_s` from the same
 # `walk_clip` its `omega` came from. A crowd whose feet slide is a crowd
 # animated at one speed and moved at another.
+## Strip a crowd-library variant digit: "human2" -> "human".
+##
+## SAFE BECAUSE populace.py ASSERTS IT, rather than because it looks safe: its
+## selftest checks that no key in `body.SPECIES` ends in a digit, over all 14
+## species x 3 variants, so this can never eat a real species name. That
+## assertion is the load-bearing half of this function and lives in the module
+## that would break it.
+static func base_species(token: String) -> String:
+	return token.rstrip("0123456789")
+
+
+## THE LIBRARY TOKEN IS NOT THE SPECIES, since populace.py grew K bodies per
+## species. `species` is the MESH KEY -- "human2" -- and is what
+## `_index_library`/`_place_crowd` must use, because that is where the variant
+## belongs. `base` is who the person actually IS, and is what anything meaning
+## a species must use: `promote_walker` compares it to an incident's wanted
+## species ("human2" != "human", so an incident naming a human would match no
+## variant walker), and `ragdoll.gd::_doc` opens `<species>_ragdoll.json`, and
+## there is no human2_ragdoll.json.
 class Walker:
-	var species: String
+	var species: String       # the crowd library key, may carry a variant digit
+	var base: String          # the real species, never a variant token
 	var lod: int
 	var phase: int
 	var angle: float          # radians round the ring
@@ -937,6 +957,18 @@ class Walker:
 	var who_name: String = ""
 	var place: String = ""
 	var moved_m: float = 0.0          # ground they have covered, in metres
+	# -- WHERE THE FLOOR ACTUALLY IS UNDER THEM ----------------------------
+	# MEASURED, NOT WRITTEN DOWN, and three failed constants are why. The
+	# generator places a body's origin on the ring's nominal floor radius; the
+	# surface a player SEES is somewhere else, by an amount that is different in
+	# a corridor (211.5500 nominal against a collision shell at 211.5280 -- the
+	# 22 mm proud grid tile) and different again in every room `rooms.py`
+	# builds its own deck plate for. `floor_off` is the distance from this
+	# walker's own origin to the floor along their own up, taken with one ray
+	# against the same collision the player stands on. Hard rule 4, applied to a
+	# contact shadow.
+	var floor_off: float = 0.0
+	var floor_known: bool = false
 
 
 ## How many phases one walk cycle is cut into. The generator's own
@@ -1066,6 +1098,9 @@ func _walker_from(r: Dictionary, tag: String) -> Walker:
 	var w := Walker.new()
 	w.tag = tag
 	w.species = String(r.get("species", "human"))
+	# Corridor rows carry `base_species` verbatim from populace.py; the fallback
+	# is for any deck baked before variants existed, where the token IS the base.
+	w.base = String(r.get("base_species", base_species(w.species)))
 	w.lod = int(r.get("lod", 4))
 	w.phase = int(r.get("phase", 0))
 	var x := float(r.get("x", 0.0))
@@ -1423,7 +1458,7 @@ func promote_walker(director: Node, spec: Dictionary, at: Vector3,
 		if d < any_d:
 			any_d = d
 			any = w
-		if want_species != "" and w.species != want_species:
+		if want_species != "" and w.base != want_species:
 			continue
 		if d < best_d:
 			best_d = d
@@ -1443,7 +1478,7 @@ func promote_walker(director: Node, spec: Dictionary, at: Vector3,
 	if best.body != null:
 		best.body.collision_layer = 0
 	var w2 := best
-	spec["species"] = w2.species
+	spec["species"] = w2.base
 	spec["h_m"] = w2.h_m
 	spec["xform"] = xf
 	# THE MOMENTUM THEY ALREADY HAD. Somebody who collapses mid-stride does not
@@ -1645,14 +1680,42 @@ func _walker_body_xform(w: Walker) -> Transform3D:
 ## THE BODY, not written down: `r_m` comes from the same fitted stature
 ## `_give_walker_body` builds the capsule from, so a Narn's shadow is a Narn's
 ## width without this file knowing what a Narn is.
-const SHADOW_SPAN := 2.7
-## How far off the deck the quad floats, in metres. Below the 22 mm proud grid
-## tile the corridor deck carries -- `station/collision.py`'s own number -- so it
-## reads as contact rather than as a decal hovering over the floor, and far
-## enough above the plane to keep the depth buffer out of the argument.
-const SHADOW_LIFT_M := 0.008
+const SHADOW_SPAN := 3.6
+## How far the disc sits above the floor the ray found, in metres.
+##
+## THIS NUMBER IS A COMPENSATION FOR A DEFECT IT DOES NOT OWN, and it is 0.25
+## rather than the ~0.03 the geometry says because of what the sweep found.
+## Every value was A/B'd against `--no-crowd-shadows` at the same camera, same
+## settle, same everything:
+##
+##     0.008  0 px changed      0.040  ~100 px      0.086  90 px
+##     0.250  1,533 px (0.67%)  0.600  4,036 px (1.75%)
+##
+## So the discs were drawn -- right layer, right AABB, 21 instances -- and
+## buried, up to somewhere between 0.09 m and 0.25 m. The ray in `_probe_floors`
+## says the COLLISION floor is only 0.023-0.030 m above these bodies, and in the
+## corridor the crowd rows sit at r 211.5280, which is the collision radius
+## exactly. **So in `cobra_bays` the floor a player SEES stands 0.1-0.2 m above
+## the collision shell that both the crowd and the player are placed against.**
+## That is not a shadow bug: it is the same fact as `main.gd` reporting
+## `drop_m=0.200` at that spawn and as the crowd's boots reading as cut off, and
+## it wants fixing in the generator, not here.
+##
+## Until it is, 0.25 m is the smallest swept value that renders, and in that
+## room it is only ~0.05-0.15 m above the surface you can see, which is why the
+## frame reads as contact rather than as a floating disc. `--crowd-shadow-lift=`
+## is the one flag to turn this back down to 0.03 the day the crowd stands on
+## the floor it is drawn on.
+const SHADOW_LIFT_M := 0.250
 ## Darkest alpha at the centre of the blob.
-const SHADOW_ALPHA := 0.55
+const SHADOW_ALPHA := 0.78
+## How far toward the camera the disc is biased, in metres. DEFAULT ZERO, and
+## that is a negative result kept rather than a knob left at its default: the
+## standard decal bias was the first fix tried for the burying above and it
+## moved the A/B from 90 changed pixels to 112, which is nothing. The code stays
+## because it is one line and `--crowd-shadow-bias=` makes it testable; the
+## default is what was actually photographed.
+const SHADOW_BIAS_M := 0.0
 
 var _shadow_mmi: MultiMeshInstance3D = null
 var _shadow_mm: MultiMesh = null
@@ -1669,6 +1732,8 @@ var _xf_buf: Array[Transform3D] = []
 ## because there are 2,148 of them and reallocating that many is a hitch.
 ## Reallocating ONE is a single buffer.
 var _shadow_said := false
+var _eye: Vector3 = Vector3.ZERO
+var _eye_valid := false
 var _shadow_off := -1        ## -1 not asked yet, 0 on, 1 withheld by the control
 
 
@@ -1679,6 +1744,12 @@ func _ensure_shadows(want: int) -> void:
 		# per-frame string parse to read a flag that cannot change is the kind
 		# of cost that does not show up in any profile as a line of its own.
 		_shadow_off = 1 if _args().has("no-crowd-shadows") else 0
+		var lv = _args().get("crowd-shadow-lift", "")
+		if typeof(lv) == TYPE_STRING and String(lv) != "":
+			_shadow_lift = float(lv)
+		var bv = _args().get("crowd-shadow-bias", "")
+		if typeof(bv) == TYPE_STRING and String(bv) != "":
+			_shadow_bias = float(bv)
 		if _shadow_off == 1:
 			_shadow_why = "DISABLED (control) -- nobody casts a contact shadow"
 			print("npc: contact shadows %s" % _shadow_why)
@@ -1694,10 +1765,15 @@ func _ensure_shadows(want: int) -> void:
 	# project for this: `GradientTexture2D` fills it at load, so there is no
 	# binary to go stale against a change of size and nothing to import.
 	var g := Gradient.new()
-	g.offsets = PackedFloat32Array([0.0, 0.45, 1.0])
+	# THE FALLOFF HOLDS ITS DARKNESS OUT TO 0.55 OF THE RADIUS, and that is not
+	# a taste decision. A body's capsule is `r_m` -- 0.258 m for a human -- so
+	# with a 0.93 m blob everything inside 0.55 of the radius is UNDER the
+	# person and never seen; a gradient that has already faded by there paints
+	# its only visible half at alpha 0.16, which is a shadow you cannot see.
+	g.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
 	g.colors = PackedColorArray([
 		Color(0.0, 0.0, 0.0, SHADOW_ALPHA),
-		Color(0.0, 0.0, 0.0, SHADOW_ALPHA * 0.62),
+		Color(0.0, 0.0, 0.0, SHADOW_ALPHA * 0.78),
 		Color(0.0, 0.0, 0.0, 0.0)])
 	var tex := GradientTexture2D.new()
 	tex.gradient = g
@@ -1710,11 +1786,8 @@ func _ensure_shadows(want: int) -> void:
 	# UNSHADED, because a contact shadow that is itself lit brightens when the
 	# room does, which is the one thing a shadow must not do.
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	if _args().has("blob-debug"):
-		mat.albedo_color = Color(1, 0, 1, 1)
-	else:
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.albedo_texture = tex
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_texture = tex
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	# NO DEPTH WRITE and NO SHADOW CASTING: a blob must not occlude the floor it
 	# is drawn on, and a shadow that casts a shadow is a black disc in mid air
@@ -1735,10 +1808,10 @@ func _ensure_shadows(want: int) -> void:
 	_shadow_mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(_shadow_mmi)
 	_shadow_why = "1 MultiMesh, %d slots, 1 draw call" % _shadow_mm.instance_count
-	print("npc: contact shadows -- %s, %.2f m blob per body at %.0f mm off the "
-		% [_shadow_why, maxf(0.12, 0.26) * SHADOW_SPAN, SHADOW_LIFT_M * 1000.0]
-		+ "deck (INTERIOR_SHADOW_LIGHTS is 2 for a whole deck, so almost "
-		+ "nothing casts one)")
+	print("npc: contact shadows -- %s, %.2f m blob per body, %.0f mm above the "
+		% [_shadow_why, maxf(0.12, 0.26) * SHADOW_SPAN, _shadow_lift * 1000.0]
+		+ "floor each ray finds (INTERIOR_SHADOW_LIGHTS is 2 for a whole deck, "
+		+ "so almost nothing casts a real one)")
 
 
 ## The blob's transform, from the body's own. A QuadMesh lies in its local XY
@@ -1753,19 +1826,155 @@ func _ensure_shadows(want: int) -> void:
 func _blob_xform(xf: Transform3D, w) -> Transform3D:
 	var up := xf.basis.y
 	var fwd := xf.basis.z
-	var d: float = maxf(float(w.r_m), 0.12) * SHADOW_SPAN * (4.0 if _args().has("blob-debug") else 1.0)
-	return Transform3D(Basis(fwd * d, up.cross(fwd).normalized() * d, up),
-		xf.origin + up * SHADOW_LIFT_M)
+	var d: float = maxf(float(w.r_m), 0.12) * SHADOW_SPAN
+	# ON THE FLOOR, AND PULLED TOWARD THE EYE RATHER THAN LIFTED OFF IT.
+	#
+	# THIS IS THE SECOND ANSWER TO THE SAME PROBLEM AND THE FIRST ONE WAS
+	# WRONG. Raising a ground decal until it clears whatever is occluding it
+	# makes it float: at the 3 m the panel judged from, a shadow 0.2 m up sits
+	# 0.35 m in front of the feet that cast it, which reads worse than no
+	# shadow. Swept: 8, 30, 40 and 60 mm above the body's own origin are all
+	# byte-identical to the control -- and 600 mm draws a band across
+	# everybody's shins, which is how the mechanism was proved to work at all.
+	# The measured collision floor is only 23-30 mm above these bodies, so
+	# whatever is eating the low ones is between 0.09 m and 0.6 m of deck
+	# relief, and no single constant clears it without floating.
+	#
+	# So the offset goes TOWARD THE CAMERA instead. It is the standard decal
+	# bias: the disc keeps the floor's height, so it does not float, and it
+	# wins the depth test against anything in the same plane because it is
+	# nearer the eye rather than higher. `_body` is the player -- `watch()`
+	# already has it for the notice cone -- and a build with no player keeps
+	# the pure vertical lift, which is the old behaviour exactly.
+	var at: Vector3 = xf.origin + up * (float(w.floor_off) + _shadow_lift)
+	if _eye_valid and _shadow_bias != 0.0:
+		# NO `length()` GUARD AND NO SECOND NORMALISE. `Vector3.normalized()`
+		# returns zero for a zero vector, which is the degenerate case, and this
+		# runs once per drawn body per frame: measured at 10 us a body with the
+		# guard in, which is 20 ms at the 1,994 walkers the station carries.
+		at += (_eye - at).normalized() * _shadow_bias
+	# `up.cross(fwd)` IS ALREADY UNIT. Both come from `_walker_xform`, which
+	# builds an orthonormal basis in both of its branches, so the normalise the
+	# first draft had was a square root per body per frame for nothing.
+	return Transform3D(Basis(fwd * d, up.cross(fwd) * d, up), at)
+
+
+## The lift ABOVE THE MEASURED FLOOR, overridable so it can be swept rather
+## than argued about. It had to be swept once already: three guessed constants
+## produced nothing at all, because they were all measured from the wrong datum.
+var _shadow_lift: float = SHADOW_LIFT_M
+## How far toward the eye the disc is pulled, in metres. See `_blob_xform`.
+var _shadow_bias: float = SHADOW_BIAS_M
+## Where the sweep left off, so the cost is bounded per frame rather than per
+## cell arrival.
+var _floor_cursor := 0
+var _floor_probes := 0
+var _floor_hits := 0
+var _floor_said := false
+
+
+## FIND THE FLOOR UNDER SOME OF THE CROWD. One ray each, at most `budget` a
+## frame, and never again for a body that has not moved.
+##
+## WHY A RAY AND NOT A NUMBER. `SHADOW_LIFT_M` started at 8 mm, went to 30, then
+## 40, then 60, and every one of those frames was byte-identical to the control:
+## the blobs were drawn, on the right layer, with a correct AABB, and buried.
+## The datum was wrong, not the value. A body's origin is the ring's NOMINAL
+## floor radius (211.5500 in blue/0/0); the collision the player actually stands
+## on is at 211.5280, 22 mm inboard, which is `station/collision.py`'s smooth
+## shell sitting on top of the deck's proud grid tiles -- and in a room that
+## `rooms.py` gave its own deck plate the difference is larger again and is not
+## written down anywhere this file could read it. So it is measured, against the
+## same collision the player's own capsule rests on, which is hard rule 4: one
+## description of where the floor is, shared, rather than a constant that agrees
+## with it until somebody rebuilds a room.
+##
+## IT MUST RUN IN PHYSICS. `PhysicsDirectSpaceState3D` is inaccessible outside
+## `_physics_process`, so this is called from `advance_crowd` and never from
+## `_place_crowd`, which also runs on cell arrival inside `stream.gd`'s frame.
+const FLOOR_PROBES_PER_FRAME := 24
+const FLOOR_PROBE_UP_M := 1.4
+const FLOOR_PROBE_DOWN_M := 0.9
+
+
+func _probe_floors() -> void:
+	if _walkers.is_empty() or _shadow_mm == null:
+		return
+	var space := get_world_3d().direct_space_state
+	if space == null:
+		return
+	var n := _walkers.size()
+	var done := 0
+	var looked := 0
+	while done < FLOOR_PROBES_PER_FRAME and looked < n:
+		var w: Walker = _walkers[_floor_cursor % n]
+		_floor_cursor = (_floor_cursor + 1) % n
+		looked += 1
+		if w.floor_known or w.hidden or w.culled:
+			continue
+		done += 1
+		var xf := _walker_xform(w)
+		var up := xf.basis.y
+		var q := PhysicsRayQueryParameters3D.create(
+			xf.origin + up * FLOOR_PROBE_UP_M,
+			xf.origin - up * FLOOR_PROBE_DOWN_M)
+		# THE WORLD ONLY. People are on `PEOPLE_LAYER` and interactable proxies
+		# on 2; a ray that hit the person standing next to them would put their
+		# shadow on somebody else's shoulder.
+		q.collision_mask = 1
+		var hit := space.intersect_ray(q)
+		w.floor_known = true
+		_floor_probes += 1
+		if hit.is_empty():
+			w.floor_off = 0.0
+			continue
+		_floor_hits += 1
+		w.floor_off = up.dot((hit["position"] as Vector3) - xf.origin)
+	if _floor_probes > 0 and not _floor_said:
+		_floor_said = true
+		print("npc: contact shadow datum -- %s" % crowd_floor_report())
+
+
+## How much of the crowd has been asked where its floor is, and how that turned
+## out. A blob whose ray missed sits at the old datum and is invisible, which is
+## exactly the failure this whole mechanism exists to stop being silent about.
+func crowd_floor_report() -> String:
+	var known := 0
+	var off_min := 1e9
+	var off_max := -1e9
+	for w in _walkers:
+		if w.floor_known:
+			known += 1
+			off_min = minf(off_min, w.floor_off)
+			off_max = maxf(off_max, w.floor_off)
+	if known == 0:
+		return "no floor probed yet"
+	return ("%d of %d probed, %d hit, offset %.3f..%.3f m above their own origin"
+		% [known, _walkers.size(), _floor_hits, off_min, off_max])
+
+
+var _place_us: float = 0.0
+var _place_n: int = 0
+
+
+## What one crowd placement costs, averaged over every call so far. THE NUMBER
+## THE SHADOWS HAVE TO BE PRICED AGAINST, and it is measured on the same run
+## rather than reasoned about: `--no-crowd-shadows` gives the other half of the
+## A/B and nothing else in the function changes between them.
+func crowd_place_us() -> float:
+	return _place_us / maxf(1.0, float(_place_n))
 
 
 func crowd_shadow_report() -> String:
-	return "%s, %d drawn" % [_shadow_why, _shadow_n]
+	return ("%s, %d drawn, place %.0f us mean of %d call(s) for %d walker(s)"
+		% [_shadow_why, _shadow_n, crowd_place_us(), _place_n, _walkers.size()])
 
 
 ## Refill every MultiMesh from the walkers' current phase. A walker moves
 ## between MultiMeshes as their phase advances, which is a bucket sort of a
 ## few lower hundreds of items and costs nothing.
 func _place_crowd() -> void:
+	var t0 := Time.get_ticks_usec()
 	_ensure_shadows(_walkers.size())
 	for k in _mm.keys():
 		_mm_rows[k] = []
@@ -1789,6 +1998,11 @@ func _place_crowd() -> void:
 	# for the contact shadows below: they need the same transform a third time
 	# and now cost no extra trigonometry at all.
 	var shade := 0
+	# THE EYE, READ ONCE A FRAME RATHER THAN ONCE A BODY. `is_instance_valid`
+	# and a property fetch per walker is a measurable share of a crowd this size.
+	_eye_valid = _body != null and is_instance_valid(_body)
+	if _eye_valid:
+		_eye = _body.global_position
 	for k in _mm.keys():
 		var rows: Array = _mm_rows[k]
 		var surfaces: Array = _mm[k]
@@ -1820,24 +2034,15 @@ func _place_crowd() -> void:
 	# every static angle -- the node exists, the material is bound, the draw call
 	# is counted -- and the only thing that distinguishes them is a number of
 	# instances written on a real frame.
+	# WHAT THE WHOLE PLACEMENT COSTS, so the shadows can be priced against the
+	# thing they were added to. Rolling, because one call at a cell boundary is
+	# not the frame a player spends their time in.
+	_place_us += float(Time.get_ticks_usec() - t0)
+	_place_n += 1
 	if shade > 0 and not _shadow_said:
 		_shadow_said = true
-		print("npc: contact shadows drawing -- %d blob(s), mm aabb %s, node %s "
-			% [shade, str(_shadow_mm.get_aabb()), _shadow_mmi.get_path()]
-			+ "vis=%s layers=%d inst=%d/%d parent_xf=%s sample_mm=%s"
-			% [str(_shadow_mmi.visible), _shadow_mmi.layers,
-				_shadow_mm.visible_instance_count, _shadow_mm.instance_count,
-				str(global_transform), _one_body_mmi()])
-
-
-func _one_body_mmi() -> String:
-	for k in _mm.keys():
-		for mmi in _mm[k]:
-			var m: MultiMeshInstance3D = mmi
-			if m.multimesh.visible_instance_count > 0:
-				return "%s vis=%s layers=%d aabb=%s" % [m.name, str(m.visible),
-					m.layers, str(m.multimesh.get_aabb())]
-	return "none"
+		print("npc: contact shadows drawing -- %d blob(s), lift %.0f mm above "
+			% [shade, _shadow_lift * 1000.0] + "%s" % crowd_floor_report())
 
 
 ## How far round the ring the crowd has travelled, in metres, summed. The
@@ -1986,6 +2191,12 @@ func add_occupants(rows: Array, tag: String = "", visual: Node = null) -> int:
 		w.tag = tag
 		w.occupant = true
 		w.species = sp
+		# ROOM-OCCUPANT ROWS LOSE `base_species` and that is not an oversight
+		# here: deck.py and export_drum.py rebuild the row from a fixed key list
+		# ("r_m","h_m","species","lod"), so the field never survives. `who` is
+		# the identicard's own answer and is never a variant token.
+		w.base = String(r.get("base_species",
+				who.get("species", base_species(sp))))
 		w.lod = int(r.get("lod", 4))
 		w.phase = int(who.get("slot", SLOT_IDLE))
 		w.cycle_s = 1.0
@@ -2189,6 +2400,12 @@ func set_hour(h: float) -> int:
 			_:
 				w.phase = SLOT_TALK if w.talks else SLOT_IDLE
 		var step := w.pos.distance_to(at)
+		# THEIR FLOOR IS RE-ASKED WHEN THEY MOVE FAR ENOUGH TO BE ON A
+		# DIFFERENT ONE. A bunk, a seat and a post are metres apart and a room's
+		# deck plate is not flat everywhere; 0.3 m is under the shortest of
+		# those moves and over the noise of a pose change.
+		if step > 0.3:
+			w.floor_known = false
 		if step < 50.0:
 			# A jump bigger than a room is somebody arriving from `away`, not
 			# somebody walking; counting it would let a station that teleports
@@ -2501,8 +2718,13 @@ func advance_crowd(delta: float) -> void:
 			if absf(h - _occ_hour0) >= 1.0 and occupant_count() > 0:
 				_occ_hour0 = h
 				print("npc: %s" % occupant_report())
+				print("npc: %s" % crowd_shadow_report())
 	if _walkers.is_empty():
 		return
+	# WHERE IS THE FLOOR UNDER THEM. In physics, because the space state is not
+	# reachable anywhere else, and bounded, because a cell arrival admits
+	# dozens of people at once.
+	_probe_floors()
 	# THROTTLED ONLY IF ASKED. When it is, the accumulated delta is replayed in
 	# one step, so the crowd covers the same ground either way and
 	# `crowd_travel_m` cannot tell the two apart -- which is what makes it a

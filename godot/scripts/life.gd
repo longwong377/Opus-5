@@ -678,11 +678,35 @@ class Director extends Node3D:
 		return clock.hour() if clock != null else -1.0
 
 	# -- the frame ---------------------------------------------------------
+	## Reported hour, so the corridor gets the hourly line the rooms already
+	## have from `npc.gd::occupant_report`. IT IS ALSO THE ONLY PROOF THAT THIS
+	## CALLBACK RUNS: `apply()` is reachable from `bind` and from `main.gd`'s
+	## two-hour measurement, and a crowd that was only ever culled at those two
+	## call sites would look identical on a still frame and would never change
+	## again while a player walked around. A line a frame is noise; a line an
+	## hour is the claim.
+	var _said_hour: float = -99.0
+
 	func _process(delta: float) -> void:
 		if clock == null:
 			return
 		clock.tick(delta)
-		apply(clock.hour())
+		var h := clock.hour()
+		apply(h)
+		if _n_stroller > 0 and absf(h - _said_hour) >= 1.0:
+			_said_hour = h
+			print("life: %05.2f EMT -- corridor at x%.2f of the bake hour, "
+				% [fposmod(h, DAY_H), corridor_scale(h)]
+				+ "%d of %d walker(s) on their feet, %d body(s) drawn"
+				% [_on_foot(), _n_stroller, _inst_shown])
+
+	## How many of the bound corridor walkers the clock currently has present.
+	func _on_foot() -> int:
+		var n := 0
+		for p in _people:
+			if p.kind == KIND_STROLLER and not bool(p.inst.culled):
+				n += 1
+		return n
 
 	## Put every bound body where the clock says it is. Pure in `h`.
 	##
