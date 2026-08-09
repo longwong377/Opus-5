@@ -43,6 +43,16 @@ on:
       # list that ships the old code.
       - "godot/scripts/**"
       - "godot/scenes/**"
+      # AND THE THREE MODULES THAT DECIDE WHAT THE WORLD IS MADE OF. Same
+      # rule as export_station.py above, and the same gap that already cost a
+      # shipped defect once: a commit closing the LAST build blocker touched
+      # shell_b.py and bake_station.py, neither was watched, and no build ran.
+      # These are not "station/**" -- that would tax every generator commit
+      # with a 90-minute build. They are the three files that decide which
+      # decks exist, how they are addressed, and how they are cut into cells.
+      - "station/shell_b.py"
+      - "station/interior.py"
+      - "tools/bake_station.py"
       # Deliberately NOT "station/**". A 90-minute Windows build on every commit
       # to a generator would be a tax on ordinary work; these are the files that
       # decide WHAT gets built and in what order, which is what has broken so far.
