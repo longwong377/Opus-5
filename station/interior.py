@@ -408,6 +408,13 @@ RING_FRAME_RISE_M = 1.1
 RING_FRAME_W_M = 0.9
 DECK_PITCH_M = 3.6        # floor-to-floor, provisional -- INV-010
 
+# THE NEGATIVE CONTROL FOR `ring_cells`' DECK REFUSAL, not a setting. True
+# restores `min(deck_index, len(decks) - 1)`, which is what this module shipped
+# and what collapsed thirteen Grey decks and three Yellow ones onto one radius
+# each. Set it in a test to show the gaps come back; nothing on the build path
+# sets it.
+LEGACY_DECK_CLAMP = False
+
 
 def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M,
                   z_m=None):
@@ -421,6 +428,31 @@ def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M,
     Gravity is quoted per deck because it genuinely differs across a ring: the
     outermost and innermost decks of ring 1 differ by 18% of a g, which is more
     than enough to feel walking down a stair.
+
+    ONE RADIUS LADDER PER RING, ANCHORED WHERE THE RING IS WIDEST, AND THAT IS
+    NOT COSMETIC. The rungs used to be measured from `r_outer` **as the hull
+    leaves it at this z**, so the same ring had a different ladder at every
+    axial station: grey ring 0 is anchored at 471.25 m at the sector's widest
+    and at 430.40 m over Shell B's belt, and 471.25 - 430.40 = 40.85 m is not a
+    whole number of 3.6 m pitches. The two ladders therefore ran **1.250 m out
+    of phase**, which is how `grey_0_18` (Shell A, 406.45) and `grey_0_7`
+    (Shell B, 405.20) ended up 1.25 m apart -- close enough that
+    `tools/merge_cells.py::deck_headroom` refused to derive a residency band
+    over them, and rightly: a 1.25 m band is a body falling through the world.
+
+    The rungs are now `anchor - j * pitch` from the ring's CANONICAL (widest)
+    outer radius, and a narrower z simply DROPS the outer rungs the hull has
+    taken. So rung j of a ring is one radius everywhere on the station, two
+    consumers reading the same ring at two different z land on the same
+    ladder, and every gap between two decks of one ring is a whole multiple of
+    the pitch -- by construction, not by inspection. It costs at most one deck
+    per (ring, z): the topmost surviving rung sits up to `pitch` inboard of
+    where the old top-anchored stack put it, and a deck is never moved OUTWARD,
+    so nothing can leave the pressure hull that was inside it.
+
+    `deck_index` is still the POSITION in the returned list, because every
+    caller subscripts it that way; `rung` is the canonical ladder number and is
+    what two stacks of one ring can be compared on.
     """
     # `z_m` NARROWS THE RING TO WHAT THE HULL LEAVES THERE. Without it a deck
     # stack is built inside the sector's widest cylinder and handed to a
@@ -434,18 +466,44 @@ def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M,
     ring = rings[min(ring_index, len(rings) - 1)]
     if ring["kind"] != "deck_stack":
         return []          # open air and the core carry no decks
-    depth = ring["r_outer"] - ring["r_inner"]
-    n = max(1, int(depth // pitch))
+    # THE ANCHOR IS THE CANONICAL RING'S, NOT THIS z's. `rings_fitting_at`
+    # only ever clamps `r_outer` inward and never touches `r_inner`, so an
+    # unclamped ring is already its own canonical self and the uncut list is
+    # not consulted -- which keeps the z-blind path (every whole-station sweep)
+    # at exactly the cost it had.
+    if ring.get("clamped") and not ring.get("outward"):
+        anchor = next((c["r_outer"] for c in _ring_radii_uncut(schema, profile,
+                                                               sector)
+                       if c["id"] == ring["id"]), ring["r_outer"])
+    else:
+        anchor = ring["r_inner"] if ring.get("outward") else ring["r_outer"]
+    eps = 1e-9
+    if ring.get("outward"):
+        # The drum stacks OUTWARD from the habitat floor and `r_inner` is the
+        # anchor, which the hull never moves -- so rung j is `r_inner +
+        # (j+1)*pitch` at every z and only the count changes.
+        j0 = 0
+        n = int((ring["r_outer"] - ring["r_inner"]) / pitch + eps)
+    else:
+        # The first rung at or inboard of what the hull leaves here.
+        j0 = max(0, int(math.ceil((anchor - ring["r_outer"]) / pitch - eps)))
+        n = int((anchor - j0 * pitch - ring["r_inner"]) / pitch + eps)
+    # A ring that exists carries at least one deck, exactly as the old
+    # `max(1, depth // pitch)` guaranteed. Below one pitch of depth the single
+    # deck's ceiling runs past `r_inner`, which is what it did before too.
+    n = max(1, n)
     r_hab = habitable_radius(schema)
     out = []
     for i in range(n):
         # A deck's floor is at its LARGER radius -- down is outward. In the drum
         # the stack grows outward from the habitat floor, so deck 0 is the one
         # immediately under the ground and gravity RISES with deck index.
-        floor_r = (ring["r_inner"] + (i + 1) * pitch if ring.get("outward")
-                   else ring["r_outer"] - i * pitch)
+        j = j0 + i
+        floor_r = (anchor + (j + 1) * pitch if ring.get("outward")
+                   else anchor - j * pitch)
         out.append({
             "deck_index": i,
+            "rung": j,
             "floor_r_m": round(floor_r, 2),
             "ceiling_r_m": round(floor_r - pitch, 2),
             "gravity_direction": "outward",
@@ -1833,6 +1891,53 @@ def deck_index_for(schema, profile, sector, ring, deck_label, n_decks=None,
     return min(labels.index(deck_label), n_decks - 1)
 
 
+def claimed_rungs(schema, profile, sector, ring):
+    """-> {rung: deck_label} for every register place on this ring.
+
+    THE ONE ADDRESS-TO-RUNG MAP, EXPOSED SO THERE CANNOT BE TWO. `deck_index_for`
+    already answers it for a single label; this is the whole ring at once, and
+    it exists because a SECOND builder needs the answer and was guessing.
+
+    `station/shell_b.py` fills the decks a landmark does not use, and it decides
+    which those are with `_deck_index` -- "clamps the same way `ring_cells`
+    does", its own docstring says. On Grey ring 0 that reads the register's
+    labels 0, 5, 8, 10, 18 … 80 as INDICES and claims the numeric gaps
+    (1, 2, 3, 4, 6, 7, 9, 11), while every Shell A build path reads the same
+    labels through `deck_index_for` and RANKS them onto rungs 0..18. The two
+    shells then disagree about eight rungs of one ring, and two decks land on
+    one radius -- the 0.000 m headroom `tools/merge_cells.py` refuses.
+
+    Read this instead of re-deriving it, and the disagreement cannot exist.
+    """
+    import directory as _dr                     # lazy: directory imports us
+    labels = sorted({q["deck"] for q in _dr.PLACES
+                     if q.get("sector") == sector and q.get("ring") == ring})
+    if not labels:
+        return {}
+    n = len(decks_in_ring(schema, profile, sector, ring))
+    return {deck_index_for(schema, profile, sector, ring, d, n_decks=n): d
+            for d in labels}
+
+
+def free_rungs(schema, profile, sector, ring, z_m=None):
+    """-> [rung] of this ring that no register place claims, outermost first.
+
+    What a second shell may build on without landing on a landmark's radius.
+    With `z_m`, only the rungs that survive the hull there.
+
+    IT IS SMALLER THAN THE ARITHMETIC SUGGESTS ON ONE RING AND THAT IS THE
+    FINDING, not a rounding. Grey ring 0 stacks 23 rungs and the register puts
+    **19** places on it, so four are free; `shell_b` currently takes eight.
+    Nineteen plus eight is twenty-seven addresses for twenty-three rungs, and
+    no mapping whatever can make twenty-seven decks of one ring 3.6 m apart.
+    That over-subscription is the residue of this defect and it is not fixable
+    in this file -- see the note on `claimed_rungs`.
+    """
+    decks = decks_in_ring(schema, profile, sector, ring, z_m=z_m)
+    taken = set(claimed_rungs(schema, profile, sector, ring))
+    return [d["rung"] for d in decks if d["rung"] not in taken]
+
+
 def hull_fit(schema, profile, verbose=True, legacy=False):
     """Is every located place INSIDE the pressure hull along its whole length?
 
@@ -2012,15 +2117,35 @@ def ring_cells(schema, profile, sector, ring_index, deck_index=0, margin=1.5,
     decks = decks_in_ring(schema, profile, sector, ring_index, z_m=z_m)
     if not decks:
         return None
-    # CLAMPED, AND IT USED TO RAISE. `decks[deck_index]` on a stack shorter
-    # than the index is an IndexError, and fifteen of the register's places
-    # carry a deck NUMBER (Grey 40, 55, 80; Yellow 30) that no generated stack
-    # can index -- see `deck.deck_index`, which ranks them. So this function
-    # was a live crash for 15 of 129 places and nobody had found it, because
-    # the two callers that DO reach those places translate or clamp first.
-    # Clamping matches `rooms.room_extent_m` and `directory.gravity_of`, which
-    # are the other two consumers; `hull_fit()` reports the gap rather than
-    # letting the clamp hide it.
+    # IT REFUSES NOW, AND THE CLAMP IT REPLACES COLLAPSED THIRTEEN DECKS ONTO
+    # ONE RADIUS. `deck_index` here is an INDEX into the built stack, and
+    # fifteen of the register's places carry a deck NUMBER -- Grey 24 through
+    # 80 on a 23-deep ring, Yellow 30 on a 7-deep one -- that is a NAME and not
+    # an index. `min(deck_index, len(decks) - 1)` turned every one of those
+    # into the innermost deck, so `grey_0_{22,24,26,30,40,42,50,55,60,65,70,
+    # 75,80}` all answered **392.05 m** and `yellow_0_{6,8,30}` all **133.85 m**
+    # -- fourteen pairs of decks 0.000 m apart, which is what
+    # `tools/merge_cells.py::deck_headroom` refuses a residency band over.
+    #
+    # A clamp cannot be made correct here, because the two readings are not
+    # reconcilable inside one function: on grey ring 0 the NAME 18 ranks to
+    # rung 4 while the INDEX 18 is rung 18, and no single mapping can be both.
+    # So the translation belongs to the caller and this refuses rather than
+    # guessing -- `deck.deck_index` / `deck_index_for` is the established one
+    # and `deck._ring_cells`, `tools/export_scene.deck_cell_plan`,
+    # `tools/bake_station.py` and `station/vista.py` all already go through it.
+    #
+    # `LEGACY_DECK_CLAMP` restores the clamp and is the negative control: with
+    # it True the fourteen collapsed pairs come straight back.
+    if deck_index >= len(decks) and not LEGACY_DECK_CLAMP:
+        raise IndexError(
+            "interior.ring_cells: %s ring %d has %d deck(s) (0..%d) and was "
+            "asked for deck index %d. A register deck NUMBER is a name, not an "
+            "index -- translate it with `deck.deck_index(schema, profile, "
+            "sector, ring, deck)` (== `interior.deck_index_for`) first, as "
+            "`deck._ring_cells` does. Clamping here put %d of the register's "
+            "places on one radius."
+            % (sector, ring_index, len(decks), len(decks) - 1, deck_index, 15))
     deck = decks[min(deck_index, len(decks) - 1)]
     r = deck["floor_r_m"]
     cw = kit.PROVISIONAL["corridor_width_m"]
