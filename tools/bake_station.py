@@ -37,6 +37,172 @@ sys.path.insert(0, os.path.join(ROOT, "station"))
 SRC = os.path.join(ROOT, "station/generated/scene/station")
 CELLS = os.path.join(SRC, "cells")
 
+# THE NEGATIVE CONTROL FOR `deck_index_of`, not a setting. True restores the
+# bare `try: deck.deck_index(...) except Exception: int(dk)` this file shipped,
+# which is what stamped a residency band up to 68.4 m from its own floor onto
+# fifteen Shell B decks. `--shell-audit --legacy` sets it and shows the error
+# come back; nothing on the bake path sets it.
+LEGACY_DECK_FALLBACK = False
+
+
+# ===========================================================================
+# WHICH SHELL BUILT THIS DECK -- and why the question has to be asked at all
+# ===========================================================================
+#
+# A deck stem is `<sector>_<ring>_<deck>` and the last number means two
+# different things depending on who wrote the `.glb`:
+#
+#   * SHELL A (`station/deck.py`, every deck that carries a location) numbers a
+#     deck by the REGISTER's own deck number, which is a NAME. Grey's places
+#     are on decks 24 through 80 of a ring 23 deep. `deck.deck_index` ranks
+#     those names onto the ladder.
+#   * SHELL B (`station/shell_b.py`, the residential belts) numbers a deck by
+#     its RUNG on the canonical ladder -- except on a deck it shares with a
+#     landmark, where it takes the register's label so the two merge into one
+#     key. `cell_manifest.json`'s deck_table is built z-blind, so ITS
+#     `deck_index` is the rung too: a Shell B free-rung number needs no
+#     translation at all.
+#
+# This file used to run `deck.deck_index` inside a bare `except: int(dk)`, so a
+# Shell B number that happened to be a valid register label was RANKED (grey
+# deck 10 -> rung 3, 68.4 m outboard of the geometry) and one that was not fell
+# through to itself, which was right for the wrong reason. A residency band
+# derived from the wrong radius frees the cell a body is standing in.
+#
+# THE DISCRIMINATOR IS `tools/export_station.py::work_list()`'s OWN, and it is
+# chosen for that reason rather than for cheapness: `routes.clusters()` decides
+# Shell A and `shell_b.station_plan()` decides Shell B, Shell A winning a shared
+# address through `decks.setdefault`. That function is what decided which
+# builder wrote the mesh this tool is reading, so any other enumeration would be
+# a second opinion about a fact that is already settled -- and two enumerations
+# of what the station is made of is one too many (work_list's own words).
+#
+# Cost, since the two are not comparable: `routes.clusters()` is 60 ms and
+# `shell_b.station_plan()` is minutes, so Shell B is only consulted when the
+# stem is not Shell A's. On `--places-only`, which walks the register, it is
+# never consulted at all.
+
+_SHELL_A = None
+_SHELL_B = None
+
+
+def _shell_a():
+    global _SHELL_A
+    if _SHELL_A is None:
+        import routes as _rt                                     # noqa: PLC0415
+        _SHELL_A = {(k[0], int(k[1]), int(k[2])) for k in _rt.clusters()}
+    return _SHELL_A
+
+
+def _shell_b():
+    global _SHELL_B
+    if _SHELL_B is None:
+        import interior as _it                                   # noqa: PLC0415
+        import shell_b as _shb                                   # noqa: PLC0415
+        schema, profile = _it.load()
+        _SHELL_B = {(r["sector"], int(r["ring"]), int(r["deck"])): int(r["rung"])
+                    for r in _shb.station_plan(schema, profile)}
+    return _SHELL_B
+
+
+def shell_of(sector, ring, deck):
+    """Which builder wrote this stem's mesh: "A", "B", "drum", or None.
+
+    `tools/export_station.py::work_list()`'s own precedence, restated nowhere:
+    Shell A is `routes.clusters()`, Shell B is `shell_b.station_plan()`, and a
+    shared address goes to Shell A because that file resolves it with
+    `decks.setdefault`. Never affected by `LEGACY_DECK_FALLBACK` -- the control
+    is about the index, not about who built the deck.
+    """
+    import deck as _D                                            # noqa: PLC0415
+    sector, ring, deck = str(sector), int(ring), int(deck)
+    if (sector, ring) in _D.NOT_RING_DECKS:
+        return "drum"
+    if (sector, ring, deck) in _shell_a():
+        return "A"
+    if (sector, ring, deck) in _shell_b():
+        return "B"
+    return None
+
+
+def deck_index_of(sector, ring, deck):
+    """-> `(deck_index, shell, why)` for one stem. RAISES if neither shell owns it.
+
+    `deck_index` indexes `cell_manifest.json`'s z-blind deck_table, which is the
+    same thing as the ring's canonical rung.
+
+    IT RAISES RATHER THAN GUESSING, and that is the whole change. The bare
+    `except Exception: int(dk)` it replaces could not tell "this number is a
+    rung" from "`deck.deck_index` threw for a reason I should know about", so it
+    answered both with the same silent fallback. `LEGACY_DECK_FALLBACK` restores
+    it as the control.
+    """
+    import deck as _D                                            # noqa: PLC0415
+    import interior as _it                                       # noqa: PLC0415
+    sector, ring, deck = str(sector), int(ring), int(deck)
+    if LEGACY_DECK_FALLBACK:
+        # THE CONTROL CHANGES THE INDEX AND NOTHING ELSE. `shell_of` is still
+        # asked, so the audit compares the same geometry either way and the A/B
+        # is about the translation rather than about which deck is being looked
+        # at -- CLAUDE.md's vacuous-A/B rule.
+        schema, profile = _it.load()
+        try:
+            return (_D.deck_index(schema, profile, sector, ring, deck),
+                    shell_of(sector, ring, deck), "legacy: deck.deck_index")
+        except Exception:                                        # noqa: BLE001
+            return deck, shell_of(sector, ring, deck), "legacy: except int(dk)"
+    schema, profile = _it.load()
+    # THE DRUM IS NOT A RING DECK AND IT STILL HAS A MANIFEST ROW. `deck.py`
+    # refuses to build green ring 1 -- "an open 8 km barrel, no ring corridor" --
+    # and `tools/export_drum.py` writes the mesh under the same `green_1_0`
+    # stem, so this tool does bake it. `interior.cell_manifest` gives every open
+    # ring a single `deck_index: 0` gravity row for exactly this, and
+    # `deck.deck_index` raises here because the ring stacks nothing. Named from
+    # `deck.NOT_RING_DECKS` rather than by hard-coding green/1, so a second
+    # non-ring volume cannot arrive unnoticed.
+    if (sector, ring) in _D.NOT_RING_DECKS:
+        return 0, "drum", ("%s ring %d is not a ring deck; cell_manifest gives "
+                           "an open ring one deck_index 0 gravity row"
+                           % (sector, ring))
+    labels = sorted({q["deck"] for q in _register_places()
+                     if q.get("sector") == sector and q.get("ring") == ring})
+    key = (sector, ring, deck)
+    if key in _shell_a():
+        # A Shell A deck number is a register NAME, always. If the register has
+        # no such name on this ring the cluster list and the register disagree,
+        # which is a fact worth a traceback rather than a fallback.
+        if deck not in labels:
+            raise ValueError(
+                "bake_station: %s_%d_%d is a Shell A deck (it carries a "
+                "location) but the register has no deck %d on %s ring %d -- "
+                "labels are %s"
+                % (sector, ring, deck, deck, sector, ring, labels))
+        return (_D.deck_index(schema, profile, sector, ring, deck), "A",
+                "register label ranked onto the ladder by deck.deck_index")
+    if key in _shell_b():
+        if deck in labels:
+            return (_D.deck_index(schema, profile, sector, ring, deck), "B",
+                    "a deck Shell B shares with a landmark, addressed by the "
+                    "register's own label")
+        n = len(_it.decks_in_ring(schema, profile, sector, ring))
+        if not 0 <= deck < n:
+            raise ValueError(
+                "bake_station: %s_%d_%d is a Shell B deck and %d is neither a "
+                "register label on %s ring %d (%s) nor a rung of its %d-rung "
+                "ladder" % (sector, ring, deck, deck, sector, ring, labels, n))
+        return deck, "B", ("a free rung -- the manifest's z-blind deck_index "
+                           "IS the rung, so no translation applies")
+    raise ValueError(
+        "bake_station: no shell owns %s_%d_%d. routes.clusters() lists %d Shell "
+        "A decks and shell_b.station_plan() %d Shell B decks, and this stem is "
+        "in neither -- so nothing in this repository built the mesh being baked"
+        % (sector, ring, deck, len(_shell_a()), len(_shell_b())))
+
+
+def _register_places():
+    import directory as _dr                                      # noqa: PLC0415
+    return _dr.PLACES
+
 
 # ===========================================================================
 # THE PLACES SIDECAR -- what a cell set could not say, and why that mattered
@@ -111,13 +277,7 @@ def write_places(stem, sector, ring, deck, out_dir):
     an empty sidecar and an absent one read identically to a gate and only one
     of them means "this deck carries nothing the register names".
     """
-    import deck as _D                                            # noqa: PLC0415
-    import interior as _it                                       # noqa: PLC0415
-    schema, profile = _it.load()
-    try:
-        di = _D.deck_index(schema, profile, sector, int(ring), int(deck))
-    except Exception:                                            # noqa: BLE001
-        di = int(deck)
+    di, _shell, _why = deck_index_of(sector, ring, deck)
     man = os.path.join(ROOT, "station/generated/cell_manifest.json")
     floor_r = 0.0
     label = ""
@@ -295,6 +455,118 @@ def _selftest():
     return 0
 
 
+def shell_audit(legacy=False, verbose=True):
+    """Does the residency band a bake stamps on a deck sit at that deck's floor?
+
+    THE QUESTION THAT WENT UNASKED THROUGH A 48-MINUTE WINDOWS BUILD. Every
+    other check here is about a cell's geometry; this one is about the NUMBER
+    the cell is filed under. `stream.gd::bake()` looks the deck up in
+    `cell_manifest.json` by `(sector, ring_index, deck_index)` and takes its
+    `floor_r_m` as the radius the streaming residency band is measured from, so
+    a deck_index that names a different rung frees the cell a body is standing
+    in, or holds one 68 m away.
+
+    IT IS ONLY DISCRIMINATING ON SHELL B, and saying so is the point rather
+    than a caveat. A Shell A deck's geometry radius comes from
+    `decks_in_ring(...)[deck_index]` and so does the manifest row, so comparing
+    them is a round trip that cannot fail -- what is checked there is that the
+    stem RESOLVES at all. Shell B's radius comes from `shell_b.ring_stack` at
+    the belt's own z, by a different path, and that is where the two numbers can
+    genuinely disagree -- and did, on 15 of 84 decks.
+
+    `legacy` restores the bare `except: int(dk)` and is the control.
+    """
+    global LEGACY_DECK_FALLBACK
+    import interior as _it                                       # noqa: PLC0415
+    was, LEGACY_DECK_FALLBACK = LEGACY_DECK_FALLBACK, legacy
+    try:
+        schema, profile = _it.load()
+        mpath = os.path.join(ROOT, "station/generated/cell_manifest.json")
+        if not os.path.exists(mpath):
+            print("no cell_manifest.json -- run tools/export_station.py first")
+            return 1
+        with open(mpath, encoding="utf-8") as f:
+            table = {(r["sector"], int(r["ring_index"]), int(r["deck_index"])):
+                     float(r["floor_r_m"]) for r in json.load(f)["deck_table"]}
+        import shell_b as _shb                                   # noqa: PLC0415
+        rows, bad, unresolved, shadowed = [], [], [], []
+        for key in sorted(set(_shell_a()) | set(_shell_b())):
+            sec, ring, dk = key
+            try:
+                di, shell, why = deck_index_of(sec, ring, dk)
+            except ValueError as e:
+                unresolved.append((key, str(e)))
+                continue
+            # THE GEOMETRY IS THE ONE THE OWNING SHELL BUILT, not whichever is
+            # easier to reach. `tools/export_station.py` gives a shared address
+            # to Shell A, so on those stems the mesh on disk is Shell A's and
+            # asking Shell B what radius it PLANNED there answers a question
+            # about a deck nobody built.
+            shell = shell_of(sec, ring, dk)     # never the legacy answer
+            if shell == "drum":
+                continue          # its row is authored, not stacked
+            if shell == "A":
+                decks = _it.decks_in_ring(schema, profile, sec, ring)
+                if not decks:
+                    continue
+                geo = decks[min(di, len(decks) - 1)]["floor_r_m"]
+                if key in _shell_b():
+                    plan_r = _shb.stack_entry(schema, profile, sec, ring,
+                                              dk)["floor_r_m"]
+                    if abs(plan_r - geo) > 1e-6:
+                        shadowed.append((key, plan_r, geo))
+            else:
+                geo = _shb.stack_entry(schema, profile, sec, ring,
+                                       dk)["floor_r_m"]
+            man = table.get((sec, ring, di))
+            err = None if man is None else abs(man - geo)
+            rows.append((key, di, geo, man, err, shell, why))
+            if err is None or err > 1e-6:
+                bad.append(rows[-1])
+        nb = [r for r in rows if r[5] == "B"]
+        bb = [r for r in bad if r[5] == "B"]
+        worst = max([r[4] for r in bad if r[4] is not None] or [0.0])
+        print("\nBAKE SHELL AUDIT%s\n" % ("  -- LEGACY FALLBACK RESTORED"
+                                          if legacy else ""))
+        print("  %d Shell A decks (routes.clusters), %d Shell B decks "
+              "(shell_b.station_plan); %d stems in all"
+              % (len(_shell_a()), len(_shell_b()), len(rows)))
+        print("  %d of %d bake a residency band away from their own floor "
+              "(%d of %d on the Shell B side, which is the only side where the "
+              "two numbers come from different code)"
+              % (len(bad), len(rows), len(bb), len(nb)))
+        print("  worst error %.2f m; %d stem(s) no shell could resolve"
+              % (worst, len(unresolved)))
+        if verbose and bad:
+            print("\n  %-16s %5s %9s %9s %8s %2s %s"
+                  % ("stem", "index", "geometry", "manifest", "error", "sh",
+                     "how"))
+            for r in sorted(bad, key=lambda x: -(x[4] or 0))[:20]:
+                print("  %-16s %5d %9.2f %9s %8s %2s %s"
+                      % ("%s_%d_%d" % r[0], r[1], r[2],
+                         "-" if r[3] is None else "%.2f" % r[3],
+                         "-" if r[4] is None else "%.2f" % r[4], r[5], r[6]))
+        for key, why in unresolved:
+            print("  UNRESOLVED %s_%d_%d: %s" % (key + (why,)))
+        # NOT A BAKE DEFECT AND STILL WORTH A LINE. A Shell B plan row at an
+        # address Shell A owns is never built -- `decks.setdefault` -- so no
+        # wrong band is stamped; what it means is that Shell B's program there
+        # is planned and discarded, which belongs to export_station's branch and
+        # not to this file.
+        if shadowed:
+            print("\n  %d Shell B plan row(s) shadowed by Shell A at the same "
+                  "address and planned at a different radius -- built by Shell "
+                  "A, so nothing wrong is baked, but Shell B's program there is "
+                  "discarded:" % len(shadowed))
+            for key, plan_r, geo in shadowed[:6]:
+                print("     %s_%d_%d: Shell B plans %.2f m, Shell A builds "
+                      "%.2f m" % (key + (plan_r, geo)))
+        print("")
+        return 0 if not bad and not unresolved else 1
+    finally:
+        LEGACY_DECK_FALLBACK = was
+
+
 def _fail(bad):
     print("bake_station selftest FAILED on %d:" % len(bad))
     for b in bad:
@@ -313,8 +585,18 @@ def main(argv=None):
                          "Seconds, no Godot -- for a tree whose cells are "
                          "already baked but predate the sidecar")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--shell-audit", action="store_true",
+                    help="does the manifest row a bake files each deck under "
+                         "sit at that deck's own floor radius? Seconds, no "
+                         "Godot")
+    ap.add_argument("--legacy", action="store_true",
+                    help="with --shell-audit: restore the bare "
+                         "`except: int(dk)` fallback. The negative control; it "
+                         "must fail")
     a = ap.parse_args(argv)
 
+    if a.shell_audit:
+        return shell_audit(legacy=a.legacy)
     if a.selftest:
         return _selftest()
 
@@ -392,13 +674,18 @@ def main(argv=None):
         # `deck.deck_index` has existed for exactly this since the session that
         # found 14 of 67 decks failing to assemble; `_ring_cells` goes through
         # it, `routes.py` did not until an hour ago, and this did not either.
-        import deck as _D                                      # noqa: PLC0415
-        import interior as _it                                 # noqa: PLC0415
-        _schema, _profile = _it.load()
+        #
+        # AND A NAME IS ONLY HALF OF IT. The other half is that Shell B numbers
+        # its decks by RUNG, so `deck.deck_index` is the wrong translation for
+        # them and a bare `except: int(dk)` guessed between the two. It is asked
+        # explicitly now and raises when neither answer applies -- see
+        # `deck_index_of`, which also carries the audit and its control.
         try:
-            dk_index = _D.deck_index(_schema, _profile, sec, int(ring), int(dk))
-        except Exception:                                      # noqa: BLE001
-            dk_index = int(dk)
+            dk_index, _shell, _why = deck_index_of(sec, ring, dk)
+        except ValueError as e:
+            man["decks"].append({"key": stem, "ok": False, "why": str(e)})
+            print(f"  [{n}/{len(work)}] {stem}: FAILED -- {e}")
+            continue
         t1 = time.time()
         cmd = [godot, "--headless", "--path", os.path.join(ROOT, "godot"),
                "res://scenes/walk.tscn", "--", "--bake-cells",
