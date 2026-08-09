@@ -33,6 +33,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 WORLD_MARK = ROOT / "station/generated/scene/station/cells/station_cells.json"
 
+# THE FLOOR UNDER "SHIPPABLE", and it is deliberately far below the real total.
+# A complete bake is ~907 cells over 76 decks, and blue_0_0 alone is 103. This
+# is not a quality bar -- `--gates-only` is where quality is judged. It is the
+# line between "a station missing some content" and "the world build fell over
+# and produced a shell", which is the only distinction the export step needs.
+MIN_SHIPPABLE_CELLS = 400
+
 # (label, argv-after-the-interpreter, note-or-None)
 STEPS: list[tuple[str, list[str], str | None]] = [
     ("export the ring decks and columns", ["tools/export_station.py"], None),
@@ -135,8 +142,33 @@ def main(argv: list[str] | None = None) -> int:
 
     built = world_on_disk()
     if args.check:
-        print(f"world   {built} streaming cells" if built
-              else "world   NOT BUILT -- run this without --check")
+        # THIS IS NOW THE STEP THAT DECIDES WHETHER A BUILD SHIPS, so it has to
+        # be able to say no. It returned 0 unconditionally -- it printed
+        # "NOT BUILT" and exited SUCCESS, which is this project's own
+        # "a criterion that cannot fail is measuring the wrong thing", sitting
+        # in the one place CI asks whether the world is there.
+        #
+        # The bar is what a PLAYER needs, not what the build intended:
+        # somewhere to stand, and a crowd that can be drawn. Missing transit
+        # lifts are a degraded station; missing decks are not a station.
+        missing = []
+        if not built:
+            missing.append(f"no merged cell manifest at "
+                           f"{os.path.relpath(WORLD_MARK, ROOT)} -- nothing to stand on")
+        elif built < MIN_SHIPPABLE_CELLS:
+            missing.append(f"only {built} streaming cells, under the "
+                           f"{MIN_SHIPPABLE_CELLS} a walkable station needs")
+        crowd = ROOT / "station/generated/scene/station"
+        for rung in (2, 4, 8):
+            if not (crowd / f"crowd_lod{rung}.glb").exists():
+                missing.append(f"no crowd_lod{rung}.glb -- every walker in that "
+                               f"band is undrawable")
+        if missing:
+            print("world   NOT SHIPPABLE:")
+            for m in missing:
+                print(f"          {m}")
+            return 1
+        print(f"world   {built} streaming cells, all three crowd rungs present")
         return 0
     if built:
         print(f"world   already built: {built} streaming cells")

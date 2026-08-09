@@ -125,8 +125,30 @@ jobs:
       # Verification that can destroy a working binary is verification aimed at
       # the wrong target. The gates still run, below, after the .exe is built
       # and uploaded, where their failure costs a red tick and not the build.
+      # --keep-going, AND continue-on-error, AND the real gate is the NEXT step.
+      #
+      # Run 5 built the decks, the drum and all 901 streaming cells correctly and
+      # shipped nothing, because step 5 of 9 -- the transit columns -- exited 1.
+      # It exited 1 for a GOOD reason: the yellow column's rebuilt shaft is
+      # congruent with the shipped one but 80 m away in z, so baking it would
+      # have given the shipped render mesh a collision shell from somewhere else,
+      # and bake_columns.py refused. That refusal is correct and must stay.
+      #
+      # What is NOT correct is one subsystem's honest refusal destroying the
+      # whole delivery. Steps 6-9 never ran, so the crowd libraries were never
+      # built and the cell manifest was never merged -- which is why the gates
+      # then reported four failures that were all consequences of the one.
+      # Third time this exact shape has cost a run: the drum in run 2, the gate
+      # chain in run 3, the columns here.
+      #
+      # So the driver now runs every step and reports every failure, and the
+      # question "is the result shippable" is asked separately, below, by the
+      # step whose whole job that is. A build that is missing 3 of 5 lifts is a
+      # station you can walk; a build that is missing its decks is not, and only
+      # --check can tell those apart.
       - name: build the world
-        run: python tools/build_world.py --skip-gates
+        continue-on-error: true
+        run: python tools/build_world.py --skip-gates --keep-going
 
       # EVEN WHEN THE BUILD FAILS -- especially then. The first run died in step
       # 1 and printed the reason 43 minutes before the end, past what GitHub's
