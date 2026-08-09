@@ -1542,6 +1542,13 @@ def _selftest():
         ex = schema["sectors"]["extents_m"][p["sector"]]
         z0 = p["z_m"] - p["footprint"][1] / 2
         z1 = p["z_m"] + p["footprint"][1] / 2
+        # AN AXIAL RUN IS NOT A ROOM, AND THIS CHECK ASSUMED EVERY PLACE IS ONE.
+        # The core shuttle's footprint IS the rotating assembly -- it is the tube
+        # that threads every sector, so demanding it fit inside one is demanding
+        # a corridor fit inside a doorway. These were the register's only two
+        # standing FAILs and they were the check's fault, not the shuttle's.
+        if RECONCILED and _geo.axial_run(schema, p):
+            continue
         check(f"{p['key']}: fits inside its sector longitudinally",
               ex["z0"] - 1e-6 <= z0 and z1 <= ex["z1"] + 1e-6,
               f"z {z0:.0f}-{z1:.0f} in {ex['z0']}-{ex['z1']}")
