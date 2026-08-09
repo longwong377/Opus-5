@@ -315,10 +315,35 @@ class Director extends Node3D:
 			return PackedVector3Array()
 		return nav.route_points(from_place, to_place)
 
+	# -- WHAT KIND OF THING A BOUND PERSON IS ------------------------------
+	# THE BUG THIS ENUM EXISTS FOR, quoted from the shipped launch log:
+	# `life: 0 of 363 residents bound`. Everything below `bind()` was written
+	# against ONE representation -- a person is a MeshInstance3D (or several)
+	# welded into the deck's merged mesh, and the only thing a runtime can do
+	# with one is show it or hide it. `populace.ROOM_INSTANCED` then moved the
+	# whole cast into `npc.gd`'s MultiMesh buckets, where a person is a `Walker`
+	# row with no node of their own, and this file kept searching for meshes
+	# that no generator emits any more. It found none, `main.gd`'s `if n > 0`
+	# was false, and `apply()` -- 128 places x 24 hours of presence, the entire
+	# point of the file -- never ran on any frame of any launch.
+	#
+	# So there are three kinds now, and the split is not cosmetic: it is WHO
+	# DECIDES whether somebody is present.
+	const KIND_BAKED := 0      ## meshes in the deck. This file decides, by place curve
+	const KIND_OCCUPANT := 1   ## instanced, has `who.day`. npc.gd decides, by timetable
+	const KIND_STROLLER := 2   ## instanced corridor walker. This file decides, by ON_FOOT_AT
+
 	class Person:
 		var group: String = ""
 		var place: String = ""
 		var place_i: int = 0                # index into the director's tables
+		var kind: int = 0                   # KIND_BAKED / _OCCUPANT / _STROLLER
+		## The `npc.gd` Walker row this person IS, for the instanced kinds. Held
+		## as an untyped reference on purpose: `Walker` is an inner class of a
+		## script this one must not preload -- `npc.gd` extends Node3D and lives
+		## in the scene, this file is a SceneTree harness -- and a `load()` here
+		## would make the purity gate drag the whole crowd runtime in with it.
+		var inst = null
 		var nodes: Array[Node3D] = []
 		var rest: Array[Vector3] = []       # each node's baked origin
 		# The same origins in the RING's own frame: x along the radius, y along
@@ -350,6 +375,15 @@ class Director extends Node3D:
 	var _visible_n: int = 0
 	var _clipped: int = 0
 	var _apply_us: float = 0.0
+	## `npc.gd`'s node, found by capability at `bind` time. Null in the headless
+	## purity gate and in any build with no crowd, and every use of it is
+	## guarded -- so this file behaves exactly as it did before when there is
+	## none, which is the property `nav` above already had to have.
+	var _crowd: Node = null
+	var _n_baked: int = 0
+	var _n_occupant: int = 0
+	var _n_stroller: int = 0
+	var _inst_shown: int = 0
 
 	func _init() -> void:
 		# AFTER npc.gd, deliberately. See the integration note at the top.
@@ -404,7 +438,27 @@ class Director extends Node3D:
 		_place_keys.clear()
 		_place_n.clear()
 		_want.clear()
+		_n_baked = 0
+		_n_occupant = 0
+		_n_stroller = 0
+		_inst_shown = 0
 		var meshes := _meshes(visual)
+		# THE OTHER REPRESENTATION, and finding it is the whole fix. By
+		# CAPABILITY rather than by node name, for the reason `npc.gd::
+		# _search_clock` gives about finding this Director: a name is a second
+		# description of a thing and drifts from it. `walker_list` is a method
+		# only the crowd runtime has.
+		_crowd = _find_crowd(visual)
+		var by_group := {}
+		var strollers: Array = []
+		if _crowd != null:
+			for w in (_crowd.call("walker_list") as Array):
+				if bool(w.occupant):
+					var wg := String(w.group)
+					if wg != "":
+						by_group[wg] = w
+				else:
+					strollers.append(w)
 		for a in actors:
 			var g := String(a.get("group", ""))
 			if g == "":
@@ -418,7 +472,15 @@ class Director extends Node3D:
 					p.nodes.append(m)
 					p.rest.append(m.position)
 			if p.nodes.is_empty():
-				continue
+				# NO MESH IS NOT THE SAME AS NO PERSON any more. An instanced
+				# occupant has a `Walker` under the same group name; one that is
+				# not in a streamed cell yet has neither, and is legitimately
+				# not bound -- they will be, when `main.gd::_rebind_on_stream`
+				# runs at the cell boundary that brings them.
+				if not by_group.has(g):
+					continue
+				p.kind = KIND_OCCUPANT
+				p.inst = by_group[g]
 			var x := float(a.get("x", 0.0))
 			var y := float(a.get("y", 0.0))
 			p.radius_m = sqrt(x * x + y * y)
@@ -438,10 +500,43 @@ class Director extends Node3D:
 			if p.single:
 				p.node0 = p.nodes[0]
 				p.local0 = p.local[0]
+			if p.kind == KIND_OCCUPANT:
+				_n_occupant += 1
+			else:
+				_n_baked += 1
 			_people.append(p)
-			if not _by_place.has(p.place):
-				_by_place[p.place] = []
-			_by_place[p.place].append(_people.size() - 1)
+			# ONLY THE PEOPLE THE PLACE CURVE GOVERNS GO IN THE PLACE TABLES.
+			# An instanced occupant's presence comes from their own `who.day`
+			# through `npc.gd::set_hour`; counting them here would put them in
+			# `_place_n`, which is the denominator `_want` takes a fraction of,
+			# and a room would then be emptied twice by two derivations of the
+			# same fact. One decision per person -- see `apply`.
+			if p.kind == KIND_BAKED:
+				if not _by_place.has(p.place):
+					_by_place[p.place] = []
+				_by_place[p.place].append(_people.size() - 1)
+		# THE CORRIDOR CROWD, WHO ARE NOT IN THE CAST LIST AT ALL.
+		#
+		# `crowd.json` is a separate sidecar of a few hundred placements, each
+		# with a full `who` block -- "NOVAK, LIANNA, lurker, home
+		# subfloor_stack" -- and NOTHING has ever governed how many of them are
+		# on their feet at a given hour. `ON_FOOT_AT` above is exactly that
+		# number, derived by `station/npc/life.py` from the whole station's
+		# schedules: 11,312 people walking at 13:00 against 5,092 at 03:00. The
+		# curve existed, the crowd existed, and the two had never met.
+		#
+		# THEY GET NO PLACE AND NO ORDER, deliberately: a corridor is not a room
+		# with a capacity, it is a flow, and `place_scale` would be the wrong
+		# question. Their rank against `corridor_scale` is the whole rule.
+		for w in strollers:
+			var p2 := Person.new()
+			p2.kind = KIND_STROLLER
+			p2.inst = w
+			p2.group = String(w.group)
+			p2.walker = true
+			p2.rank = _stable(String(w.ident) + "|rank")
+			_n_stroller += 1
+			_people.append(p2)
 		# ORDER BY THE STABLE RANK, ONCE, AND CACHE THE ORDER ON THE PERSON.
 		# Presence takes a prefix of this list, so a room that loses four people
 		# loses the same four every day and keeps its regulars. Caching `order`
@@ -465,7 +560,31 @@ class Director extends Node3D:
 			_place_keys.append(String(key))
 			_place_n.append(idx.size())
 			_want.append(idx.size())
+		print("life: bound %d -- %d baked mesh(es), %d instanced room "
+			% [_people.size(), _n_baked, _n_occupant]
+			+ "occupant(s) of %d in the cast, %d corridor walker(s)%s"
+			% [actors.size(), _n_stroller,
+				("" if _crowd != null else
+					" (NO CROWD RUNTIME IN THIS BUILD -- baked meshes only)")])
 		return _people.size()
+
+
+	## `npc.gd`, or null. BY CAPABILITY, and `walker_list` is the capability
+	## because it is the thing this file needs: a node that can hand over the
+	## crowd it is driving. Searching for a node called "People" would be a
+	## second description of which node that is, and `npc.gd::_search_clock`
+	## already records what the name-shaped version of this cost -- it found
+	## `dialogue.gd` first, because that file also has an `hour()`.
+	func _find_crowd(node: Node, depth: int = 0) -> Node:
+		if node == null or depth > 5:
+			return null
+		if node.has_method("walker_list") and node.has_method("set_culled"):
+			return node
+		for c in node.get_children():
+			var got := _find_crowd(c, depth + 1)
+			if got != null:
+				return got
+		return null
 
 	## Whose eyes decide what may pop. Optional; without one, presence changes
 	## take effect at once, which is right for a headless gate and wrong in
@@ -509,7 +628,42 @@ class Director extends Node3D:
 			_want[i] = int(round(float(_place_n[i]) * clampf(f, 0.0, 1.0)))
 		var arc := walk_speed_ms * (h - BAKE_HOUR) * 3600.0
 		var shown := 0
+		# THE OCCUPANTS' HOUR, HANDED OVER ONCE AND NOT SECOND-GUESSED.
+		#
+		# `npc.gd::set_hour` is the same shape as this function -- pure in `h`,
+		# nothing integrates -- and it has strictly better information about
+		# these people than any curve here does: `who.day` names the resident
+		# and says whether they are asleep, eating, at a post or in transit,
+		# where `PRESENCE` only knows how full the room is. So the Director
+		# supplies the clock and `npc.gd` decides who is in the room, which is
+		# why a resident whose schedule says they are asleep at 03:00 is not
+		# standing in a shop. Calling it here rather than leaving it to
+		# `advance_crowd`'s own clock search is what makes `apply(3.0)` a
+		# complete read of the station at 03:00 -- `main.gd` measures 03:00 and
+		# 13:00 in one frame, and a follower that waits for the next frame
+		# would report the same number twice.
+		var touched := false
+		if _crowd != null and _n_occupant > 0:
+			# `set_hour` re-places the buckets itself when anybody moved, so it
+			# is NOT counted as a touch here: doing so would rebuild every
+			# bucket twice at an hour boundary and once a frame in between.
+			_crowd.call("set_hour", h)
 		for p in _people:
+			# AN INSTANCED PERSON HAS NO MESH TO SHOW OR HIDE, so both instanced
+			# kinds leave the block below entirely. What they have instead is a
+			# row in a MultiMesh bucket, and `npc.gd::set_culled` is how a row
+			# stops being in one.
+			# ONE integer compare on the hot path, not two. The purity gate's
+			# budget case is 2,000 BAKED bodies and it is already 3.3 ms against
+			# a 3.167 ms share, so a second comparison per body per frame is not
+			# free -- measured at about 1.7 us a body either way.
+			if p.kind != KIND_BAKED:
+				if p.kind == KIND_STROLLER:
+					var on_foot: bool = p.rank < scale_corridor
+					if on_foot != (not bool(p.inst.culled)) and _may_pop(p):
+						_crowd.call("set_culled", p.inst, not on_foot)
+						touched = true
+				continue
 			var here: bool = (p.rank < scale_corridor) if p.walker \
 				else (p.order < _want[p.place_i])
 			if here != p.shown and _may_pop(p):
@@ -542,7 +696,17 @@ class Director extends Node3D:
 				var l: Vector3 = local[i]
 				nodes[i].position = Vector3(l.x * c - l.y * s,
 					l.x * s + l.y * c, l.z)
-		_visible_n = shown
+		# ONE UPLOAD FOR THE WHOLE HOUR'S CHANGES. `_place_crowd` rewrites every
+		# bucket, so committing inside the loop above would be O(walkers^2)
+		# transforms a frame -- the same mistake `_index_library`'s own note
+		# records about sizing eight phase buckets to a whole species. When
+		# nothing changed the count is still read, because `npc.gd` moves people
+		# on its own account too and a stale visible count is a number that
+		# looks measured and is not.
+		if _crowd != null:
+			_inst_shown = int(_crowd.call("commit_presence") if touched
+				else _crowd.call("drawn_count"))
+		_visible_n = shown + _inst_shown
 		_apply_us = float(Time.get_ticks_usec() - t0)
 
 	## Where one body stands at one hour. The same arithmetic `apply` inlines,
@@ -562,8 +726,22 @@ class Director extends Node3D:
 	func _may_pop(p: Person) -> bool:
 		if _viewer == null:
 			return true
-		return p.nodes[0].global_position.distance_to(
-			_viewer.global_position) > hold_radius_m
+		# AN INSTANCED PERSON HAS NO NODE TO ASK. `nodes[0]` was an unguarded
+		# index into a list that is empty for both instanced kinds, so this
+		# would have crashed on the first pop in front of a player -- which is
+		# the frame nobody renders in a headless gate. `walker_at` is the same
+		# `_walker_xform` call `npc.gd` already makes for LOD and for noticing,
+		# so there is no second answer to where somebody is.
+		var at: Vector3
+		if p.kind == KIND_BAKED:
+			if p.nodes.is_empty():
+				return true
+			at = p.nodes[0].global_position
+		else:
+			if _crowd == null or p.inst == null:
+				return true
+			at = _crowd.call("walker_at", p.inst)
+		return at.distance_to(_viewer.global_position) > hold_radius_m
 
 	# -- reporting ---------------------------------------------------------
 	func count() -> int:
@@ -571,6 +749,14 @@ class Director extends Node3D:
 
 	func visible_count() -> int:
 		return _visible_n
+
+	## What `count()` is made of. A single total cannot say whether the clock
+	## reached the shipped crowd or only the legacy baked meshes, and that
+	## distinction is the entire subject of this session.
+	func bind_report() -> String:
+		return ("baked=%d occupant=%d corridor=%d instanced_shown=%d crowd=%s"
+			% [_n_baked, _n_occupant, _n_stroller, _inst_shown,
+				("yes" if _crowd != null else "NO")])
 
 	func apply_us() -> float:
 		return _apply_us

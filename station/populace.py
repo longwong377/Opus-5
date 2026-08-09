@@ -475,10 +475,156 @@ CROWD_SLOTS = CROWD_PHASES + len(POSE_SLOTS)
 SLOT_OF = {p: CROWD_PHASES + i for i, p in enumerate(POSE_SLOTS)}
 POSE_OF_SLOT = {v: k for k, v in SLOT_OF.items()}
 
+# ---------------------------------------------------------------------------
+#  AND ONE BODY PER SPECIES IS ONE PERSON PER SPECIES
+# ---------------------------------------------------------------------------
+# Session 4v, found by a visual reviewer at close range: "four walkers, four
+# identical body plans, differing only in costume colour." Literally true, and
+# the cause is one argument. `crowd_body` asked for `animation.NOMINAL` -- the
+# species MEAN figure -- so the shipped library was ONE BODY PER SPECIES x 12
+# slots, and `body.individual`'s per-id variation in stature, build, shoulder,
+# head and sex reached the room-occupant, dialogue and render_shot paths (which
+# pass real npc ids) and NOT the MultiMesh crowd, which is the half a player
+# spends their time inside.
+#
+# THE FIX IS K BODIES PER SPECIES, and the axis it goes on is forced rather
+# than chosen. `npc.gd::_place_crowd` builds its bucket key as
+# `"crowd_%s_%d_%d" % [w.species, w.lod, w.phase]`, so the only three fields a
+# generator can vary are the species, the rung and the slot -- and the rung is
+# the runtime distance ladder and the slot is the walk phase. That leaves the
+# SPECIES TOKEN, so a variant is `human1`, `human2`, ... and variant 0 keeps
+# the bare name so every key that exists today still exists.
+#
+# THE SUFFIX MUST NOT CONTAIN AN UNDERSCORE. Two readers parse this key by
+# splitting on `_`: `npc.gd::_index_library` takes `String(k0).split("_")` and
+# reads the LAST element as the slot index, and `bake_crowd.stats` takes
+# `k.rsplit("_", 1)[-1]` for the same thing. `human_1` would break both;
+# `human1` survives both, and `_selftest` asserts it in the same form those two
+# use rather than describing it.
+#
+# WHY K = 3, MEASURED (all figures from this session, `--variant-gate`):
+#
+#   frame cost           ZERO. The people drawn per frame, and the triangles
+#                        they cost, are unchanged: K changes which shared mesh
+#                        an instance points at, not how many instances there
+#                        are. `schedule.NPC_BUDGET`'s 168,000 visible triangles
+#                        does not move.
+#   resident triangles   665,952 -> 1,996,704 over the three rungs. Memory, not
+#                        frame.
+#   library on disk      26.1 MB -> 78.4 MB for the three glbs.
+#   bake                 13 s -> 40 s. Not a constraint; the tool's own
+#                        docstring's "9-minute bake" is stale.
+#   MultiMesh nodes      the one cost that is NOT free. `_index_library`
+#                        allocates the full (species x rung x slot) cross
+#                        product, so the node count goes 2,148 -> ~6,444 per
+#                        deck. Empty buckets draw nothing, but they are nodes a
+#                        culler visits.
+#   what it buys         the probability that two same-species people in one
+#                        frame are the same mesh: 1.00 -> 0.33. K=2 leaves it at
+#                        0.50, K=4 takes it to 0.25 for another +33% of every
+#                        cost above.
+#
+# AND WHAT IT DOES NOT BUY, said plainly rather than left to be discovered: no
+# K this library can afford removes twins. `NPC_BUDGET`'s 6-18 m band allows 20
+# instances and the mix is 62% human, so a player can have ~12 humans in view;
+# K=3 gives them 3 silhouettes to be drawn from. The thing that would actually
+# close it is per-instance variation -- a stature scale on the transform, which
+# costs no library at all -- and that is a `npc.gd` change, written up in this
+# session's report rather than half-built here.
+CROWD_VARIANTS = 3
+
+# Every rung carries every variant, and that is not an oversight to optimise
+# away. `npc.gd` moves a walker between rungs BY DISTANCE at run time, so a
+# variant missing from `crowd_lod8.glb` is a walker who exists at 40 m and is
+# drawn nowhere at 50 -- no error, no warning, exactly the failure
+# `bake_crowd --selftest`'s orphan check was written for one axis up. lod8 is
+# 244 triangles a body, so the saving would have been 0.1% of the library for a
+# hole in the crowd.
+
+
+def crowd_variant_id(species, v):
+    """The npc id the `v`-th shared body of `species` is built from.
+
+    A STABLE STRING RATHER THAN AN INDEX, because `body.individual` and
+    `costume.costume_for` are both pure functions of it: the same name gives
+    the same figure in every process, every bake and every render, which is
+    what lets `bake_instances` re-derive the body a placement points at.
+    """
+    return f"crowdvar/{species}/{int(v)}"
+
+
+def variant_species(species, v):
+    """The library/bucket token for variant `v` of `species` -- `human2`."""
+    return species if int(v) <= 0 else f"{species}{int(v)}"
+
 
 @_lru_cache(maxsize=256)
+def split_variant(name):
+    """`(base species, variant index)` for a library token like `human2`.
+
+    THE INVERSE HAS TO BE EXACT, because it is what stops a variant token
+    reaching `body.SPECIES[...]` and raising, and what lets a consumer that
+    only knows about species keep working. Species keys are checked against
+    `body.SPECIES` rather than assumed, and `_selftest` asserts that no species
+    name in that table ends in a digit -- the one thing that would make this
+    ambiguous.
+    """
+    base = str(name)
+    i = len(base)
+    while i > 0 and base[i - 1].isdigit():
+        i -= 1
+    head, tail = base[:i], base[i:]
+    if tail and head in _body.SPECIES:
+        return head, int(tail)
+    return base, 0
+
+
+def crowd_figure(name):
+    """`(base species, npc id)` for the body a library token names.
+
+    Variant 0 stays `animation.NOMINAL` deliberately: it keeps the key every
+    existing consumer already writes -- `agenda.crowd_mesh`, every deck built
+    before this session -- pointing at exactly the body it pointed at before,
+    so this change adds bodies and removes none.
+    """
+    base, v = split_variant(name)
+    return base, (_anim.NOMINAL if v == 0 else crowd_variant_id(base, v))
+
+
+def _geom_hash(mesh):
+    """A geometry identity for `(verts, tris, spans)`.
+
+    IDENTITY, NOT SIMILARITY -- `deck.py --degeneracy`'s question, asked of a
+    body instead of a place. No raster, no threshold, nothing to tune and
+    therefore nothing to argue with: two bodies that hash the same ARE one
+    body, which is the only way to catch a library of K meshes that are K
+    copies of one figure. Rounded to a tenth of a millimetre so a float
+    reassociation cannot report a difference nobody can see.
+    """
+    verts, tris = mesh[0], mesh[1]
+    h = hashlib.blake2b(digest_size=8)
+    for x, y, z in verts:
+        h.update(b"%.4f|%.4f|%.4f;" % (x, y, z))
+    for a, b, c in tris:
+        h.update(b"%d,%d,%d;" % (a, b, c))
+    return h.hexdigest()
+
+
+def crowd_variant_of(npc_id, variants=None):
+    """Which shared body this person wears. Deterministic in their id.
+
+    ON THE PERSON AND NOT ON THE PLACEMENT INDEX, so somebody who is a corridor
+    walker at 09:00 and a room occupant at 10:00 is the same figure both times.
+    A placement-index draw would reshuffle the whole crowd every time a room's
+    occupancy changed by one.
+    """
+    k = CROWD_VARIANTS if variants is None else int(variants)
+    return int(_u("crowdvar", npc_id) * k) % max(1, k)
+
+
+@_lru_cache(maxsize=1024)
 def crowd_body(species, lod, slot):
-    """The shared body for `(species, lod, slot)`. Nominal, not an individual.
+    """The shared body for `(species, lod, slot)`. `species` may be a variant.
 
     `slot < CROWD_PHASES` is a phase of the walk cycle; beyond that it is one of
     `POSE_SLOTS`. See the section note above for why the two share an axis, and
@@ -490,43 +636,65 @@ def crowd_body(species, lod, slot):
     chair it will end up on. The placement still puts them on the real seat, so
     what is lost is the difference between the two, and `seat_fit_report()`
     measures exactly that rather than leaving it as a claim.
+
+    THE FURNITURE IS FITTED TO THE VARIANT, not to the species. A 1.71 m and a
+    1.84 m figure have different knees, and posing both on the nominal knee is
+    the same 87-153 mm hip sink `_give_lives` already corrects for the room's
+    real seat -- reintroduced one level down, where nothing measures it.
     """
+    base, npc_id = crowd_figure(species)
     if slot < CROWD_PHASES:
-        return _posed(species, _anim.NOMINAL, lod, "walk", G0_MS2, 0.0, slot)
+        return _posed(base, npc_id, lod, "walk", G0_MS2, 0.0, slot)
     kind = POSE_OF_SLOT[slot]
     h = 0.0
     if kind in ("sit", "sleep"):
-        try:
-            h = (_anim.seat_height(species, _anim.NOMINAL, lod)
-                 if kind == "sit"
-                 else _anim.bunk_height(species, _anim.NOMINAL, lod))
-        except Exception:                                       # noqa: BLE001
-            h = 0.0
-    return _pose_mesh(species, _anim.NOMINAL, lod, kind, G0_MS2, h)
+        # NOT A BARE `except`. A missing fitted height puts a sitter on the
+        # deck instead of on a seat, which is a visible wrong answer, so the
+        # one reason it is allowed to happen -- a figure this module has
+        # already decided cannot be posed at all -- is asked as a question
+        # first and everything else is left to raise.
+        if _bind_pose_reason(base, lod) is None:
+            h = (_anim.seat_height(base, npc_id, lod) if kind == "sit"
+                 else _anim.bunk_height(base, npc_id, lod))
+    return _pose_mesh(base, npc_id, lod, kind, G0_MS2, h)
 
 
 def crowd_library(species_lods):
     """`(verts, tris, spans)` holding every shared body a deck's crowd needs.
 
-    One mesh per `(species, lod, phase)`, laid out end to end with a span
-    naming each, so `deck.py` can write it as its own OBJ and the runtime can
-    address a body by name. The bodies stand at the origin in their own local
-    frame; every instance supplies its own transform.
+    One mesh per `(species, VARIANT, lod, phase)`, laid out end to end with a
+    span naming each, so `deck.py` can write it as its own OBJ and the runtime
+    can address a body by name. The bodies stand at the origin in their own
+    local frame; every instance supplies its own transform.
+
+    THE INPUT IS NORMALISED TO BASE SPECIES. `stats["species_lods"]` is derived
+    from placement rows, which now carry variant tokens, and a library built
+    from those would ask for variants of variants -- `human22` -- which
+    `split_variant` would read as variant 22 of `human2`, which is not a
+    species. Normalising here is the only place that can go wrong once.
+
+    AND IT NO LONGER SWALLOWS. This loop used to be `except Exception:
+    continue`, which meant a body that failed to build left NO KEY in the
+    library and every placement naming it was drawn nowhere -- silently, and
+    with the count of "bodies in the library" still looking plausible because
+    it is a count of what succeeded. If a body cannot be built the bake must
+    stop; `_posed` decides which failures are legitimate, and does it with a
+    precondition rather than an `except`.
     """
     v, t, g = [], [], []
-    for sp, lod in sorted(set(species_lods)):
-        for ph in range(CROWD_SLOTS):
-            try:
-                bv, bt, bg = crowd_body(sp, lod, ph)
-            except Exception:                                   # noqa: BLE001
-                continue
-            base, t0 = len(v), len(t)
-            v.extend(bv)
-            t.extend((a + base, b + base, c + base) for a, b, c in bt)
-            key = f"crowd_{sp}_{lod}_{ph}"
-            g.append((f"{key}_npc_body", t0, len(t)))
-            for nm, lo, hi in _by_material(bg):
-                g.append((f"{key}_{nm}", t0 + lo, t0 + hi))
+    want = sorted({(split_variant(sp)[0], lod) for sp, lod in species_lods})
+    for sp, lod in want:
+        for var in range(CROWD_VARIANTS):
+            token = variant_species(sp, var)
+            for ph in range(CROWD_SLOTS):
+                bv, bt, bg = crowd_body(token, lod, ph)
+                base, t0 = len(v), len(t)
+                v.extend(bv)
+                t.extend((a + base, b + base, c + base) for a, b, c in bt)
+                key = f"crowd_{token}_{lod}_{ph}"
+                g.append((f"{key}_npc_body", t0, len(t)))
+                for nm, lo, hi in _by_material(bg):
+                    g.append((f"{key}_{nm}", t0 + lo, t0 + hi))
     return v, t, g
 
 
@@ -546,10 +714,12 @@ def station_crowd_library(lod):
     which is exactly what happens across 90 z-clusters.
 
     Station-wide, `deck.py --sweep` walks 963 people. Baked at 484 triangles
-    each that is 466,092. This library is 14 species x 8 phases = 112 bodies,
-    ~54,000 triangles, ONCE. An 88% saving, and it is the same 112 meshes a
-    runtime can drive as 112 MultiMeshes -- which is 112 draw calls for every
-    walking person on the station, against 963.
+    each that is 466,092. This library is 14 species x 3 variants x 12 slots =
+    504 bodies, ONCE -- and the count of MESHES is what a runtime pays in
+    MultiMesh buckets, while the count of PEOPLE is unchanged. Measured at lod
+    4: 508,752 triangles for the whole station's crowd, against 466,092 for the
+    corridor walkers alone if every one carried their own geometry, and against
+    4.0 million if the 1,065 room occupants did too.
 
     Keyed on LOD alone so the cache is a cache: a deck asks for the library it
     needs and gets the one that already exists.
@@ -568,16 +738,18 @@ def bake_instances(instances, lod=None):
     a render is where the body in the build is, which two independent
     placements could not guarantee and this project has been bitten by twice.
 
-    The bodies are the shared library's, so a rendered walker is their
-    species' nominal figure -- exactly what the runtime shows.
+    The bodies are the shared library's, so a rendered walker is the same
+    variant the runtime instances -- `species` on a row is the library token,
+    not the base species, and `crowd_body` resolves it.
+
+    AND IT NO LONGER SWALLOWS. `except Exception: continue` here meant a
+    render silently lost the people it could not build, and a frame with
+    somebody missing from it is the one failure a render cannot show.
     """
     v, t, g = [], [], []
     for r in instances:
-        try:
-            bv, bt, bg = crowd_body(r["species"], int(r.get("lod", lod or 4)),
-                                    int(r.get("phase", 0)))
-        except Exception:                                       # noqa: BLE001
-            continue
+        bv, bt, bg = crowd_body(r["species"], int(r.get("lod", lod or 4)),
+                                int(r.get("phase", 0)))
         ux, uy, _uz = r["up"]
         fx, fy, _fz = r["fwd"]
         px, py, pz = r["x"], r["y"], r["z"]
@@ -1174,8 +1346,101 @@ def _stand_min_g(species, npc_id, lod):
         if fx <= 1e-6 or lx <= 1e-9:
             return 0.0
         return _anim.IDLE["sway_amp_f"] * lx * G0_MS2 / fx
-    except Exception:                                           # noqa: BLE001
+    except Exception as exc:                                    # noqa: BLE001
+        # SAYS SO, ONCE. Zero here means "this figure stands in any gravity",
+        # which is a plausible-looking answer and is why it was worth a print:
+        # the same shape of silence as `_posed`'s old bare except, one call
+        # deeper. The fallback stays -- a figure with no hip is not a reason to
+        # refuse to place anybody -- but it stops being invisible.
+        key = ("stand_min_g", species, int(lod))
+        if key not in _QUIET_FALLBACK:
+            _QUIET_FALLBACK.add(key)
+            print(f"populace: {species} lod {lod} has no measurable base of "
+                  f"support, so it is treated as standing in any gravity "
+                  f"-- {type(exc).__name__}: {str(exc)[:80]}")
         return 0.0
+
+
+# Fallbacks that are allowed to happen and must not happen quietly.
+_QUIET_FALLBACK = set()
+
+
+# ---------------------------------------------------------------------------
+#  THE ONE CASE A BIND POSE IS THE RIGHT ANSWER FOR -- ASKED, NOT CAUGHT
+# ---------------------------------------------------------------------------
+# `_posed` used to end in a bare `except Exception: return _mesh_for(...)`, and
+# that is this project's "silently degrades and exits 0" defect wearing a
+# comment that describes a legitimate case. It IS legitimate for Kosh: the
+# column plan has no legs, `animation.walk_clip` says so out loud, and a figure
+# in its bind pose is the honest answer. It is NOT legitimate for anything else,
+# and while that `except` stood, anything else looked exactly the same.
+#
+# It nearly shipped that way. When new body parts were added this session
+# `animation._bind` raised precisely as designed --
+#
+#     no bone chain declared for mesh part 'brow_bar'; body.py has grown a part
+#     this module cannot skin
+#
+# -- and this function turned it into a bind pose. THE WHOLE CROWD WOULD HAVE
+# SHIPPED STANDING TO ATTENTION, arms at their sides, not walking, with nothing
+# printed anywhere. It was caught only because somebody happened to notice the
+# posed bounding box move from 1.624 m to 1.798 m.
+#
+# So the legitimate case is now a PRECONDITION -- a property of the species and
+# the rung, answerable without building anything and without an exception in
+# sight -- and the `try` is gone. A precondition is cheaper than a render and
+# can fail for a reason a render cannot express; that is the same lesson
+# `ragdoll.gd::promote`'s determinant check taught this project in 4q.
+def _bind_pose_reason(species, lod):
+    """Why this `(species, lod)` legitimately cannot be posed, or `None`.
+
+    Two reasons and both are structural rather than incidental:
+
+      * the COLUMN plan (Kosh). `animation.walk_clip` refuses it in as many
+        words -- "the column plan has no legs and no walk ... a gait would be an
+        invention with nothing constraining it" -- and there is no skeleton to
+        pose against.
+      * an IMPOSTOR rung. `body.lod_chain()`'s last level is a card, and
+        `animation.rig` raises on it for the same reason: freezing a gait onto a
+        billboard would be an assertion that cannot fail.
+
+    An unknown species is NOT in this list, deliberately. It is a caller
+    mistake, and returning a human body for it -- which `_mesh_for` will
+    happily do -- is how a Narn ends up walking the Alien Sector as a human.
+    """
+    sp = _body.SPECIES.get(species)
+    if sp is None:
+        return None
+    chain = _body.lod_chain()
+    lv = chain[max(0, min(int(lod), len(chain) - 1))]
+    if lv.get("kind") == "impostor":
+        return (f"lod {lod} is an impostor card and body.lod_chain() already "
+                f"records that a card freezes the gait")
+    if sp.plan == "column":
+        return ("the column plan (Kosh) has no legs and no gait: "
+                "`Vorlon moree.jpg` shows a floor-length robe with none "
+                "visible, so a walk would be an invention")
+    return None
+
+
+# Said ONCE per (species, lod, kind), because a station-wide build asks for the
+# same figure some thousands of times and a per-call print is a log nobody
+# reads, which is the same as no log at all.
+_BIND_POSE_SAID = set()
+
+
+def bind_pose_fallbacks():
+    """Every `(species, lod, kind, why)` that has fallen back this process."""
+    return tuple(sorted(_BIND_POSE_SAID))
+
+
+def _say_bind_pose(species, lod, kind, why):
+    key = (species, int(lod), kind, why)
+    if key in _BIND_POSE_SAID:
+        return
+    _BIND_POSE_SAID.add(key)
+    print(f"populace: {species} lod {lod} takes the BIND POSE for {kind!r} "
+          f"-- {why}")
 
 
 @_lru_cache(maxsize=4096)
@@ -1207,65 +1472,70 @@ def _posed(species, npc_id, lod, kind, g_ms2, seat_h_m, phase=-1):
     clip's phase is already per-resident, so sampling elsewhere in the loop
     would be a second arbitrary number for no gain. When the runtime animates
     these bodies it will play the same clips from the same call.
+
+    IT RAISES NOW. See `_bind_pose_reason` above for the whole of why: the one
+    figure a bind pose is correct for is asked about first, by name, and
+    everything else propagates. A body this module cannot pose is a defect in
+    `animation.py` or in `body.py`, and a crowd standing to attention with
+    nothing printed is not the way to find out.
     """
-    try:
-        rg = _anim.rig(species, npc_id, lod)
-        frame = 0
-        if g_ms2 < _stand_min_g(species, npc_id, lod):
-            # BELOW THIS GRAVITY NOBODY STANDS. See `_stand_min_g`.
-            clip = _anim.glide_clip(species, npc_id, g_ms2, frames=8, lod=lod)
-        elif kind == "sit":
-            clip = _anim.sit_clip(species, npc_id, g_ms2,
-                                  seat_h_m=seat_h_m or None, frames=8, lod=lod)
-        elif kind == "sleep":
-            # THE CLIP THAT DID NOT EXIST UNTIL A ROOM OCCUPANT COULD MOVE.
-            # `animation.CLIP_SET` was four ways to be upright, so a station
-            # whose own `schedule.RHYTHMS` puts every Narn asleep at 03:00 had
-            # no body anybody could be asleep in. Handed the bunk's own measured
-            # deck height, exactly as the sit is handed the seat's.
-            clip = _anim.sleep_clip(species, npc_id, g_ms2,
-                                    bunk_h_m=seat_h_m or None, frames=8,
-                                    lod=lod)
-        elif kind == "talk":
-            clip = _anim.talk_clip(species, npc_id, g_ms2, frames=8, lod=lod)
-        elif kind == "walk":
-            clip = _anim.walk_clip(species, npc_id, g_ms2, frames=WALK_FRAMES,
-                                   lod=lod)
-            # A CORRIDOR OF PEOPLE ALL AT FRAME 0 IS A DRILL SQUAD. Unlike the
-            # idle clip, whose phase is inside the clip, a walk cycle's phase
-            # IS the frame -- so it is picked per resident here, deterministic
-            # on the id like everything else in this module. `phase >= 0`
-            # overrides it, which is how the shared crowd library asks for one
-            # body at each of the eight phases rather than eight bodies at
-            # whatever phase their ids happened to hash to.
-            frame = (int(_u("walk_phase", npc_id) * WALK_FRAMES)
-                     if phase < 0 else int(phase)) % WALK_FRAMES
-        else:
-            clip = _anim.idle_clip(species, npc_id, g_ms2, frames=8, lod=lod)
-        _w, mats = clip.pose(rg.skel, frame)
-        parts = _anim.apply_pose(rg, mats)
-        if kind == "walk":
-            # THE STRIDE ADVANCE COMES OFF; THE BOB AND THE SWAY DO NOT.
-            # `walk_clip`'s root moves in all three axes and they are not the
-            # same kind of motion. Forward (z) is the stride -- a body posed at
-            # frame 6 would otherwise arrive 0.88 m down the corridor from
-            # where the placement put it, because the placement owns the
-            # position and the clip owns the attitude. But root Y is the
-            # PELVIS BOB and root X is the lateral sway, and both are the walk
-            # itself: measured, the raw pose has its planted foot at y = 0.011
-            # at every one of the eight frames, and subtracting the root lifted
-            # all eight to 0.104-0.143 m. Eighty people hovering 12 cm over the
-            # deck, from taking "remove the root translation" as one idea
-            # instead of three.
-            _rx, _ry, rz = clip.root[frame % clip.frames]
-            parts = [(n, [(x, y, z - rz) for x, y, z in vv], t)
-                     for n, vv, t in parts]
-    except Exception:                                           # noqa: BLE001
-        # A species with no skeleton -- Kosh's column plan has no legs and
-        # `animation.py` says so out loud rather than inventing a gait -- keeps
-        # the bind pose. Dropping the person instead would be invisible here
-        # and wrong in the frame.
+    why = _bind_pose_reason(species, lod)
+    if why is not None:
+        # Dropping the person instead would be invisible here and wrong in the
+        # frame, so they keep the bind pose -- and the run SAYS SO, once.
+        _say_bind_pose(species, lod, kind, why)
         return _mesh_for(species, npc_id, lod)
+    rg = _anim.rig(species, npc_id, lod)
+    frame = 0
+    if g_ms2 < _stand_min_g(species, npc_id, lod):
+        # BELOW THIS GRAVITY NOBODY STANDS. See `_stand_min_g`.
+        clip = _anim.glide_clip(species, npc_id, g_ms2, frames=8, lod=lod)
+    elif kind == "sit":
+        clip = _anim.sit_clip(species, npc_id, g_ms2,
+                              seat_h_m=seat_h_m or None, frames=8, lod=lod)
+    elif kind == "sleep":
+        # THE CLIP THAT DID NOT EXIST UNTIL A ROOM OCCUPANT COULD MOVE.
+        # `animation.CLIP_SET` was four ways to be upright, so a station
+        # whose own `schedule.RHYTHMS` puts every Narn asleep at 03:00 had
+        # no body anybody could be asleep in. Handed the bunk's own measured
+        # deck height, exactly as the sit is handed the seat's.
+        clip = _anim.sleep_clip(species, npc_id, g_ms2,
+                                bunk_h_m=seat_h_m or None, frames=8,
+                                lod=lod)
+    elif kind == "talk":
+        clip = _anim.talk_clip(species, npc_id, g_ms2, frames=8, lod=lod)
+    elif kind == "walk":
+        clip = _anim.walk_clip(species, npc_id, g_ms2, frames=WALK_FRAMES,
+                               lod=lod)
+        # A CORRIDOR OF PEOPLE ALL AT FRAME 0 IS A DRILL SQUAD. Unlike the
+        # idle clip, whose phase is inside the clip, a walk cycle's phase
+        # IS the frame -- so it is picked per resident here, deterministic
+        # on the id like everything else in this module. `phase >= 0`
+        # overrides it, which is how the shared crowd library asks for one
+        # body at each of the eight phases rather than eight bodies at
+        # whatever phase their ids happened to hash to.
+        frame = (int(_u("walk_phase", npc_id) * WALK_FRAMES)
+                 if phase < 0 else int(phase)) % WALK_FRAMES
+    else:
+        clip = _anim.idle_clip(species, npc_id, g_ms2, frames=8, lod=lod)
+    _w, mats = clip.pose(rg.skel, frame)
+    parts = _anim.apply_pose(rg, mats)
+    if kind == "walk":
+        # THE STRIDE ADVANCE COMES OFF; THE BOB AND THE SWAY DO NOT.
+        # `walk_clip`'s root moves in all three axes and they are not the
+        # same kind of motion. Forward (z) is the stride -- a body posed at
+        # frame 6 would otherwise arrive 0.88 m down the corridor from
+        # where the placement put it, because the placement owns the
+        # position and the clip owns the attitude. But root Y is the
+        # PELVIS BOB and root X is the lateral sway, and both are the walk
+        # itself: measured, the raw pose has its planted foot at y = 0.011
+        # at every one of the eight frames, and subtracting the root lifted
+        # all eight to 0.104-0.143 m. Eighty people hovering 12 cm over the
+        # deck, from taking "remove the root translation" as one idea
+        # instead of three.
+        _rx, _ry, rz = clip.root[frame % clip.frames]
+        parts = [(n, [(x, y, z - rz) for x, y, z in vv], t)
+                 for n, vv, t in parts]
 
     # Flatten back into `body.build`'s (verts, tris, spans) shape. The material
     # group per part is `rig.groups`, which is the same tuple `body.build` puts
@@ -1839,7 +2109,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         # library's standing figure, because a player bumps into what they can
         # see and a capsule measured off a body nobody is wearing is a second
         # answer to how wide somebody is.
-        r_m, h_m = body_capsule(crowd_body(sp, lod, SLOT_OF["idle"]))
+        r_m, h_m = body_capsule(crowd_body(spv, lod, SLOT_OF["idle"]))
         rec = {
             "group": group, "who": who_rec, "x": x, "y": 0.0, "z": z,
             "yaw": yaw, "pose": pose, "r_m": r_m, "h_m": h_m,
@@ -1848,8 +2118,15 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
             # without editing that file: it copies `species` and `lod` off an
             # actor record verbatim, and everything else this needs rides
             # inside `who`, which it copies whole.
-            "species": sp, "lod": lod,
-            "mesh": crowd_key(sp, lod, slot), "slot": slot,
+            #
+            # `species` IS THE LIBRARY TOKEN, NOT THE BASE SPECIES -- `human2`,
+            # not `human` -- because `npc.gd::_place_crowd` builds its bucket
+            # key out of this field and the variant has nowhere else to ride.
+            # `base_species` carries the real one for every consumer that means
+            # the species: `who["species"]` is unchanged and is still the
+            # identicard's answer, so nothing that reads a PERSON is affected.
+            "species": spv, "base_species": sp, "lod": lod,
+            "mesh": crowd_key(spv, lod, slot), "slot": slot,
             "seat_h_m": round(seat_h, 4),
         }
         instances.append(rec)
@@ -1883,13 +2160,17 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         # POSED, not the bind pose. `mesh` here is the standing figure; a
         # sitter is rebuilt below against the height of the seat they take,
         # because `sit_clip` derives the whole pose from it.
-        # AN INSTANCED OCCUPANT WEARS THEIR SPECIES' NOMINAL BODY, and that is
-        # the cost of the trade stated in one line. `crowd_body` is the shared
-        # library's figure -- one per (species, lod, slot) for the whole station
-        # -- where `_pose_mesh` builds this individual's own. It is also the
-        # mesh the placement is TESTED against either way, so a body that fits
-        # the room is the body that gets drawn in it.
-        mesh = (crowd_body(sp, lod, SLOT_OF["idle"]) if instanced
+        # AN INSTANCED OCCUPANT WEARS ONE OF THEIR SPECIES' SHARED BODIES, and
+        # that is the cost of the trade stated in one line. `crowd_body` is the
+        # shared library's figure -- `CROWD_VARIANTS` per (species, lod, slot)
+        # for the whole station -- where `_pose_mesh` builds this individual's
+        # own. It is also the mesh the placement is TESTED against either way,
+        # so a body that fits the room is the body that gets drawn in it.
+        #
+        # WHICH VARIANT IS A PROPERTY OF THE PERSON, so the same resident is the
+        # same figure in their quarters at 03:00 and in the corridor at 09:00.
+        spv = variant_species(sp, crowd_variant_of(who.npc_id))
+        mesh = (crowd_body(spv, lod, SLOT_OF["idle"]) if instanced
                 else _pose_mesh(sp, who.npc_id, lod, "idle", g_ms2))
         who_rec = _who(who, hour, place_key)
 
@@ -1904,7 +2185,7 @@ def populate(place_key, room_v, room_t, room_g, w_m, l_m, hour=13.0,
         seated = False
         if i < len(seats):
             sx, sy, sz, _a = seats[i]
-            seat_mesh = (crowd_body(sp, lod, SLOT_OF["sit"]) if instanced
+            seat_mesh = (crowd_body(spv, lod, SLOT_OF["sit"]) if instanced
                          else _pose_mesh(sp, who.npc_id, lod, "sit", g_ms2, sy))
             # FACING THE ROOM, and the sign was inverted. `_place_body` maps
             # the body's local +Z -- its facing -- to `(-sin(yaw), cos(yaw))`,
@@ -2103,10 +2384,17 @@ def _give_lives(instances, place_key, hour, area, arch, seed, hw, hl,
         # like. It is CLAMPED AT ZERO deliberately: on a seat LOWER than the
         # fitted one the same correction would drive the feet through the deck,
         # and hips a few centimetres proud of a pan is the lesser of those two.
+        #
+        # AND THE FITTED HEIGHT IS THE VARIANT'S OWN KNEE. `crowd_body` poses
+        # the sit slot on `seat_height(base, variant id, lod)`, so asking here
+        # for the NOMINAL figure's knee would be a correction computed against
+        # a body nobody is sitting in -- the same class of mismatch this block
+        # exists to fix, one level down and with nothing measuring it.
         r["seat_dy"] = 0.0
         if r["seat"] is not None and r.get("seat_h_m", 0.0) > 0.0:
             try:
-                fit = _anim.seat_height(r["species"], _anim.NOMINAL, r["lod"])
+                _b, _id = crowd_figure(r["species"])
+                fit = _anim.seat_height(_b, _id, r["lod"])
                 r["seat_dy"] = round(max(0.0, r["seat_h_m"] - fit), 4)
             except Exception:                                   # noqa: BLE001
                 r["seat_dy"] = 0.0
@@ -2182,11 +2470,13 @@ def populate_corridor(deck_id, radius_m, half_w_m, arc_deg, start_deg, z_m,
         sp = _species_from_mix(mix, seed, i)
         npc_id = f"{STATION_SEED}/{seed}/{i}"
         who = _res.resident(npc_id, sp)
-        # INSTANCED walkers share their species' nominal body at one of eight
-        # phases; baked ones get their own. See the crowd-library note above
-        # for the three measurements that decided it.
+        # INSTANCED walkers share one of their species' `CROWD_VARIANTS` bodies
+        # at one of eight phases; baked ones get their own. See the crowd-
+        # library note above for the three measurements that decided it, and
+        # the variants note for why K bodies rather than one.
         phase = int(_u(seed, "phase", i) * CROWD_PHASES) % CROWD_PHASES
-        mesh = (crowd_body(sp, lod, phase) if instanced
+        spv = variant_species(sp, crowd_variant_of(npc_id))
+        mesh = (crowd_body(spv, lod, phase) if instanced
                 else _pose_mesh(sp, npc_id, lod, "walk", g_ms2))
         # THIS BODY'S OWN HALF-WIDTH, measured, not `BODY_R_M`. That constant
         # is a nominal human's 0.32 m and this station has fifteen species and
@@ -2234,8 +2524,12 @@ def populate_corridor(deck_id, radius_m, half_w_m, arc_deg, start_deg, z_m,
             r_m, h_m = body_capsule(_stance_mesh(sp, rec, lod))
             instances.append({
                 "group": f"corridor_{i}", "who": rec,
-                "mesh": crowd_key(sp, lod, phase),
-                "species": sp, "lod": lod, "phase": phase, "way": way,
+                "mesh": crowd_key(spv, lod, phase),
+                # THE LIBRARY TOKEN, NOT THE BASE SPECIES. See `_emit` in
+                # `populate_room` for why the variant rides on this field and
+                # what `base_species` is for.
+                "species": spv, "base_species": sp,
+                "lod": lod, "phase": phase, "way": way,
                 "x": px, "y": py, "z": pz,
                 "up": [-ca2, -sa2, 0.0],
                 "fwd": [-sa2 * way, ca2 * way, 0.0],
@@ -2245,9 +2539,9 @@ def populate_corridor(deck_id, radius_m, half_w_m, arc_deg, start_deg, z_m,
                 # advances them along the ring rather than through the wall.
                 # Their own gait's speed, not a constant: `walk_clip` derives
                 # it from this individual's leg length and this deck's gravity.
-                "omega": _walk_speed(sp, lod, g_ms2) / max(1e-6, radius_m)
+                "omega": _walk_speed(spv, lod, g_ms2) / max(1e-6, radius_m)
                 * way,
-                "cycle_s": _walk_cycle_s(sp, lod, g_ms2),
+                "cycle_s": _walk_cycle_s(spv, lod, g_ms2),
             })
             stats["placed"] += 1
             continue
@@ -2264,29 +2558,39 @@ def populate_corridor(deck_id, radius_m, half_w_m, arc_deg, start_deg, z_m,
     return v, t, g, stats
 
 
-@_lru_cache(maxsize=128)
+@_lru_cache(maxsize=512)
 def _walk_speed(species, lod, g_ms2):
-    """This species' self-selected walking speed on this deck, m/s.
+    """This figure's self-selected walking speed on this deck, m/s.
 
     From `animation.walk_clip`'s own gait, so the speed a body is ANIMATED at
     and the speed it TRAVELS at are one number. Two numbers here is how a
     walk cycle ends up sliding, which is the single most obvious tell there
     is that a crowd is not real.
+
+    `species` MAY BE A LIBRARY TOKEN -- `human2` -- and it is resolved through
+    `crowd_figure` rather than passed on, for exactly the reason above: the
+    gait belongs to the body that is DRAWN, and a 1.71 m variant walking at the
+    1.75 m nominal's speed slides. It also stops a variant token reaching
+    `body.SPECIES[...]`, where it would raise into the fallback below and hand
+    back 1.4 m/s for everybody.
     """
+    base, npc_id = crowd_figure(species)
     try:
-        c = _anim.walk_clip(species, _anim.NOMINAL, g_ms2,
+        c = _anim.walk_clip(base, npc_id, g_ms2,
                             frames=CROWD_PHASES, lod=lod)
         return float(c.meta["speed_ms"])
     except Exception:                                           # noqa: BLE001
         return 1.4
 
 
-@_lru_cache(maxsize=128)
+@_lru_cache(maxsize=512)
 def _walk_cycle_s(species, lod, g_ms2):
     """Seconds for one full stride cycle -- the clip's own duration, so the
-    runtime plays the eight phases over exactly the distance the gait covers."""
+    runtime plays the eight phases over exactly the distance the gait covers.
+    `species` may be a library token; see `_walk_speed`."""
+    base, npc_id = crowd_figure(species)
     try:
-        c = _anim.walk_clip(species, _anim.NOMINAL, g_ms2,
+        c = _anim.walk_clip(base, npc_id, g_ms2,
                             frames=CROWD_PHASES, lod=lod)
         return float(c.duration_s)
     except Exception:                                           # noqa: BLE001
@@ -2605,9 +2909,9 @@ def _selftest():
     lib_v, lib_t, lib_g = station_crowd_library(4)
     bodies = [n for n, _lo, _hi in lib_g if n.endswith("_npc_body")]
     check(f"the station crowd library is {len(bodies)} shared bodies -- "
-          f"{len(_sched.STATION_MIX)} species x {CROWD_PHASES} walk phases + "
-          f"{len(POSE_SLOTS)} poses",
-          len(bodies) == len(_sched.STATION_MIX) * CROWD_SLOTS,
+          f"{len(_sched.STATION_MIX)} species x {CROWD_VARIANTS} variants x "
+          f"({CROWD_PHASES} walk phases + {len(POSE_SLOTS)} poses)",
+          len(bodies) == len(_sched.STATION_MIX) * CROWD_VARIANTS * CROWD_SLOTS,
           f"{len(bodies)} bodies, {len(lib_t):,} triangles")
     # THE POSES ARE WHY A ROOM OCCUPANT CAN BE INSTANCED AT ALL. A walker is
     # always walking; an occupant sits, sleeps and talks, and a library with
@@ -2625,15 +2929,21 @@ def _selftest():
     check("BREAK: the sleeping body is LYING DOWN, not the standing one "
           "renamed", _dy > 0.5,
           f"the furthest vertex moves {_dy:.3f} m between idle and sleep")
-    # THE SAVING IS SMALLER THAN IT WAS AND IT IS STILL A ROUT. Four pose slots
-    # took the library from 112 shared bodies to 168, so the corridor-only
-    # comparison went from 86% saved to 79% -- and the poses are what let 1,065
-    # ROOM occupants stop being 4.0 million triangles of baked geometry, which
-    # is a trade this line's own denominator does not see.
-    check("...and it is still 4x smaller than baking the station's 963 walkers "
-          f"individually ({len(lib_t):,} against {963 * 484:,})",
-          len(lib_t) < 963 * 484 / 4.0,
-          f"{100 * (1 - len(lib_t) / (963 * 484)):.0f}% saved")
+    # THE SAVING IS SMALLER THAN IT WAS AND IT IS STILL A ROUT, and the
+    # DENOMINATOR IS THE HONEST ONE NOW. This line used to compare the library
+    # against baking the 963 CORRIDOR walkers alone, which flattered it twice
+    # over: the poses exist so the 1,065 ROOM occupants can be instanced too,
+    # and the constant 484 was a triangle count from before the wardrobe. Both
+    # are read off the library in hand instead, so `CROWD_VARIANTS` cannot
+    # quietly turn a rout into a loss and have this line still pass.
+    _per_body = len(lib_t) / max(1, len(bodies))
+    _people = 963 + 1065
+    _baked = int(_per_body * _people)
+    check(f"...and it is still 3x smaller than baking the station's {_people:,} "
+          f"instanced people individually ({len(lib_t):,} against {_baked:,})",
+          len(lib_t) < _baked / 3.0,
+          f"{100 * (1 - len(lib_t) / max(1, _baked)):.0f}% saved at "
+          f"K={CROWD_VARIANTS}, {_per_body:,.0f} tri a body")
     # THE EIGHT PHASES ARE EIGHT DIFFERENT BODIES. A library of one pose
     # repeated eight times animates nothing and every gate above still passes.
     _p0 = crowd_body("human", 4, 0)[0]
@@ -2672,6 +2982,68 @@ def _selftest():
           "two numbers here is how a walk cycle ends up sliding",
           abs(_v - _gait) < 0.2,
           f"{_v:.2f} m/s round the ring against {_gait:.2f} m/s of gait")
+
+    # -- THE CROWD IS MORE THAN ONE PERSON PER SPECIES ---------------------
+    # Session 4v. Everything above this block passed on a library of ONE body
+    # per species -- a count of bodies, a count of phases, a saving, a foot on
+    # the deck -- which is CLAUDE.md's own 4h lesson at crowd scale: a gate
+    # that scores N things must also ask whether the N things are the same
+    # thing. These four ask it.
+    _vk = [crowd_body(variant_species("human", _v), 4, 0)
+           for _v in range(CROWD_VARIANTS)]
+    _vh = [_geom_hash(_m2) for _m2 in _vk]
+    check(f"BREAK: the {CROWD_VARIANTS} shared human bodies are "
+          f"{len(set(_vh))} DIFFERENT geometries -- two bodies that hash the "
+          f"same ARE one body",
+          len(set(_vh)) == CROWD_VARIANTS, str(_vh))
+    _vs = [max(q[1] for q in _m2[0]) for _m2 in _vk]
+    check("...and they are different SIZES, not one body renamed",
+          max(_vs) - min(_vs) > 0.02,
+          f"heights {[round(s, 3) for s in _vs]}, spread "
+          f"{(max(_vs) - min(_vs)) * 1000:.0f} mm")
+    # THE KEY FORMAT, ASKED THE WAY ITS TWO READERS ASK IT. `npc.gd::
+    # _index_library` does `String(k0).split("_")` and reads the LAST element
+    # as the slot; `bake_crowd.stats` does `k.rsplit("_", 1)[-1]` for the same
+    # thing. A variant suffix carrying an underscore -- `human_1` -- breaks
+    # both, silently, by making the slot index the variant. Reproduced here
+    # rather than described.
+    _bad = []
+    for _sp in sorted(_sched.STATION_MIX):
+        for _v in range(CROWD_VARIANTS):
+            for _sl in (0, CROWD_SLOTS - 1):
+                _k = crowd_key(variant_species(_sp, _v), 4, _sl)
+                _bits = _k.split("_")
+                if len(_bits) != 4 or int(_bits[-1]) != _sl:
+                    _bad.append(_k)
+                if int(_k.rsplit("_", 1)[-1]) != _sl:
+                    _bad.append(_k)
+                if crowd_figure(_bits[1]) != (
+                        _sp, _anim.NOMINAL if _v == 0
+                        else crowd_variant_id(_sp, _v)):
+                    _bad.append(_k)
+    check("every library key still parses the way npc.gd::_index_library and "
+          "bake_crowd.stats parse it -- 4 tokens, last one the slot",
+          not _bad, f"{len(_bad)} broken: {_bad[:3]}")
+    check("...and no species name in body.SPECIES ends in a digit, which is "
+          "the one thing that would make the suffix ambiguous",
+          not [k for k in _body.SPECIES if k and k[-1].isdigit()],
+          str([k for k in _body.SPECIES if k and k[-1].isdigit()]))
+    # AND THE CROWD ACTUALLY USES THEM. A library of three bodies that every
+    # placement resolves to variant 0 is a library of one body with two
+    # unreferenced meshes in it, and every check above still passes.
+    _used = {split_variant(r["species"])[1] for r in ist["instances"]}
+    check(f"...and a corridor's {ist['placed']} walkers draw on all "
+          f"{CROWD_VARIANTS} variants, not just the first",
+          _used == set(range(CROWD_VARIANTS)),
+          f"variants used: {sorted(_used)}")
+    check("...and every row still carries its BASE species for everything "
+          "that means the species rather than the mesh",
+          all(r.get("base_species") == split_variant(r["species"])[0]
+              and r["who"]["species"] == r.get("base_species")
+              for r in ist["instances"]),
+          "a row whose base_species disagrees with who['species'] would give "
+          "a Narn a human's ragdoll")
+
     # AND UP IS INWARD, per instance, because on a ring it is a different
     # direction at every angle.
     import math as _m
@@ -3180,7 +3552,8 @@ def _rooms_gate(places=ROOM_GATE_PLACES, hour=13.0):
             sh = float(a["who"].get("seat_h_m", 0.0) or 0.0)
             if sh <= 0.0 or a["who"].get("seat") is None:
                 continue
-            fit = _anim.seat_height(a["species"], _anim.NOMINAL, a["lod"])
+            _b, _id = crowd_figure(a["species"])
+            fit = _anim.seat_height(_b, _id, a["lod"])
             gaps.append((abs(sh - fit), float(a["who"].get("seat_dy", 0.0)),
                          fit))
     if gaps:

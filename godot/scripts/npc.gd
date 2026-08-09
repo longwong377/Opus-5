@@ -857,6 +857,28 @@ class Walker:
 	var r_m: float = 0.0
 	var h_m: float = 0.0
 	var tag: String = ""      # which streamed cell they belong to
+	# -- WHO THIS IS, AND WHY AN INSTANCED PERSON NEEDED A NAME AT ALL ------
+	# `life.gd`'s Director binds a resident by matching the actor list's `group`
+	# against MeshInstance3D NAMES, and since `populace.ROOM_INSTANCED` there are
+	# no such meshes: the shipped build printed `life: 0 of 363 residents bound`
+	# and the whole 128-place x 24-hour presence table drove nobody. A walker is
+	# the representation that actually exists, so it carries the two keys that
+	# binding needs -- the resident's stable id and the actor group they came
+	# from. `ident` is `who.id`, the same string `schedule.py` hashes with
+	# blake2b and `life.gd::_stable` hashes with FNV-1a, so a presence curve
+	# takes the SAME subset of a corridor every day rather than a fresh one.
+	var ident: String = ""
+	var group: String = ""
+	# -- NOT DRAWN BECAUSE THE STATION CLOCK SAYS SO ------------------------
+	# A SECOND, INDEPENDENT REASON FROM `hidden`, and they are two fields rather
+	# than one because they have two owners. `hidden` is this file's answer, out
+	# of the person's OWN timetable: they are `away`. `culled` is `life.gd`'s
+	# answer, out of the place's hourly presence curve: the corridor is quieter
+	# at 03:00 than it was at the bake hour, so fewer of the same people are in
+	# it. Folding them into one boolean makes whichever system ran last the
+	# winner, which is how two subsystems that both pass their own gates produce
+	# a crowd that flickers.
+	var culled: bool = false
 	# -- AN INSTANCED PERSON CAN TURN TO LOOK AT YOU ------------------------
 	# `notice_yaw` is a rotation about this walker's OWN up, applied in
 	# `_walker_xform` on top of whichever heading they already have. It is a
@@ -1055,6 +1077,16 @@ func _walker_from(r: Dictionary, tag: String) -> Walker:
 	w.cycle_s = maxf(0.1, float(r.get("cycle_s", 1.0)))
 	w.r_m = float(r.get("r_m", 0.0))
 	w.h_m = float(r.get("h_m", 0.0))
+	# THE CORRIDOR CROWD IS NAMED TOO. `crowd.json` carries a full `who` block
+	# per walker -- "NOVAK, LIANNA, lurker, home subfloor_stack" -- and until now
+	# the runtime read the species out of it and threw the person away. The id is
+	# what lets the station clock take a STABLE subset of them.
+	# `who_name` is deliberately NOT set here: `promote_walker` uses its
+	# emptiness to tell a ring walker from a bound resident when it reports who
+	# fell, and changing that would rename every collapse in a corridor.
+	var who0: Dictionary = r.get("who", {})
+	w.ident = String(who0.get("id", r.get("group", "")))
+	w.group = String(r.get("group", ""))
 	# Start each walker at their own point in the cycle, so 134 people are
 	# not marching. The generator already picked it; this reproduces it.
 	w.t = w.cycle_s * float(w.phase) / 8.0
@@ -1380,7 +1412,10 @@ func promote_walker(director: Node, spec: Dictionary, at: Vector3,
 	var nearest := INF
 	var shown := 0
 	for w in _walkers:
-		if w.hidden:
+		# A CULLED WALKER IS NOT IN THE ROOM EITHER. Promoting one would drop a
+		# ragdoll where the clock says nobody is standing, which is the exact
+		# "corpse appearing out of the air" this function was written to avoid.
+		if w.hidden or w.culled:
 			continue
 		shown += 1
 		var d: float = _walker_xform(w).origin.distance_squared_to(at)
@@ -1592,7 +1627,9 @@ func _place_crowd() -> void:
 		# has them somewhere else is in no bucket at all -- not a hidden mesh, not
 		# a zero-scale transform, not there. That is the difference between a
 		# room that empties and a room whose people are invisible.
-		if w.hidden:
+		# `culled` is the same thing said by the other owner -- see the Walker's
+		# own note -- and it costs exactly as little.
+		if w.hidden or w.culled:
 			continue
 		var k := "crowd_%s_%d_%d" % [w.species, w.lod, w.phase]
 		if _mm_rows.has(k):
@@ -1766,6 +1803,11 @@ func add_occupants(rows: Array, tag: String = "", visual: Node = null) -> int:
 		w.talks = bool(who.get("talks", false))
 		w.who_name = String(who.get("name", ""))
 		w.place = String(r.get("place", ""))
+		# THE TWO KEYS `life.gd` BINDS BY. Dropped until now -- `group` was read
+		# four lines from here purely to hide a baked mesh and then discarded --
+		# which is exactly why the Director could not find one of these people.
+		w.ident = String(who.get("id", r.get("group", "")))
+		w.group = String(r.get("group", ""))
 		# THE ROOM'S OWN AXES, RECOVERED FROM WHERE THEY ARE STANDING. Every
 		# offset in the row is room-local -- x across, z along -- because that is
 		# the frame `deck.py::_place_local` maps: room x wraps onto the ring's
@@ -1958,9 +2000,18 @@ func set_hour(h: float) -> int:
 			_occ_travel_m += step
 		w.pos = at
 		w.fwd_free = face
+		# THE POSITION IS COMPUTED EVEN WHEN THE CLOCK HAS CULLED THEM, and only
+		# the body is withheld. `set_hour` is pure in `h`, so an occupant who
+		# comes back when the presence curve rises has to be standing where this
+		# hour says -- returning early on `culled` would put them back at
+		# whatever position they were culled at, which is the one piece of
+		# integrated state this whole design exists to not have.
 		if w.body != null and is_instance_valid(w.body):
-			(w.body as Node3D).visible = true
-			_layer(w.body as CollisionObject3D)
+			(w.body as Node3D).visible = not w.culled
+			if w.culled:
+				(w.body as CollisionObject3D).collision_layer = 0
+			else:
+				_layer(w.body as CollisionObject3D)
 			w.body.global_transform = _walker_body_xform(w)
 	_occ_moved += moved
 	if moved > 0:
@@ -2041,7 +2092,7 @@ func occupant_report() -> String:
 	for w in _walkers:
 		if w.occupant:
 			n += 1
-			if not w.hidden:
+			if not (w.hidden or w.culled):
 				shown += 1
 	var parts := []
 	var keys := _occ_states.keys()
@@ -2094,6 +2145,90 @@ func occupant_changes() -> int:
 	return _occ_moved
 
 
+# ===========================================================================
+#  THE STATION CLOCK'S HANDLE ON THE CROWD
+# ===========================================================================
+# WHY THIS EXISTS AT ALL, in one line from the shipped log: `life: 0 of 363
+# residents bound`. `life.gd` is 1,988 lines of a complete station day -- a
+# 24-hour presence curve for each of 128 places, a corridor traffic curve, and
+# an `apply(hour)` that is a pure function of the clock -- and it bound NOBODY,
+# so `main.gd`'s `if n > 0` guard meant `apply()` was never called on any frame
+# of any launch. The cause is one representation mismatch: `Director.bind`
+# looks for MeshInstance3D nodes named after an actor's group, and since
+# `populace.ROOM_INSTANCED` a person is a row in a MultiMesh with no node of
+# their own. Two crowd systems, and only one of them could see the other --
+# the same sentence this file's own `notice_yaw` note already had to write.
+#
+# THE DIVISION OF AUTHORITY, and it is the whole reason this is five small
+# accessors rather than a second scheduler:
+#
+#   * an OCCUPANT's presence is decided HERE, by `set_hour`, out of their own
+#     `who.day` timetable. `life.gd` supplies the hour and counts the result.
+#   * a CORRIDOR walker has no timetable -- `crowd.json` is a placement list --
+#     so their presence is decided THERE, by `ON_FOOT_AT`, which is precisely
+#     the curve for "how many people are on foot at this hour". Nothing
+#     governed them before: the corridor held the same 444 people at 03:00 as
+#     at 13:00.
+#
+# One decision per person, in the place that has the better information about
+# them. Applying both to the same body would empty a room twice.
+
+
+## Every walker this node is currently driving, corridor and occupant alike.
+## Handed out rather than copied: the Director flips `culled` on the rows it
+## chooses and `commit_presence()` puts the change on the screen.
+func walker_list() -> Array:
+	return _walkers
+
+
+## Withdraw or restore one walker on the STATION CLOCK's authority.
+##
+## The three things that have to move together are the three `promote_walker`
+## already had to learn: out of the MultiMesh bucket (via `_place_crowd`), off
+## the collision layer, and back again -- because a person the clock has sent
+## home is not somebody a player can walk into.
+func set_culled(w, cull: bool) -> void:
+	if w == null or bool(w.culled) == cull:
+		return
+	w.culled = cull
+	var b = w.body
+	if b == null or not is_instance_valid(b):
+		return
+	var gone: bool = cull or bool(w.hidden)
+	(b as Node3D).visible = not gone
+	if gone:
+		(b as CollisionObject3D).collision_layer = 0
+	else:
+		_layer(b as CollisionObject3D)
+
+
+## Rebuild the buckets after a run of `set_culled`, and say how many people are
+## actually drawn. ONE upload for a whole hour's worth of changes rather than
+## one per person: `_place_crowd` rewrites every bucket, so calling it inside
+## the Director's loop would be O(walkers^2) transforms a frame.
+func commit_presence() -> int:
+	_place_crowd()
+	return drawn_count()
+
+
+## How many walkers are in a bucket right now -- neither away on their own
+## timetable nor culled by the clock. THE NUMBER A FRAME WOULD SHOW, which is
+## the only honest answer to "did the hour change anything".
+func drawn_count() -> int:
+	var n := 0
+	for w in _walkers:
+		if not (w.hidden or w.culled):
+			n += 1
+	return n
+
+
+## Where one walker is standing, for a caller that has no notion of the ring.
+## `_walker_xform` is the same call `_notice_walkers` and `promote_walker`
+## make, so this adds no second answer to "where is anybody".
+func walker_at(w) -> Vector3:
+	return _walker_xform(w).origin
+
+
 ## Turn the instanced crowd toward the player, and let them turn back.
 ##
 ## THIS IS THE OTHER HALF OF `_physics_process`'s `_people` LOOP, for the people
@@ -2113,7 +2248,7 @@ func occupant_changes() -> int:
 func _notice_walkers(eye: Vector3, delta: float) -> void:
 	var step: float = turn_rate * delta
 	for w in _walkers:
-		if w.hidden:
+		if w.hidden or w.culled:
 			continue
 		var at := (w.pos if w.free or w.occupant else _walker_xform(w).origin)
 		var d := eye.distance_to(at)
