@@ -6617,7 +6617,12 @@ def check_textures(outdir=TEXTURE_DIR, out=print):
             if not os.path.exists(path):
                 absent += 1
                 continue
-            tmp = path + ".check"
+            # `.png`, NOT `.check` -- PIL infers the format from the
+            # extension and the first version of this line raised
+            # `unknown file extension: .check` on the very first texture, so
+            # the gate could never have run. Written beside the original so it
+            # lands on the same filesystem, and removed in a `finally`.
+            tmp = path[:-4] + ".__check__.png"
             _write_png(tmp, arr)
             try:
                 with open(tmp, "rb") as a, open(path, "rb") as b:
