@@ -746,7 +746,27 @@ func _start_clock() -> void:
 
 	add_child(_life)
 
-	_cast = _read_array(String(_boot.get("actors", "")))
+	# THE CAST COMES FROM THE LEVEL THAT LOADED IT, NOT FROM A SECOND READ.
+	#
+	# This line was `_read_array(_boot["actors"])` -- the boot manifest's single
+	# `blue_0_0_actors.json` -- which was correct until `walk.gd::_load_sidecars`
+	# learned to read every deck in the directory. After that it was a SECOND
+	# READER of one thing, and the two disagreed by seventy-five decks: the level
+	# wired 3,904 residents into cells while `life.gd` bound the 363 of the spawn
+	# deck, so every schedule, every 03:00-vs-13:00 claim and every collapse this
+	# build can stage was scoped to one seventy-sixth of the station.
+	#
+	# Asked of the node BY METHOD rather than by name or by path -- the rule
+	# `_player()`, `_crowd()` and `_streamer` above already follow -- so it finds
+	# the level whatever the scene calls it, and falls back to the old read when
+	# there is no such node (the arrival path builds a level that has never
+	# carried sidecars).
+	var lvl = _find_where(self, "Node3D", "cast_rows")
+	_cast = (_read_array(String(_boot.get("actors", ""))) if lvl == null
+		else (lvl.call("cast_rows") as Array))
+	if lvl != null:
+		print("main: cast of %d from the level's own sidecars (%s)"
+			% [_cast.size(), lvl.name])
 	_streamer = _find_where(self, "Node3D", "resident_ids")
 	var actors := _cast
 	var n: int = _life.bind(_world, actors)

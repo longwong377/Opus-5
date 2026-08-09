@@ -614,6 +614,22 @@ func _deck_of_sidecar(path: String) -> String:
 	return ""
 
 
+## The whole cast this level has loaded, both halves of it.
+##
+## ONE READER, ONE LIST. `main.gd` used to re-read the cast itself, straight off
+## `boot.json`'s single `actors` path -- so after this file learned to load all 76
+## decks, `life.gd` was still binding the 363 residents of one of them and every
+## clock, schedule and 03:00-vs-13:00 claim in the build was scoped to the spawn
+## deck. Two readers of one thing is how they drift; the second one is deleted and
+## this is what replaces it.
+##
+## `_actors` are baked into the deck mesh and `_actors_occ` carry a timetable;
+## `life.gd` wants both, because a resident's schedule is a property of the
+## PERSON and not of how their body happens to be drawn.
+func cast_rows() -> Array:
+	return _actors + _actors_occ
+
+
 ## Every deck's three sidecar files, as {stem: {actors, crowd, interact}}.
 ##
 ## THE DIRECTORY COMES FROM THE PATHS THE CALLER ALREADY PASSED, so this adds no
