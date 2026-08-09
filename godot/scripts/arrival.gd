@@ -57,9 +57,17 @@ const ROOM_ARRIVE_M := 3.0
 ## Physics frames to settle the body before the sequence starts. walk.gd's own
 ## shot path uses 120; a body that has not landed cannot walk.
 @export var settle_frames: int = 120
-## Frames allowed per step before the run gives up on it and moves on. At 60 Hz
-## and 4.2 m/s a body covers 70 m in 1000 frames, which is more than the length
-## of this cluster's corridor.
+## Frames allowed per step before `--arrival-test` gives up on it and moves on.
+## IT APPLIES TO THE TEST ONLY -- a player has no deadline; see the note at its
+## use site in `_physics_process` for why that distinction cost the shipped
+## arrival sequence.
+##
+## AND THE ARITHMETIC HERE WAS WRONG, WHICH IS HOW 600 LOOKED SUFFICIENT. The old
+## comment read "at 60 Hz and 4.2 m/s a body covers 70 m in 1000 frames" -- true,
+## and the value beside it is 600, which is 10 s and 42 m. The shipped spawn is
+## 181 m of arc from the customs reader, so the default was short by a factor of
+## four for the one sequence it exists to drive. `--arrival-budget` overrides it
+## and the customs runs in CI pass one.
 @export var step_budget: int = 600
 
 # ===========================================================================
@@ -985,7 +993,24 @@ func _physics_process(delta: float) -> void:
 				str(_player.is_on_floor()).to_lower(),
 				str(_player.is_on_wall()).to_lower(), _slides, hit])
 
-	if arrived or _frames_here > step_budget:
+	# THE BUDGET IS A TEST DEVICE AND IT WAS BEING APPLIED TO PEOPLE.
+	#
+	# Everything else in this function already knows the difference -- the
+	# autopilot forty lines up is gated on `_testing_arrival`, because a human at
+	# a keyboard drives their own body. The TIMEOUT was not, so the sequence
+	# advanced past a step after `step_budget` frames whether or not anybody had
+	# asked it to. At 60 Hz that is ten seconds, and the walk from the shipped
+	# spawn to the customs reader is 181 m of arc -- about forty-five seconds at
+	# 4.2 m/s, and longer for a person who stops to look at anything. So a player
+	# who paused to read the arrival announcement had their arrival skipped out
+	# from under them, one step every ten seconds, and reached customs to find the
+	# sequence finished without them.
+	#
+	# A test needs a bound because a stuck body must not hang CI forever. A PLAYER
+	# HAS NO DEADLINE: the step ends when they get there, and if they never go,
+	# the sequence waits. That is not a lenient budget, it is the absence of one,
+	# which is the only correct answer for a thing a person is doing by hand.
+	if arrived or (_testing_arrival and _frames_here > step_budget):
 		_closest.append("%s:%.1fm" % [String(st.get("id", "?")), _min_d])
 		if arrived:
 			_reached.append(String(st.get("id", "?")))
