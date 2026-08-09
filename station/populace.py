@@ -1451,17 +1451,74 @@ def _bind_pose_reason(species, lod):
 # raises instead, which is the safe direction to be wrong in.
 _NO_CHAIN = "no bone chain declared for mesh part"
 
-# part name -> (how many builds hit it, an example species, an example id)
+# reason -> (how many builds hit it, an example species, an example id)
 _UNSKINNABLE = {}
 
 
 def unskinnable_parts():
-    """`{part: (count, species, npc_id)}` for every part with no bone chain.
+    """`{reason: (count, species, npc_id)}` for every figure that could not be
+    posed and took the bind pose instead.
 
-    NON-EMPTY IS A DEFECT, always, and it is a defect in `animation.PART_CHAINS`
-    rather than here. Read by `--variant-gate` part 5.
+    NON-EMPTY IS A DEFECT, always, and it is a defect in `animation.py` or
+    `costume.py` rather than here. Read by `--variant-gate` part 5.
     """
     return dict(_UNSKINNABLE)
+
+
+def _rig_defect(rg):
+    """A rig whose own binding indexes past its own mesh, or None.
+
+    THE SECOND THING THE BARE `except` WAS HIDING, and it is live on this tree
+    too. `animation.rig` builds the figure TWICE -- `m` as it stands and `m0`
+    with the stoop suppressed, because `_ring_partition` needs flat rings --
+    binds `m` using ring runs partitioned off `m0`, and guards the pair with
+
+        [n for n, _v, _t in m.parts] != [n for n, _v, _t in m0.parts]
+
+    which compares part NAMES and not vertex COUNTS. `costume._att_seg` picks
+    an attachment's segment count from its RADIUS, and a stoop changes the
+    radius, so a Pak'ma'ra's cowl at lod 2 is 36 vertices stooped and 48
+    unstooped and the binding runs off the end of the mesh it is binding.
+    Measured: `pakmara` cowl 36/48, `grome` belt 64/96, both at lod 2, both
+    NOMINAL and variant.
+
+    `apply_pose` then raises `IndexError: tuple index out of range` -- which
+    `crowd_library`'s own `except Exception: continue` used to turn into a body
+    QUIETLY MISSING FROM THE LIBRARY, and a body missing from the library is
+    every walker who names it drawn nowhere with nothing logged. The shipped
+    `crowd_lod2.glb` still has all twelve pakmara bodies because it was baked
+    before `body.py` changed; the next bake would have shipped 156 bodies
+    instead of 168 and no count anywhere would have moved.
+
+    ASKED AS A PRECONDITION, not caught: an `IndexError` out of `apply_pose`
+    could come from anywhere, and this names the exact inconsistency.
+
+    THE FIX IS ONE LINE IN A FILE THIS SESSION DOES NOT OWN -- extend that
+    guard in `animation.rig` to the vertex counts:
+
+        or [len(v) for _n, v, _t in m.parts] != [len(v) for _n, v, _t in m0.parts]
+
+    which drops those figures to the NUDE build `rig` already falls back to,
+    and which poses cleanly: pakmara lod 2 gives 1,692 triangles at 1.652 m,
+    grome 1,852 at 1.791 m.
+    """
+    for pi, _w, runs in rg.binding:
+        n = len(rg.parts[pi][1])
+        for _a, b in runs:
+            if b > n:
+                return f"{rg.parts[pi][0]}: binding runs to {b} of {n} vertices"
+    return None
+
+
+def _note_unskinnable(reason, species, npc_id, lod, fix):
+    n, sp0, id0 = _UNSKINNABLE.get(reason, (0, species, npc_id))
+    _UNSKINNABLE[reason] = (n + 1, sp0, id0)
+    if n == 0:
+        print(f"populace: CANNOT POSE {species} {npc_id} at lod {lod} "
+              f"-- {reason}. It takes the BIND POSE, which is visibly wrong "
+              f"and is not silent. {fix} "
+              f"`populace.unskinnable_parts()` and `--variant-gate` part 5 "
+              f"report it.")
 
 
 def _no_chain_part(exc):
@@ -1537,36 +1594,37 @@ def _posed(species, npc_id, lod, kind, g_ms2, seat_h_m, phase=-1):
         # frame, so they keep the bind pose -- and the run SAYS SO, once.
         _say_bind_pose(species, lod, kind, why)
         return _mesh_for(species, npc_id, lod)
+    # THE TWO WAYS A FIGURE CAN BE UNPOSEABLE, BOTH NAMED, NEITHER SILENT. See
+    # `_NO_CHAIN` and `_rig_defect` above for what each one is and where each
+    # one's one-line fix lives. Both are defects in OTHER modules, and taking
+    # the station's build down for them would block everyone -- so the figure
+    # keeps the bind pose, which is visibly wrong, and it is printed, counted
+    # and gated. EVERY other failure goes straight up: that is the whole change.
     try:
-        return _pose_or_raise(species, npc_id, lod, kind, g_ms2, seat_h_m,
-                              phase)
+        rg = _anim.rig(species, npc_id, lod)
     except KeyError as exc:
-        # THE ONE EXCEPTION THAT IS CAUGHT, BY NAME, AND IT IS NOT SILENT. See
-        # the `_NO_CHAIN` block above for the whole of why: a garment
-        # `animation.py` has no bone chain for is a defect in a DIFFERENT
-        # module, and taking the station's build down for it would block
-        # everyone -- but shipping the crowd standing to attention with nothing
-        # printed is what this session exists to end. Every other exception,
-        # including a KeyError with any other message, goes straight up.
         part = _no_chain_part(exc)
         if part is None:
             raise
-        n, _sp, _id = _UNSKINNABLE.get(part, (0, species, npc_id))
-        _UNSKINNABLE[part] = (n + 1, _sp, _id)
-        if n == 0:
-            print(f"populace: NO BONE CHAIN for mesh part {part!r} -- every "
-                  f"figure wearing one takes the BIND POSE. First: {species} "
-                  f"{npc_id} at lod {lod}. Fix: add {part!r} to "
-                  f"animation.PART_CHAINS. `populace.unskinnable_parts()` and "
-                  f"`--variant-gate` part 5 report it.")
+        _note_unskinnable(f"no bone chain for mesh part {part!r}",
+                          species, npc_id, lod,
+                          f"Fix: add {part!r} to animation.PART_CHAINS.")
         return _mesh_for(species, npc_id, lod)
+    broken = _rig_defect(rg)
+    if broken is not None:
+        _note_unskinnable(f"{species}/{broken}", species, npc_id, lod,
+                          "Fix: animation.rig's m/m0 guard compares part NAMES "
+                          "and not vertex COUNTS -- see populace._rig_defect.")
+        return _mesh_for(species, npc_id, lod)
+    return _pose_or_raise(rg, species, npc_id, lod, kind, g_ms2, seat_h_m,
+                          phase)
 
 
-def _pose_or_raise(species, npc_id, lod, kind, g_ms2, seat_h_m, phase):
-    """`_posed`'s body, with nothing caught. Split out so the one caught case
-    above reads as one named exception rather than as a wrapper round 60
-    lines."""
-    rg = _anim.rig(species, npc_id, lod)
+def _pose_or_raise(rg, species, npc_id, lod, kind, g_ms2, seat_h_m, phase):
+    """`_posed`'s body, with NOTHING caught. Split out so the two named
+    fallbacks above read as two preconditions rather than as a wrapper round
+    sixty lines. The rig is passed in because `_posed` has already built it to
+    ask whether it is sound, and `animation.rig` is cached anyway."""
     frame = 0
     if g_ms2 < _stand_min_g(species, npc_id, lod):
         # BELOW THIS GRAVITY NOBODY STANDS. See `_stand_min_g`.
@@ -4067,7 +4125,7 @@ def variant_gate(out=print, legacy=False):
         _UNSKINNABLE.clear()
         m = crowd_body("human", 4, 0)
         got = unskinnable_parts()
-        loud = victim in got
+        loud = any(victim in key for key in got)
         fail += int(not loud)
         out(f"   4a  a mesh part with no bone chain:")
         out(f"       returned {len(m[1])} triangles of bind pose, and it was "
@@ -4137,22 +4195,43 @@ def variant_gate(out=print, legacy=False):
         "skin?")
     _posed.cache_clear()
     crowd_body.cache_clear()
+    _UNSKINNABLE.clear()
     scanned = 0
-    for sp2 in sorted(_sched.STATION_MIX):
-        for i in range(40):
-            scanned += 1
-            _pose_mesh(sp2, f"chainscan/{sp2}/{i}", 4, "walk", G0_MS2)
+    # EVERY RUNG, because one of the two defects this finds is rung-specific:
+    # a Pak'ma'ra's cowl divides into 36 vertices stooped and 48 unstooped at
+    # lod 2 and agrees at lod 4, so a lod-4-only scan reports the station
+    # clean and the SHIPPED near rung is the broken one.
+    for _hi2, lod2 in crowd_ladder():
+        # (a) THE FIGURES THAT ACTUALLY SHIP -- the library, exactly.
+        for sp2 in sorted(_sched.STATION_MIX):
+            for v2 in range(k):
+                scanned += 1
+                crowd_body(variant_species(sp2, v2), lod2, 0)
+        # (b) AND A SAMPLE OF RESIDENTS, because a costume is chosen by id and
+        # the library's K figures cannot cover a wardrobe of 30 fabrics. This
+        # is the half that finds a missing bone chain on a garment only an
+        # EarthForce officer wears.
+        # A SAMPLE, AND IT SAYS SO. `epaulette` is worn by about one figure in
+        # 140, so a small sample reports the station clean and is worse than no
+        # scan at all -- 40 ids a species a rung is 1,680 figures, which finds
+        # it and costs a minute. What would replace the sample is an
+        # enumeration of the wardrobe, which is `costume.py`'s to expose.
+        for sp2 in sorted(_sched.STATION_MIX):
+            for i in range(40):
+                scanned += 1
+                _pose_mesh(sp2, f"chainscan/{sp2}/{i}", lod2, "walk", G0_MS2)
     bad2 = unskinnable_parts()
     fail += len(bad2)
     out(f"   {scanned} figures built across {len(_sched.STATION_MIX)} species "
-        f"at lod 4")
+        f"at every rung {tuple(l for _h, l in crowd_ladder())}")
     if not bad2:
-        out("   every part they wear has a bone chain   ok")
+        out("   every one of them poses   ok")
     for part, (n2, sp2, id2) in sorted(bad2.items()):
-        out(f"   {part!r}: {n2} figure(s) fell back to the BIND POSE "
+        out(f"   {part}: {n2} figure(s) fell back to the BIND POSE "
             f"(e.g. {sp2} {id2})   <-- FAIL")
-        out(f"     costume.py emits it; animation.PART_CHAINS does not have "
-            f"it. One line fixes it, in a file this gate does not own.")
+    if bad2:
+        out("     Both fixes are one line each and neither is in this file: "
+            "see populace._NO_CHAIN and populace._rig_defect.")
 
     out(f"\n{'VARIANT GATE OK' if not fail else 'VARIANT GATE FAILED'} "
         f"({fail} problem(s))")

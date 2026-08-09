@@ -418,6 +418,15 @@ PART_CHAINS = {
     "skirt": ("pelvis", "hip_r", "hip_l"),
     "collar": ("chest", "neck"),
     "cowl": ("chest", "neck", "head"),
+    # AN EPAULETTE AND AN ARMBAND SIT ON THE ARM, and their absence here was a
+    # silent hole rather than a missing feature. `costume.py` emits both; this
+    # table did not name them; `_bind` raised exactly as designed -- "no bone
+    # chain declared for mesh part 'epaulette'" -- and `populace._posed`'s bare
+    # `except Exception:` turned that into a BIND POSE, arms straight down, with
+    # nothing printed. Roughly 0.7% of any corridor stood to attention and no
+    # number moved. Found only when the swallow was removed.
+    "epaulette": ("shoulder_%s",),
+    "armband": ("shoulder_%s", "elbow_%s"),
 }
 
 # EXTRAPOLATED, authority 5. Where along the hip-to-ankle line the knee sits, as
@@ -974,9 +983,20 @@ def rig(species: str, npc_id: str, lod: int = 0) -> Rig:
                                   ind=ind)
             m0 = _cos.dressed_mesh(species, npc_id, lod=lod, chain=chain,
                                    ind=replace(ind, stoop_deg=0.0))
+            # AND THE GUARD MUST COMPARE VERTEX COUNTS, NOT ONLY NAMES.
+            # `costume._att_seg` picks its segment count from the RADIUS, and a
+            # stoop changes the radius -- so `m` and `m0` can carry the same
+            # part names with different vertex counts, and the binding then runs
+            # to 48 of 36 vertices and raises IndexError inside apply_pose.
+            # `crowd_library`'s own `except: continue` swallowed that into a body
+            # QUIETLY MISSING from the library: the next bake would have shipped
+            # 156 pakmara-less bodies at lod 2 instead of 168, and no count would
+            # have moved. Seven figures across five species, one of them NOMINAL.
             if (isinstance(m, tuple) or isinstance(m0, tuple)
                     or [n for n, _v, _t in m.parts]
-                    != [n for n, _v, _t in m0.parts]):
+                    != [n for n, _v, _t in m0.parts]
+                    or [len(v) for _n, v, _t in m.parts]
+                    != [len(v) for _n, v, _t in m0.parts]):
                 m = m0 = None
         except Exception:                                       # noqa: BLE001
             m = m0 = None
