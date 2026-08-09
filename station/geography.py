@@ -733,7 +733,44 @@ def reconciled_places(schema, profile, places=None):
     # is moved INBOARD until it is under it. Longitudinal reconciliation cannot
     # fix a gravity, because gravity is a radius.
     _relieve_gravity(schema, profile, out, bands)
+    _drop_broken_containment(out)
     return out
+
+
+def _drop_broken_containment(places):
+    """Clear `within` where the container ended up in another sector.
+
+    A CONTAINMENT THAT CROSSES A SECTOR BOUNDARY IS NOT A CONTAINMENT. Most
+    contained places follow their container by the rule in `reconcile_place`,
+    so this is empty for them. It fires for the ones whose own anchor
+    deliberately OUTRANKS containment: `lowg_bays` is `within="docking_bays"`
+    and must be non-rotating, so it leaves for the truss spine while the bays
+    stay in the docking sphere -- and it cannot still be inside them.
+
+    Found because `directory.py` asserts it: "its container is in the same
+    sector -- yellow vs blue" was the register's last standing FAIL after the
+    reconciliation, and it was right. The relation was true of the old
+    geography and the move falsified it; nothing had been responsible for
+    noticing.
+
+    `within_broken` records what it used to be, so the loss is legible rather
+    than silent -- a place that quietly forgets its container reads as a place
+    that never had one.
+    """
+    by_key = {p["key"]: p for p in places}
+    for p in places:
+        parent = p.get("within")
+        if not parent:
+            continue
+        pq = by_key.get(parent)
+        if pq is None or pq.get("sector") == p.get("sector"):
+            continue
+        p["within"] = None
+        p["within_broken"] = parent
+        p["note"] = ((p.get("note") or "") + " Was `within=%s`; the "
+                     "reconciliation put the two in different sectors (%s vs "
+                     "%s) and a containment cannot cross a sector boundary."
+                     % (parent, p.get("sector"), pq.get("sector"))).strip()
 
 
 def _fits_hull(schema, profile, place):
