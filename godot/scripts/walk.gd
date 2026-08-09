@@ -598,6 +598,8 @@ var _actors_occ: Array = []
 ## here would silently empty the station -- the failure mode this file exists to
 ## stop, not one to add.
 var _sidecar_deck := ""
+## Every deck we hold sidecar rows for, as a set. See `_load_sidecars`.
+var _sidecar_decks := {}
 
 
 ## The deck a sidecar path names, or "" -- `.../blue_0_0_crowd.json` -> blue_0_0.
@@ -612,29 +614,129 @@ func _deck_of_sidecar(path: String) -> String:
 	return ""
 
 
+## Every deck's three sidecar files, as {stem: {actors, crowd, interact}}.
+##
+## THE DIRECTORY COMES FROM THE PATHS THE CALLER ALREADY PASSED, so this adds no
+## new setting to the boot manifest and cannot point somewhere the caller did not
+## choose. A file that is not there is "" and `_read_rows` returns nothing for it,
+## which is how a deck with a cast and no interactables loads correctly.
+##
+## The stem is everything before the suffix -- `blue_0_0` out of
+## `blue_0_0_actors.json` -- which is the same rule `_deck_of_sidecar` uses and
+## the same one `boot.py` names its files by.
+func _sidecar_set() -> Dictionary:
+	var out := {}
+	var mine := {"actors": actors_path, "crowd": crowd_path,
+		"interact": interact_path}
+	# THE CONTROL, AND THE FALLBACK. `--one-deck-sidecars` restores the exact
+	# pre-fix behaviour for an A/B; a caller whose paths name no directory we can
+	# list gets the same, because inventing a directory would be worse than the
+	# defect being fixed.
+	var dir := ""
+	for k in mine:
+		if String(mine[k]) != "":
+			dir = String(mine[k]).get_base_dir()
+			break
+	if dir == "" or _args().has("one-deck-sidecars"):
+		var stem := ""
+		for k in mine:
+			stem = _deck_of_sidecar(String(mine[k]))
+			if stem != "":
+				break
+		if _args().has("one-deck-sidecars"):
+			_say_once("walk: ONE DECK'S SIDECARS (control) -- every other deck "
+				+ "will be empty, which is what the shipped build used to do")
+		return {} if stem == "" else {stem: mine}
+	var d := DirAccess.open(dir)
+	if d == null:
+		var stem2 := _deck_of_sidecar(String(actors_path))
+		return {} if stem2 == "" else {stem2: mine}
+	for f in d.get_files():
+		var name := String(f)
+		for suffix in [["_actors.json", "actors"], ["_crowd.json", "crowd"],
+				["_interact.json", "interact"]]:
+			if not name.ends_with(String(suffix[0])):
+				continue
+			var stem3 := name.substr(0, name.length() - String(suffix[0]).length())
+			if not out.has(stem3):
+				out[stem3] = {"actors": "", "crowd": "", "interact": ""}
+			(out[stem3] as Dictionary)[String(suffix[1])] = dir.path_join(name)
+			break
+	# The caller's own three win for their deck, so an explicitly passed path is
+	# never silently replaced by one this scan happened to find.
+	var own := _deck_of_sidecar(String(actors_path))
+	if own == "":
+		own = _deck_of_sidecar(String(crowd_path))
+	if own != "":
+		if not out.has(own):
+			out[own] = {"actors": "", "crowd": "", "interact": ""}
+		for k2 in mine:
+			if String(mine[k2]) != "":
+				(out[own] as Dictionary)[k2] = String(mine[k2])
+	return out
+
+
+## EVERY DECK'S SIDECARS, NOT ONE DECK'S.
+##
+## THE SHIPPED BUILD LOADED ONE DECK'S PEOPLE FOR A SEVENTY-SIX-DECK STATION, and
+## that is not a bug in any part -- it is the shape of the wiring. `boot.py` names
+## `blue_0_0_actors.json`, `blue_0_0_crowd.json` and `blue_0_0_interact.json`;
+## `main.gd` hands those three strings over; this function read exactly those
+## three files; and `_cell_is_ours` then correctly refused to put blue_0_0's cast
+## into any other deck's cell. Every step was right and the result was a station
+## of 907 cells in which 75 decks out of 76 were EMPTY BY CONSTRUCTION -- walk off
+## the spawn deck and the crowd, the cast and every usable object stop.
+##
+## The three named paths still decide WHICH DIRECTORY, so nothing about the boot
+## manifest has to change and a caller who passes one deck's files still gets a
+## sane single-deck run. What changes is that the directory is then read for every
+## other deck beside them, and each row is stamped with the deck it came out of.
+##
+## IT IS AFFORDABLE, MEASURED RATHER THAN ASSUMED: the whole station is 3,957 cast
+## rows, 1,994 crowd placements and 419 interactables across 71 sidecar sets --
+## a few megabytes of JSON parsed once at load. The bodies are already shared
+## MultiMesh instances out of `crowd_lod*.glb`, so holding the rows costs no
+## geometry; only cells that are RESIDENT ever wire anybody, and that is unchanged.
+##
+## `--one-deck-sidecars` is the control: it restores the old behaviour exactly.
 func _load_sidecars() -> void:
-	var all := _read_rows(actors_path)
+	var paths := _sidecar_set()
+	var all: Array = []
 	_actors = []
 	_actors_occ = []
-	for a in all:
-		var who = (a as Dictionary).get("who", {})
-		if who is Dictionary and (who as Dictionary).has("day"):
-			_actors_occ.append(a)
-		else:
-			_actors.append(a)
-	_ix_rows = _read_rows(interact_path)
-	_crowd_rows = _read_rows(crowd_path)
-	_sidecar_deck = ""
-	for p in [crowd_path, actors_path, interact_path]:
-		var d := _deck_of_sidecar(String(p))
-		if d == "":
-			continue
-		if _sidecar_deck != "" and _sidecar_deck != d:
-			_sidecar_deck = ""
-			push_warning("walk: the sidecars name more than one deck -- "
-				+ "cross-deck scoping is OFF")
-			break
-		_sidecar_deck = d
+	_ix_rows = []
+	_crowd_rows = []
+	_sidecar_decks = {}
+	for stem in paths:
+		var trio: Dictionary = paths[stem]
+		# THE STEM IS STAMPED ON THE ROW, because after this point a row's own
+		# file is gone and the only two questions that matter -- "is this row on
+		# the cell's deck" and "which decks did we load" -- both need it. The key
+		# is `_deck` with an underscore so it cannot collide with anything
+		# `station/populace.py` or `interact.py` writes.
+		for r in _read_rows(String(trio.get("actors", ""))):
+			(r as Dictionary)["_deck"] = stem
+			all.append(r)
+			var who = (r as Dictionary).get("who", {})
+			if who is Dictionary and (who as Dictionary).has("day"):
+				_actors_occ.append(r)
+			else:
+				_actors.append(r)
+		for r in _read_rows(String(trio.get("interact", ""))):
+			(r as Dictionary)["_deck"] = stem
+			_ix_rows.append(r)
+		for r in _read_rows(String(trio.get("crowd", ""))):
+			(r as Dictionary)["_deck"] = stem
+			_crowd_rows.append(r)
+		_sidecar_decks[stem] = true
+	# Kept for the report and for the single-deck case; empty when more than one
+	# deck is loaded, which is what every message below already means by it.
+	_sidecar_deck = ("" if _sidecar_decks.size() != 1
+		else String(_sidecar_decks.keys()[0]))
+	if _sidecar_decks.size() > 1:
+		print("walk: sidecars for %d decks -- the whole station, not just the "
+			% _sidecar_decks.size() + "one the boot manifest names "
+			+ "(--one-deck-sidecars is the control)")
 	if not _actors_occ.is_empty():
 		print("walk: cast of %d -- %d instanced occupant(s) with a timetable, "
 			% [all.size(), _actors_occ.size()]
@@ -698,18 +800,48 @@ func _load_sidecars() -> void:
 ## manifest such as `blue_0_0_cells.json`, where every cell is ours by
 ## construction) both return true. `--no-deck-scope` is the control.
 func _cell_is_ours(c: Dictionary) -> bool:
-	if _sidecar_deck == "" or c.is_empty():
+	# ASKED AGAINST THE SET OF LOADED DECKS, not against one name. With every
+	# deck's sidecars loaded this is true for any cell whose deck we hold rows
+	# for -- which is the point -- and the per-row test in `_row_is_here` is what
+	# now stops one deck's crowd landing in the deck concentric with it. The two
+	# together do exactly what the single-deck check did before, and do it for 76
+	# decks instead of 1.
+	if _sidecar_decks.is_empty() or c.is_empty():
 		return true
 	var d := String(c.get("deck", ""))
 	if d == "":
 		return true
-	if d == _sidecar_deck:
+	if _sidecar_decks.has(d):
 		return true
 	if _args().has("no-deck-scope"):
 		_say_once("walk: cross-deck scoping DISABLED (control) -- this deck's "
 			+ "people will be bound into other decks' cells")
 		return true
 	return false
+
+
+## Is this ROW on this CELL's deck?
+##
+## THE HALF OF THE OLD GUARD THAT STILL HAS WORK TO DO. `stream.distance_to` is
+## radius-blind on purpose -- it tests angle and z and never radius, because that
+## is how `bake()::_split` binned the triangles -- so it cannot tell `blue_0_0`
+## from `blue_1_0`, which sits behind the same arc at a different radius.
+## Measured on the shipped manifest: 98 of blue_0_0's 444 crowd placements are
+## claimed by a cell on one of six other decks.
+##
+## When only one deck was loaded, refusing the whole cell was enough. Now that
+## every deck is loaded, refusing the cell would refuse the deck its own people,
+## so the question moves down one level: this row against this cell. A row or a
+## cell that does not name a deck passes, which keeps a per-deck manifest -- where
+## every cell is ours by construction -- working exactly as before.
+func _row_is_here(r: Dictionary, c: Dictionary) -> bool:
+	var rd := String(r.get("_deck", ""))
+	var cd := String(c.get("deck", ""))
+	if rd == "" or cd == "":
+		return true
+	if rd == cd:
+		return true
+	return _args().has("no-deck-scope")
 
 
 ## Give the deck its doors. `--no-doors` leaves them out, which is the NEGATIVE
@@ -812,7 +944,11 @@ func _wire_occupants(vis: Node, tag: String) -> int:
 		# choice knows which deck's cast list is loaded.
 		if not _cell_is_ours(_stream.cell_by_id(tag) if _stream != null else {}):
 			return 0
+		var cell_here: Dictionary = ({} if _stream == null
+			else _stream.cell_by_id(tag))
 		for r in _actors_occ:
+			if not _row_is_here(r, cell_here):
+				continue
 			var p := Vector3(float((r as Dictionary).get("x", 0.0)),
 				float((r as Dictionary).get("y", 0.0)),
 				float((r as Dictionary).get("z", 0.0)))
@@ -1055,11 +1191,11 @@ func _empty_reason(id: String) -> String:
 			+ "--actors= --crowd= --interact= (main.gd takes them off boot.json)")
 	var c: Dictionary = ({} if _stream == null else _stream.cell_by_id(id))
 	if not _cell_is_ours(c):
-		return ("this cell is on deck %s and the only sidecars loaded are %s's "
-			% [String(c.get("deck", "?")), _sidecar_deck]
-			+ "-- the shipped build loads ONE deck's cast for a manifest of "
-			+ "%d cells, so every other deck is empty by construction"
-			% (0 if _stream == null else _stream.cells.size()))
+		return ("this cell is on deck %s and no sidecar was found for it -- "
+			% String(c.get("deck", "?"))
+			+ "%d deck(s) loaded, %d cells in the manifest"
+			% [_sidecar_decks.size(),
+				0 if _stream == null else _stream.cells.size()])
 	return ("this cell is honestly EMPTY -- the deck's sidecars hold %d cast, "
 		% (_actors.size() + _actors_occ.size())
 		+ "%d crowd and %d interactable(s), and none of them are in this arc"
@@ -1114,6 +1250,11 @@ func _rows_in_cell(id: String) -> Array:
 	if not _cell_is_ours(c):
 		return out
 	for r in _crowd_rows:
+		# PER ROW NOW, because every deck's crowd is loaded. `_row_is_here` is
+		# the deck-name half of the old whole-cell guard; `distance_to` is still
+		# the arc-and-z half, unchanged and still the bake's own rule.
+		if not _row_is_here(r, c):
+			continue
 		var p := Vector3(float(r.get("x", 0.0)), float(r.get("y", 0.0)),
 			float(r.get("z", 0.0)))
 		if _stream.distance_to(c, p) <= 0.0:
