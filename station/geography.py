@@ -733,8 +733,107 @@ def reconciled_places(schema, profile, places=None):
     # is moved INBOARD until it is under it. Longitudinal reconciliation cannot
     # fix a gravity, because gravity is a radius.
     _relieve_gravity(schema, profile, out, bands)
+    # AND A RING CANNOT HOLD MORE DISTINCT DECK NUMBERS THAN IT HAS RUNGS.
+    # Every pass above reasons in z, radius and collision, and none of them can
+    # see the ladder: `_relieve_gravity` searches `range(0, 40)` for a deck
+    # NUMBER that clears the gravity ceiling, and a number is only an address
+    # once `deck.deck_index` has ranked it onto a rung. Move three places into
+    # Yellow -- which this reconciliation does, because the zero-g bays belong
+    # on the non-rotating spine -- and yellow ring 0 needs NINE rungs where the
+    # hull leaves SEVEN, so the last three numbers rank onto one.
+    #
+    # `merge_cells` then refuses the whole manifest, correctly: two decks at
+    # one radius is a band a body falls through. That is exactly how build 16
+    # spent 51 minutes rebuilding the world and shipped nothing.
+    _relieve_rung_pressure(schema, profile, out, bands)
     _drop_broken_containment(out)
     return out
+
+
+def _rung_pressure(schema, profile, places):
+    """-> {(sector, ring): (distinct deck numbers, rungs available)} for rings
+    asking for more rungs than the hull leaves them.
+
+    ASKED IN DECK NUMBERS AND ANSWERED IN RUNGS, which is the whole distinction
+    this pass exists for. Two places sharing a deck number share a rung and are
+    fine -- that is a deck with two rooms on it. Two DIFFERENT numbers ranking
+    to one rung are two decks at one radius, which is not.
+    """
+    want = {}
+    for p in places:
+        if p.get("z_m") is None or p.get("sector") is None:
+            continue
+        want.setdefault((p["sector"], int(p["ring"])), set()).add(int(p["deck"]))
+    over = {}
+    for key, decks in want.items():
+        try:
+            rungs = len(it.decks_in_ring(schema, profile, key[0], key[1]))
+        except Exception:                                       # noqa: BLE001
+            continue
+        if len(decks) > rungs:
+            over[key] = (len(decks), rungs)
+    return over
+
+
+def _relieve_rung_pressure(schema, profile, places, bands):
+    """Move the newcomers off an over-subscribed ring onto one with room.
+
+    WHICH PLACES MOVE, AND WHY THOSE. The highest deck numbers go first,
+    because `deck_index` ranks ascending: the highest numbers are the ones that
+    fall off the end of a short ladder, and on Yellow they are precisely the
+    places this reconciliation moved in (`zerog_maint` 70, `micro_g_bays` 80).
+    A place that was already addressed on that ring keeps its rung.
+
+    IT KEEPS EVERY GUARD THE OTHER PASSES ESTABLISHED. A destination has to
+    clear the gravity ceiling, fit the hull over its whole footprint, and hit
+    nothing -- so this cannot undo `_relieve_gravity`'s work to buy a rung.
+    If no ring in the sector has room, the place STAYS and the gate stays red,
+    because a silent give-up here is a manifest that refuses at build time
+    instead of a number that refuses here.
+    """
+    over = _rung_pressure(schema, profile, places)
+    if not over:
+        return
+    with _Reconciled(schema, profile, bands=bands, places=places):
+        for (sec, ring), (n_want, n_have) in sorted(over.items()):
+            on_ring = [p for p in places
+                       if p.get("sector") == sec and int(p.get("ring", -1)) == ring
+                       and p.get("z_m") is not None]
+            # Highest deck number first: the far end of the ladder.
+            for p in sorted(on_ring, key=lambda q: -int(q["deck"])):
+                if len(({int(q["deck"]) for q in on_ring if q is not p}
+                        | {int(p["deck"])})) <= n_have:
+                    break
+                home = (int(p["ring"]), int(p["deck"]))
+                moved = None
+                for r2 in range(0, 5):
+                    if r2 == ring:
+                        continue
+                    try:
+                        free = it.free_rungs(schema, profile, sec, r2)
+                    except Exception:                           # noqa: BLE001
+                        continue
+                    for d2 in free:
+                        p["ring"], p["deck"] = r2, int(d2)
+                        try:
+                            g, _r = _place_g(schema, profile, p)
+                        except ValueError:
+                            continue
+                        if g is not None and g > it.HABITABLE_G_MAX \
+                                and not _permits_heavy(p):
+                            continue
+                        if not _fits_hull(schema, profile, p):
+                            continue
+                        if _collides(p, places):
+                            continue
+                        moved = (r2, int(d2))
+                        break
+                    if moved:
+                        break
+                if moved:
+                    on_ring = [q for q in on_ring if q is not p]
+                else:
+                    p["ring"], p["deck"] = home
 
 
 def _drop_broken_containment(places):
