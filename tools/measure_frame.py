@@ -256,7 +256,7 @@ def measure(path, clip=CLIP, floor=FLOOR, gain=1.0, box=None):
     the backdrop, and export_scene says so at length. Anything measured
     box-to-box must use boxes that frame the same object the same way.
     """
-    img = Image.open(path, encoding="utf-8").convert("RGB")
+    img = Image.open(path).convert("RGB")
     a = np.asarray(img, dtype=np.float64) / 255.0
     if box is not None:
         l, t, r, b = box

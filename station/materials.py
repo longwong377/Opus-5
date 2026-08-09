@@ -7862,7 +7862,7 @@ def _selftest():
             continue
         path = os.path.join(TEXTURE_DIR, fn)
         try:
-            with _PILImage.open(path, encoding="utf-8") as im:
+            with _PILImage.open(path) as im:
                 im.load()               # header alone decodes on a truncated
                 sheet = fn[:-4]         # file; the pixels are the test
                 for suffix in ("_albedo", "_orm", "_normal"):
@@ -8255,7 +8255,7 @@ def _selftest():
             if not os.path.exists(path):
                 missing.append(frame)
                 continue
-            a = _numpy.asarray(_PILImage.open(path, encoding="utf-8").convert("RGB"),
+            a = _numpy.asarray(_PILImage.open(path).convert("RGB"),
                             dtype=_numpy.float32) / 255.0
             v = a.max(axis=2)
             sel = (v > 0.04) & (v < 0.95)
@@ -8273,7 +8273,7 @@ def _selftest():
         _f = "07-sector-grey/grey level 1.webp"
         _p = os.path.join(ROOT, "reference", _f)
         if os.path.exists(_p):
-            a = _numpy.asarray(_PILImage.open(_p, encoding="utf-8").convert("RGB"),
+            a = _numpy.asarray(_PILImage.open(_p).convert("RGB"),
                             dtype=_numpy.float32) / 255.0
             v = a.max(axis=2)
             sel = (v > 0.04) & (v < 0.95)

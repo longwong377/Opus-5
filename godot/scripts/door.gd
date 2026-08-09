@@ -1,5 +1,22 @@
 extends Node3D
+const Interact = preload("res://scripts/interact.gd")
 ## Pressure doors that open when somebody comes to them, and are solid when shut.
+##
+## THE MESH NAME ARRIVES z-PREFIXED AND THIS FILE READ IT RAW, so it wired ZERO
+## doors on every build that has ever shipped. The generator names a mesh
+## `z7120__doorleaf_docking_bays_0`; `begins_with("doorleaf_")` is false for all
+## 46 door meshes on blue_0_0, and for every one of the 907 streamed cells. The
+## committed launch logs say so in one line -- `walk: 0 doors wired`, in both
+## dist/firstrun.log and dist/sourcerun.log -- and nobody read it.
+##
+## `interact.gd::strip_cluster` is the fix and it already existed. Its own
+## docstring says stripping belongs "at the one place a mesh name meets a
+## declared name, rather than at each of the three call sites -- this project's
+## own rule that a fix applied to an instance and not the rule will be needed
+## again." It was applied to `interact.gd` and not to `door.gd`, one file away.
+## That is the ninth instance of this project's recurring defect and the first
+## one a PLAYER would have met: every named room on the station was sealed, and
+## the objective the game hands you on NEW GAME is on the far side of a door.
 ##
 ## THE FIRST THING A PLAYER USES. Until this existed the station had doors that
 ## were pictures of doors: the collision shell cut a permanent hole at every
@@ -93,7 +110,7 @@ func collect(visual: Node, collision: Node, travel_m: float,
 		return _doors.size()
 	var added := 0
 	for m in _meshes(visual):
-		var n := String(m.name)
+		var n := Interact.strip_cluster(String(m.name))
 		if n.begins_with("doorleaf_"):
 			# doorleaf_<key>_<i> -- the key may itself contain underscores, so
 			# take the LAST field as the index and everything between as the key.
@@ -110,7 +127,7 @@ func collect(visual: Node, collision: Node, travel_m: float,
 
 	if collision != null:
 		for m in _meshes(collision):
-			var n2 := String(m.name)
+			var n2 := Interact.strip_cluster(String(m.name))
 			if n2.begins_with("doorpanel_"):
 				var k2 := n2.substr(10)
 				if not _panel_rec.has(k2):

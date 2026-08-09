@@ -903,7 +903,7 @@ def _rasteriser_px(size_m, distance_m, fov_deg=None):
              "--bg", "255", "0", "255"],
             check=True, capture_output=True)
         import numpy as np
-        a = np.asarray(Image.open(png, encoding="utf-8").convert("RGB")).astype(int)
+        a = np.asarray(Image.open(png).convert("RGB")).astype(int)
         bg = (a[:, :, 0] > 200) & (a[:, :, 1] < 60) & (a[:, :, 2] > 200)
         rows = np.where(~bg.all(axis=1))[0]
         return float(rows.max() - rows.min() + 1) if len(rows) else 0.0

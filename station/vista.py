@@ -1000,7 +1000,7 @@ def _linear_y(png, box):
     and a number from there are comparable.
     """
     from PIL import Image                                    # noqa: PLC0415
-    img = Image.open(png, encoding="utf-8").convert("RGB")
+    img = Image.open(png).convert("RGB")
     w, h = img.size
     l, t, r, b = box
     crop = img.crop((int(l * w), int(t * h), max(int(r * w), int(l * w) + 1),

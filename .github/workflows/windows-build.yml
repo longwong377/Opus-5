@@ -34,6 +34,15 @@ on:
       - "tools/export_station.py"
       - "tools/export_drum.py"
       - "godot/export_presets.cfg"
+      # AND THE ENGINE CODE, which was missing and cost a shipped defect.
+      # Everything under godot/ is packed INTO the .exe, so a GDScript change
+      # reaches a player only through a rebuild -- yet this list watched only
+      # the world generators. `door.gd` wired zero doors on every build ever
+      # produced, and a fix to it would not have triggered the build that
+      # carries it. A path list that omits the code being shipped is a path
+      # list that ships the old code.
+      - "godot/scripts/**"
+      - "godot/scenes/**"
       # Deliberately NOT "station/**". A 90-minute Windows build on every commit
       # to a generator would be a tax on ordinary work; these are the files that
       # decide WHAT gets built and in what order, which is what has broken so far.

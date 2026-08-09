@@ -1003,7 +1003,7 @@ def measure_box(png, box):
     from PIL import Image
     mf = _measure_frame()
 
-    im = Image.open(png, encoding="utf-8").convert("RGB")
+    im = Image.open(png).convert("RGB")
     w, h = im.size
     l, t, r, b = box
     c = im.crop((int(l * w), int(t * h), int(r * w), int(b * h)))
@@ -1049,7 +1049,7 @@ def frame_luma(png):
     import numpy as np
     from PIL import Image
     mf = _measure_frame()
-    a = np.asarray(Image.open(png, encoding="utf-8").convert("RGB"), dtype=np.float64) / 255.0
+    a = np.asarray(Image.open(png).convert("RGB"), dtype=np.float64) / 255.0
     return mf.srgb_to_linear(a) @ np.array(mf.LUMA)
 
 
@@ -7659,7 +7659,7 @@ def frame_signature(png, rows=3, cols=4):
     import numpy as np                                        # noqa: PLC0415
     from PIL import Image                                     # noqa: PLC0415
     mf = _measure_frame()
-    a = np.asarray(Image.open(png, encoding="utf-8").convert("RGB"), dtype=np.float64) / 255.0
+    a = np.asarray(Image.open(png).convert("RGB"), dtype=np.float64) / 255.0
     y = mf.srgb_to_linear(a) @ np.array(mf.LUMA)
     h, w = y.shape
     return [float(np.median(y[int(r * h / rows):int((r + 1) * h / rows),

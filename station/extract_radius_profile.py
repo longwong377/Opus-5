@@ -100,7 +100,7 @@ def edge_preserving_smooth(v):
 
 
 def main():
-    a = np.asarray(Image.open(SRC, encoding="utf-8").convert("L")) < INK
+    a = np.asarray(Image.open(SRC).convert("L")) < INK
     for x0, y0, x1, y1 in MASKS:
         a[y0:y1, x0:x1] = False
     a = strip_leader_lines(a)
@@ -165,7 +165,7 @@ def main():
         json.dump(report, f, indent=1)
 
     # Overlay the accepted profile back onto the drawing for visual verification.
-    ov = Image.open(SRC, encoding="utf-8").convert("RGB")
+    ov = Image.open(SRC).convert("RGB")
     d = ImageDraw.Draw(ov)
     for x, h in zip(xs, half_px):
         d.point((x, AXIS_PY - h), fill=(255, 0, 0))

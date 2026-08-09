@@ -70,7 +70,7 @@ def main():
     ap.add_argument("--tag", default="measured")
     args = ap.parse_args()
 
-    img = Image.open(args.image, encoding="utf-8").convert("RGB")
+    img = Image.open(args.image).convert("RGB")
     W, H = img.size
     full = ink_mask(img)
 
