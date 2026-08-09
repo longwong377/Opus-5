@@ -321,6 +321,31 @@ def main(argv=None):
             cgroups = cmeta.get("groups") or [("collision", 0, len(ct))]
             _ob, cgb = _write(stem + "_collision", cv, ct, cgroups)
             _doors = sum(1 for n, _a, _b in cgroups if "doorpanel" in n)
+            # AND ITS OCCLUDER, WHICH THIS FILE HAS NEVER WRITTEN. The generator
+            # existed and had exactly one caller -- `export_scene.py`'s
+            # `--mode=deck`, which writes into `scene/deck/`, walkable.py's
+            # one-cluster walk-test fixture. The shipped world is built here,
+            # into `scene/station/`, so the occluder was always beside a
+            # DIFFERENT BUILD OF THE SAME NAME, `boot.json` carried
+            # `"occluder": ""`, and the engine loaded nothing while a static
+            # source scan reported PASS. Measured worth: 74.05% of submitted
+            # geometry over a 24-heading turn at the shipped spawn.
+            #
+            # Shell A only. A Shell B deck has no z-clusters and `deck_plan`
+            # raises for every one of them; it needs its own occluder path and
+            # does not have one yet, so it is DECLINED here rather than guessed.
+            if decks[k]:
+                import occluders as OC                         # noqa: PLC0415
+                try:
+                    _ov, _ot, _og = OC.deck_occluder(
+                        schema, profile, sec, ring, dk, join=True,
+                        must_cover=ang[sec])
+                    OC.write_scene(os.path.join(OUT, stem + "_occ.tscn"),
+                                   _ov, _ot, _og)
+                except Exception as _oe:                       # noqa: BLE001
+                    # Loud, and never fatal: a deck without an occluder renders
+                    # identically, only slower, and must not cost a build.
+                    print(f"      no occluder for {stem}: {_oe}")
             # AND THE SIDECARS, WITHOUT WHICH A CELL CANNOT BE WIRED AT ALL.
             # `walk.gd` recovers the cast, the crowd and the interactables from
             # JSON beside the mesh, because a body baked into merged geometry

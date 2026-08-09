@@ -405,13 +405,39 @@ def _parallax(deep, tight):
 
 def occluder_shell(schema, profile, sector, ring_index, degrees=30.0,
                    start_deg=0.0, radius_m=None, z_offset=None, p=None,
-                   doors=(), prof=None):
+                   doors=(), prof=None, mouth=False):
     """A conservative occluder for one arc of ring corridor.
 
     Same arguments and same frame as `interior.ring_arc` and
     `collision.corridor_shell`, and built BY the latter: this function's whole
     content is the deep profile and the widened apertures. There is no second
     construction to drift.
+
+    `mouth=True` WHEN ANY OF THESE DOORS IS A CORRIDOR MOUTH RATHER THAN A
+    DOOR, and it is a correctness flag rather than a tuning one. MEASURED, not
+    argued: with an axial spine joined to this arc, 5 eyes down the spine x 3
+    lateral x 2 heights x 64 directions = 1,920 rays gave **16 breaches, worst
+    1,164.7 mm** -- and casting the two occluder pieces separately named the
+    culprit, because a combined number names none: the SPINE tube alone read 0
+    and the RING arc alone read all 16.
+
+    The cause is arithmetic. `aperture_profile` measures the hole a DOOR leaves
+    -- 1.500 m at the wall, 1.800 m once `_parallax` widens it -- while a
+    junction is where a whole corridor arrives, and `interior.axial_run`'s mouth
+    is the corridor's own clear width, 2 x 1.0806 = **2.161 m**, to its own
+    ceiling. So the ring occluder's z-wall stood across 0.18 m of visible spine
+    wall on each side, over the 0.6 m between the collision half width the spine
+    starts at (1.0806 m) and the deep half width this occluder's wall sits at
+    (1.680 m) -- which is a slant of about a metre seen from 20 m down the
+    spine. `_parallax` cannot fix it: its factor is worst for a NEAR eye
+    (1.217 at w = 1.68 m) and tends to 1.0 as the eye goes away, so the eye
+    that sees the breach is the one the widening helps least.
+
+    Opening the aperture to the corridor's own deep cross-section is safe in
+    the only direction that matters -- a wider hole occludes LESS, never more --
+    and it applies to every door on the arc because a shell has one aperture
+    size. That costs occlusion at the room doors of junction-bearing clusters
+    and it is the price of not hiding a corridor a player is walking down.
 
     Returns (verts, tris, meta). `meta` carries `aperture_scale`, which is the
     only number here that is neither measured off the kit nor inherited.
@@ -433,6 +459,30 @@ def occluder_shell(schema, profile, sector, ring_index, degrees=30.0,
     # because that is where the slant is taken from.
     eye = tight["floor_y"] + 1.70
     wide["door_height_m"] = eye + (ap_top - eye) * k
+    if mouth:
+        # A CORRIDOR ARRIVES HERE, NOT A DOOR, and the mouth is the joining
+        # corridor's DEEP cross-section -- the same profile the spine's own
+        # occluder tube is cut to -- rather than the clear width a body fits
+        # through.
+        #
+        # THE CLEAR WIDTH WAS TRIED FIRST AND IT IS NOT ENOUGH: measured, the
+        # aperture at 2.161 x 3.340 m took the junction from 16 breaches at
+        # 631.9 mm to **7 at 210.2 mm**, which is better and is still a hole in
+        # the world. The residue is the 0.6 m between the clear half width the
+        # spine's floor starts at (1.0806 m) and the deep half width its
+        # visible surfaces reach (1.680 m): a ray from 20 m down the spine to a
+        # point on the spine wall just inside the mouth crosses this occluder's
+        # plane FURTHER OUT than the point it is aimed at, so a hole cut at the
+        # clear width clips it.
+        #
+        # At the deep width the argument closes by construction rather than by
+        # measurement: the spine tube contains every visible spine surface
+        # (proven separately, 0 of 1,920 rays), so any ray that reaches one
+        # passes through the tube's own cross-section -- and the aperture is
+        # now at least that. `max`, so an arc whose room doors already open
+        # wider is never narrowed by this.
+        wide["door_width_m"] = max(wide["door_width_m"], 2.0 * deep["half_w"])
+        wide["door_height_m"] = max(wide["door_height_m"], deep["ceil_y"])
 
     v, t, meta = C.corridor_shell(
         schema, profile, sector, ring_index, degrees=degrees,
@@ -1240,7 +1290,7 @@ def deck_occluder(schema, profile, sector, ring, deck, join=True,
         v, t, m = occluder_shell(
             schema, profile, sector, ring, degrees=d["span"],
             start_deg=d["lo"], radius_m=d["radius"], z_offset=d["cz"],
-            doors=doors, prof=prof)
+            doors=doors, prof=prof, mouth=bool(extra))
         base = len(V)
         V.extend(v)
         T.extend((a + base, b + base, c + base) for a, b, c in t)

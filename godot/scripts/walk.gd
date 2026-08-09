@@ -164,6 +164,13 @@ func _ready() -> void:
 
 	if args.has("interact"):
 		interact_path = args["interact"]
+	# WITHOUT THIS, A COMMAND-LINE RUN CAN NEVER LOAD ONE, and every
+	# verification command written against `walk.tscn` was structurally
+	# incapable of showing whether the occluder worked. `main.tscn` sets
+	# `occluder_path` as an export var from boot.json and was the only path
+	# that ever could; the reviewer's own repro could not have caught the bug.
+	if args.has("occluder"):
+		occluder_path = args["occluder"]
 	if args.has("cells"):
 		cells_path = args["cells"]
 	_use_group = String(args.get("use-group", ""))
@@ -308,13 +315,35 @@ var _visual: Node = null
 ##
 ## A missing file is not an error. The deck renders identically without it, only
 ## slower, so this must never be the reason a player cannot walk.
+## AND A MISSING FILE IS NOT SILENT EITHER, which is what actually let this
+## survive. Returning with no print meant `boot.json`'s `"occluder": ""` read
+## exactly like a deck that had one: the file DID exist, in `scene/deck/`, and
+## the shipped build boots from `scene/station/`. Two directories, one name, and
+## nothing said which was loaded. Say which of the modes this run is in, always.
 func _load_occluder() -> void:
-	if occluder_path == "" or not FileAccess.file_exists(occluder_path):
+	if occluder_path == "":
+		print("walk: NO OCCLUDER -- occluder_path is empty; every triangle "
+			+ "behind every wall is submitted. `python3 station/occluders.py "
+			+ "--emit` writes one, `station/boot.py` names it.")
+		return
+	if not FileAccess.file_exists(occluder_path):
+		print("walk: NO OCCLUDER -- looked for %s and it is not there"
+			% occluder_path)
 		return
 	var occ := ResourceLoader.load(occluder_path)
 	if occ is PackedScene:
-		add_child((occ as PackedScene).instantiate())
-		print("walk: occluder loaded from %s" % occluder_path)
+		var node := (occ as PackedScene).instantiate()
+		add_child(node)
+		# THE VERTEX COUNT, so an EMPTY occluder cannot pass as a loaded one.
+		# "loaded" and "occluding" are different claims and this prints both.
+		var n := 0
+		for c in node.get_children():
+			if c is OccluderInstance3D and c.occluder != null:
+				n += c.occluder.vertices.size()
+		print("walk: occluder loaded from %s -- %d occluder vertices"
+			% [occluder_path, n])
+		if n == 0:
+			push_warning("walk: the occluder scene carries no geometry")
 	else:
 		push_warning("walk: %s is not a PackedScene" % occluder_path)
 

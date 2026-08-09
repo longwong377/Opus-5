@@ -323,6 +323,18 @@ def occluder_path(sector, ring, deck, z_m=None, root=ROOT):
     stem = f"{sector}_{ring}_{deck}"
     if z_m is not None:
         stem += f"_z{int(round(z_m))}"
+    # THE SHIPPED BUILD IS IN scene/station/, AND THIS LOOKED IN scene/deck/.
+    # `scene/deck/` is walkable.py's one-z-cluster walk-test fixture; the world
+    # a player boots into is written by `tools/export_station.py` into
+    # `scene/station/`. So rung 2 of `occlusion_chain` was asking about a
+    # different build of the same name -- which is the SAME two-directory
+    # confusion that let `boot.json` carry `"occluder": ""` while a file called
+    # `blue_0_0_occ.tscn` sat on disk. The shipped directory is checked first
+    # and the fixture is the fallback, so a walk-test still resolves.
+    shipped = os.path.join(root, "station/generated/scene/station",
+                           stem + "_occ.tscn")
+    if os.path.exists(shipped):
+        return shipped
     return os.path.join(root, "station/generated/scene/deck", stem + "_occ.tscn")
 
 
