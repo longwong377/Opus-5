@@ -53,6 +53,14 @@ on:
       - "station/shell_b.py"
       - "station/interior.py"
       - "tools/bake_station.py"
+      # AND WHAT EVERY SURFACE IN THE STATION IS MADE OF. `godot/materials/**`
+      # is packed into the .exe exactly like `godot/scripts/**` above, and it was
+      # missing for the same reason and would have cost the same thing: a
+      # session's material work reaching no player. `station/materials.py` is
+      # here too because it is the only thing that writes those files, so a
+      # generator change and its exported artefact trigger the same build.
+      - "godot/materials/**"
+      - "station/materials.py"
       # Deliberately NOT "station/**". A 90-minute Windows build on every commit
       # to a generator would be a tax on ordinary work; these are the files that
       # decide WHAT gets built and in what order, which is what has broken so far.
