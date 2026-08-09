@@ -592,11 +592,16 @@ func _physics_process(delta: float) -> void:
 	if _places.is_empty() or _player == null:
 		return
 	_look()
-	if _hud == null:
-		return
+	# ONLY `_watch()` NEEDS THE HUD, AND THIS USED TO GATE THE WHOLE MACHINE ON
+	# IT. The two triggers that existed both READ `hud.gd::check_text`, so an
+	# early return here was true by accident of who was calling. `refuse_at` is
+	# pushed in from outside and can open a stop on a build with no card panel;
+	# with the old guard the officer would have been notified and then frozen at
+	# CALLED for ever, which is a worse answer than not opening at all.
 	match state:
 		IDLE, DONE:
-			_watch()
+			if _hud != null:
+				_watch()
 		CALLED:
 			_wait(delta)
 		APPROACH:
@@ -723,6 +728,48 @@ func _open(key: String, found: String = "") -> void:
 	_say("SECURITY NOTIFIED\n%s -- %s, %s"
 		% [who.to_upper(), String(_row.get("respond_from_name", "")).to_upper(),
 			_mmss(float(_row.get("respond_s", 0.0)))])
+
+
+## THE THIRD THING THAT CAN OPEN A STOP, AND IT IS A DIFFERENT RULE AGAIN.
+##
+## The two above are the CARD's rung against a place's requirement (`hud.gd::
+## _boundary`) and the BAG (`_contraband`). This one is the CUSTOMS VERDICT --
+## TRAFFIC-AND-CUSTOMS 6.3's ten stations resolved against the nine fields on the
+## identicard, which `arrival.gd::customs_verdict` evaluates when the reader is
+## operated and `interact.gd::_verb_operate` dispatches. It is not a fourth copy
+## of "does this place admit me": nothing here re-reads a card, re-checks a rung
+## or re-derives an offence. The caller has already decided; this is the arrest
+## chain that decision routes into, which is the same chain the other two use.
+##
+## AND IT IS THE ONLY ONE THAT CAN FIRE WITHOUT A HUD. `_physics_process` returns
+## early when `_hud` is null because the other two triggers READ the hud; this
+## one is pushed in from outside, so a headless build with no card panel still
+## detains a refused player. The state machine below runs from `CALLED` onward
+## with no hud reference at all -- checked against `_wait`, `_walk_in`,
+## `_verdict`, `_custody` and `_say`, which is the whole path.
+##
+## RETURNS WHETHER ANYTHING WILL FOLLOW, so the caller can say "SECURITY
+## NOTIFIED" or say plainly that nothing follows it here. A `true` that meant
+## "the call was made" would be the caption this file exists to remove.
+func refuse_at(key: String, why: String = "") -> bool:
+	if _places.is_empty():
+		print("ARREST no consequence table in this build -- the customs refusal "
+			+ "at %s is reported and nothing follows it" % key)
+		return false
+	if not _places.has(key):
+		print("ARREST %s carries no consequence row (the table has %s) -- the "
+			% [key, ", ".join(PackedStringArray(_places.keys()))]
+			+ "customs refusal is reported and nothing follows it")
+		return false
+	if state != IDLE and state != DONE:
+		print("ARREST already mid-stop at %s -- the customs refusal at %s is "
+			% [_place, key] + "not opened a second time")
+		return false
+	if _player == null:
+		return false
+	print("ARREST opened by the CUSTOMS VERDICT at %s -- %s" % [key, why])
+	_open(key, "")
+	return true
 
 
 func _pair() -> String:

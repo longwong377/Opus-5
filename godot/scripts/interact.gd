@@ -468,16 +468,98 @@ func _load_ledger() -> bool:
 	return true
 
 
+## THE PURSE BUG THIS FIXES, AND IT IS WORTH STATING BECAUSE IT LOOKED LIKE A
+## SORT ORDER AND WAS NOT.
+##
+## The old body took the FIRST key beginning `player:` out of a sorted list.
+## Measured on the ledger this repository actually ships, `economy.json` holds
+## exactly one such key -- `player:downbelow`, ALLAN, ANNA, a lurker at rung 0 --
+## and the arrival sequence's player is `player:player`, Michael Chowdhury, a
+## visitor on a TRANSIT 7D visa. Run before this change, the shipped
+## `--mode=arrival` printed
+##
+##     interact: purse player:downbelow (ALLAN, ANNA, no_status) 420.71 cr
+##     arrival: Michael Chowdhury -- human aboard Transport Cousteau
+##
+## in nineteen lines of each other. **The card in the player's hand and the
+## wallet on their HUD named different people**, and the rung the entire law
+## layer turns on came off the wrong one of them: rung 0 `no_status` instead of
+## rung 2 `transit`, which `enforcement.json`'s own ladder makes the difference
+## between "already at the floor" and "transit withdrawn".
+##
+## Sorting harder would not have fixed it. There is no `player:player` row in
+## the document at all, so the scan had nothing right to find.
+##
+## SO THE SESSION SAYS WHO IT IS PLAYING, AND THE PURSE IS MINTED IF THE LEDGER
+## HAS NONE. Asked of the node that owns the card (`arrival.gd::player_npc_id`)
+## by CAPABILITY, the way `_find_clock` and `enforcement._look` find theirs, so
+## a `walk.gd` build that names nobody keeps exactly the old behaviour and says
+## which stranger it settled for.
 func _my_purse() -> Dictionary:
 	var purses = _led.get("purses", {})
 	if typeof(purses) != TYPE_DICTIONARY or purses.is_empty():
 		return {}
+	var want := _declared_npc_id()
+	if want != "":
+		if purses.has(want):
+			return purses[want]
+		# NO ROW FOR THE PERSON THIS SESSION IS PLAYING. Minted from the sidecar's
+		# own derived fields rather than borrowed from a stranger -- see
+		# `arrival.gd::player_identity` for why that is reading and not deriving.
+		# It goes into the ledger document, so `_sync_purse`, `_record` and
+		# `convict` all have somewhere to write and the outcome survives the
+		# process.
+		var holder = _card_owner()
+		if holder != null and holder.has_method("player_identity"):
+			var st: Dictionary = holder.call("player_identity")
+			purses[want] = st
+			_led["purses"] = purses
+			_led_dirty = true
+			print("interact: no purse for %s in the ledger -- MINTED one from "
+				% want + "the arrival sidecar (%s, %s, rung %d %s, %.2f cr). "
+				% [String(st.get("name", "?")), String(st.get("role", "?")),
+					int(st.get("tier", -99)), String(st.get("tier_name", "?")),
+					float(st.get("credits", 0.0))]
+				+ "`economy.py` did not know this person was coming.")
+			# WHAT A MINTED PURSE CANNOT SUPPLY, NAMED RATHER THAN DEFAULTED.
+			# `carry_cap`, `hip_m`, `seat_m`, `recline_m` and `wake_h` are
+			# `station/player.py::posture` and `npc/schedule.py::wake_hour` --
+			# per species and per stature -- and none of them is on the arrival
+			# sidecar or on the nine-field card. Guessing a number here would be
+			# the unmarked invention hard rule 1 forbids, so they stay absent and
+			# the verbs that need them SAY they have nothing: `sit`/`rest` report
+			# "no posture" and `store` has a bag of size zero. The fix is a
+			# `player:player` row in `economy.json`, which is `station/economy.py`
+			# and `station/arrival.py`'s to write, not this file's.
+			var lack := PackedStringArray()
+			for k in ["carry_cap", "hip_m", "seat_m", "recline_m", "wake_h"]:
+				if not st.has(k):
+					lack.append(String(k))
+			if lack.size() > 0:
+				print("interact: the minted purse has no %s -- sit, rest and "
+					% ", ".join(lack) + "store are degraded for this body until "
+					+ "`station/economy.py` writes a %s row" % want)
+			return purses[want]
+		push_error("interact: this session is playing %s and the ledger has no "
+			% want + "purse for them, and nothing can mint one -- the wallet "
+			+ "below belongs to somebody else")
 	var keys: Array = purses.keys()
 	keys.sort()
 	for k in keys:
 		if String(k).begins_with("player:"):
+			if want != "" and String(k) != want:
+				push_error("interact: FALLING BACK to %s -- this is NOT the "
+					% String(k) + "person the session named (%s)" % want)
 			return purses[k]
 	return purses[keys[0]]
+
+
+## Who this session is playing, or "" when nothing in the tree says.
+func _declared_npc_id() -> String:
+	var holder = _card_owner()
+	if holder != null and holder.has_method("player_npc_id"):
+		return String(holder.call("player_npc_id"))
+	return ""
 
 
 func _save_ledger() -> bool:
@@ -524,6 +606,39 @@ func _sync_purse() -> void:
 	st["credits"] = _player.credits
 	st["carrying"] = _player.carrying.duplicate()
 	_led_dirty = true
+
+
+# ===========================================================================
+#  WHO IS CARRYING A CARD, AND WHO KNOWS WHAT IT SAYS
+# ===========================================================================
+## THERE IS NO CUSTOMS RULE IN THIS FILE AND THERE MUST NEVER BE ONE. This file
+## dispatches a verb; `arrival.gd` owns the identicard and the ten stations of
+## TRAFFIC-AND-CUSTOMS 6.3, because it owns the sequence those came in. So
+## `operate` on a reader ASKS, and a build with nobody to ask says so instead of
+## deciding.
+##
+## FOUND TWO WAYS FOR ONE REASON OF TIMING. `bind_card` is the explicit call and
+## `arrival.gd` makes it right after `super._ready()`; but `watch()` -- which
+## loads the purse -- runs DURING that `super._ready()`, one function too early
+## for any explicit call to have happened. So the fallback walks up to the
+## parent, which `walk.gd::_make_interact` guarantees is the node that built this
+## one. Both paths land on the same node; the second one just gets there before
+## the first one could have been made.
+var _card = null
+
+
+func bind_card(node) -> void:
+	_card = node
+
+
+func _card_owner() -> Variant:
+	if _card != null and is_instance_valid(_card):
+		return _card
+	var p := get_parent()
+	if p != null and p.has_method("customs_verdict"):
+		_card = p
+		return p
+	return null
 
 
 func watch(body: Node3D) -> void:
@@ -813,10 +928,41 @@ func _in_sight(eye: Vector3, it: Item, _d: float) -> bool:
 	# RAY A -- at the object itself, on the interact layer. Nothing else in the
 	# world is on it, so the only thing this can hit is an interactable, and if
 	# the first one is not this one then something else is in front of it.
-	var qa := PhysicsRayQueryParameters3D.create(eye, it.centre)
-	qa.collision_mask = INTERACT_LAYER
-	qa.collide_with_areas = false
-	var a := space.intersect_ray(qa)
+	#
+	# EXCEPT WHEN THE THING IN FRONT OF IT CONTAINS IT, AND THAT MADE THE
+	# IDENTICARD READER UNUSABLE ON THE SHIPPED BUILD. `_give_box` gives every
+	# interactable a BoxShape3D of its WORLD AABB, and a long panel lying
+	# tangentially across a ring deck has an enormous one: the customs desk at
+	# `customs_north` measures 11.30 x 13.22 x 0.82 m, and the identicard reader
+	# -- 5.76 m away down the axis -- has its centre INSIDE it. Every ray from
+	# anywhere in the hall to that centre therefore entered the desk's box first,
+	# `collider != it.body` was true on every frame, and the reader could never
+	# become the prompt. Measured: the arrival driver walked the body to **2.4 m
+	# and the prompt said `operate/baggage_scanner`**, so the one object the
+	# entire arrival sequence exists to reach was unpressable -- by the test AND
+	# by a player, since both come through this function.
+	#
+	# A BOX THAT SWALLOWS THE TARGET IS NOT AN OCCLUDER OF IT. That is the rule,
+	# and it is about containment rather than about customs: any interactable
+	# whose own box holds this one's centre is around it, not in front of it, so
+	# it is excluded and the ray is cast again. Bounded by the item count, and in
+	# practice one retry. NOT widened to "ignore anything close", which would
+	# stop a bulkhead counting -- the exclusion is only for a shape the target is
+	# demonstrably inside.
+	var skip: Array[RID] = []
+	var a := {}
+	for _try in 4:
+		var qa := PhysicsRayQueryParameters3D.create(eye, it.centre)
+		qa.collision_mask = INTERACT_LAYER
+		qa.collide_with_areas = false
+		qa.exclude = skip
+		a = space.intersect_ray(qa)
+		if a.is_empty() or a.get("collider") == it.body:
+			break
+		var other = a.get("collider")
+		if other == null or not _swallows(other, it.centre):
+			return false
+		skip.append((other as CollisionObject3D).get_rid())
 	if a.is_empty() or a.get("collider") != it.body:
 		return false
 	var da: float = eye.distance_to(a["position"])
@@ -834,6 +980,20 @@ func _in_sight(eye: Vector3, it: Item, _d: float) -> bool:
 	# lighting channel and its 22 mm proud tiles, so the surface a ray meets and
 	# the surface a player sees differ by up to that much by design.
 	return eye.distance_to(b["position"]) + 0.10 >= da
+
+
+## Does this proxy's own box contain that point? Asked of the ITEM LIST rather
+## than of the physics shape, because the half-extents this file measured are
+## the same numbers `_give_box` built the shape from and reading them back is
+## exact -- a shape query would answer the same question with a tolerance.
+func _swallows(body_node, p: Vector3) -> bool:
+	for other in _items:
+		if other.body != body_node:
+			continue
+		var d: Vector3 = p - other.centre
+		return (absf(d.x) <= other.half.x and absf(d.y) <= other.half.y
+			and absf(d.z) <= other.half.z)
+	return false
 
 
 ## USE WHAT YOU ARE LOOKING AT. The keypress and the headless test call THIS --
@@ -883,11 +1043,16 @@ func use() -> bool:
 	# `serve` 30 across 28 of which 11 stand at a counter `economy.py` actually
 	# stocks. `python3 station/interact.py --coverage` prints it.
 	#
-	# `open` AND `operate` ARE NOT DISPATCHED HERE and that is not an omission.
-	# A door already has a mechanism and it is `door.gd`'s -- two ways to open
-	# one leaf is the failure mode this repository keeps rediscovering -- and a
-	# control's response IS the press travel applied above, which
-	# `used_travel_mm` measures off the mesh's own world AABB.
+	# `open` IS NOT DISPATCHED HERE and that is not an omission. A door already
+	# has a mechanism and it is `door.gd`'s -- two ways to open one leaf is the
+	# failure mode this repository keeps rediscovering.
+	#
+	# `operate` WAS NOT DISPATCHED EITHER, AND THAT WAS ONE. The comment this
+	# replaces said a control's response IS the press travel -- four millimetres
+	# of mesh -- and on 19 declared interactables that was the whole of it,
+	# including the identicard reader the entire arrival sequence walks to. A
+	# customs post whose response is a 2 mm wiggle is the "no consequence"
+	# finding in one object. See `_verb_operate`.
 	_read_text = ""
 	_said = ""
 	match it.verb:
@@ -901,6 +1066,8 @@ func use() -> bool:
 			_said = _verb_store(it)
 		"serve":
 			_said = _verb_serve(it)
+		"operate":
+			_said = _verb_operate(it)
 	_said_until = (_read_hold_s if _said != "" else 0.0)
 	print("USE %s place=%s token=%s verb=%s response=%s prompt=%s%s%s"
 		% [it.group, it.place, it.token, it.verb,
@@ -1210,6 +1377,248 @@ func _verb_serve(it: Item) -> String:
 	return "bought %s for %.2f cr (%s) -- purse %.2f, till %.2f, %d left" % [
 		good, cr, String(_player.tier_name), float(_player.credits),
 		float(till[it.place]), int(stock[good])]
+
+
+# ===========================================================================
+#  OPERATE -- AND THE ONE CONTROL ON THIS STATION THAT DECIDES SOMETHING
+# ===========================================================================
+## WHICH TOKEN IS THE READER, AND WHY A NAME HERE IS NOT A TABLE. `token` is
+## `station/interact.py`'s own field, written into the sidecar beside the verb;
+## this file already matches on `it.verb`, which came from the same row. One
+## token name is a BIND POINT between a generated name and the behaviour it
+## earns, and it is the same shape as `_verb_store`'s single `"identicard"`
+## exclusion two functions up. What would be a table is a dictionary of 19
+## tokens to 19 behaviours, and there is not one.
+const READER_TOKEN := "identicard_reader"
+
+
+## OPERATE.
+##
+## Every other `operate` in this build is still exactly what it was -- the press
+## travel applied in `use()` above -- and this function SAYS SO rather than
+## returning "" and leaving a player to guess whether anything happened. The
+## reader is the one that decides something, and what it decides is not in any
+## file: `arrival.gd::customs_verdict` resolves the ten stations against the
+## nine fields still on the card and the item in the player's hand, at the
+## moment of the press.
+##
+## THE THREE THINGS A REFUSAL THEN DOES, because a verdict nobody feels is the
+## caption this session exists to remove:
+##
+##   IT IS SAID.        The returned sentence is `hud.gd::did_text` and
+##                      `arrival.gd::current_text`, so it is on the frame in two
+##                      places without this session touching `hud.gd`.
+##   SOMEBODY COMES.    `enforcement.gd::refuse_at` -- the same brig, ladder,
+##                      fine and revocation `hud.gd`'s boundary check already
+##                      routes into, opened by the customs verdict instead of by
+##                      a rung comparison.
+##   IT IS WRITTEN DOWN. Into the purse's own `record`, which
+##                      `station/player.py::state()` already carries and
+##                      `restore` already reads, and then to disk. A consequence
+##                      that does not survive the process is a mood.
+func _verb_operate(it: Item) -> String:
+	if it.token != READER_TOKEN:
+		# A named default rather than silence. `used_travel_mm` measures what the
+		# press actually moved off the mesh's own AABB, so this is a claim about
+		# the world and not a hopeful sentence.
+		return "%s: the control moves under your hand" % it.label
+	var holder = _card_owner()
+	if holder == null or not holder.has_method("customs_verdict"):
+		return ("%s: nothing in this build is carrying an identicard, so there "
+			% it.label + "is no record to pull (this is a walk build, not an "
+			+ "arrival)")
+	var has_card := _carrying(_CARD_ITEM)
+	var v: Dictionary = holder.call("customs_verdict", has_card, it.place)
+	if v.is_empty():
+		return "%s: the reader returned nothing" % it.label
+	var status := String(v.get("status", ""))
+	customs_reads += 1
+	print("CUSTOMS place=%s who=%s npc=%s carrying_card=%s struck=%s "
+		% [it.place, String(v.get("who", "?")), String(v.get("npc_id", "?")),
+			str(has_card).to_lower(),
+			("none" if (v.get("dropped", []) as Array).is_empty()
+				else "+".join(PackedStringArray(v.get("dropped", []))))]
+		+ "status=%s worst=%s at_station=%d(%s) baked=%s port=%s"
+		% [status, String(v.get("worst", "")), int(v.get("at_station", 0)),
+			String(v.get("station", "")), String(v.get("baked_status", "")),
+			String(v.get("port", "?"))])
+	_record_customs(v)
+	if status == "admitted":
+		var ok := "IDENTICARD ACCEPTED -- %s" % String(v.get("verdict", ""))
+		_show_on_panel(ok)
+		return ok
+	# THE REFUSAL GOES SOMEWHERE. `refuse_at` returns false when this build has
+	# no consequence table for the room, and the sentence says which of the two
+	# happened rather than implying the first.
+	# THE PLATE GOES UP BEFORE SECURITY IS CALLED, and the order is the point:
+	# `refuse_at` -> `_open` -> `enforcement.gd::_say` writes SECURITY NOTIFIED
+	# into the same field, so writing ours afterwards would paint over the thing
+	# the refusal caused with the refusal itself.
+	_show_on_panel("IDENTICARD REFUSED\n%s\nSTATION %d, %s"
+		% [String(v.get("verdict", "")).to_upper(), int(v.get("at_station", 0)),
+			String(v.get("station", "")).to_upper()])
+	var came := false
+	if _enforce != null and _enforce.has_method("refuse_at"):
+		came = bool(_enforce.call("refuse_at", it.place,
+			"the identicard did not read: station %d, %s"
+				% [int(v.get("at_station", 0)), String(v.get("station", ""))]))
+	return "IDENTICARD %s -- %s  (station %d, %s)%s" % [status.to_upper(),
+		String(v.get("verdict", "")), int(v.get("at_station", 0)),
+		String(v.get("station", "")),
+		("  SECURITY NOTIFIED" if came else "  (nothing follows it here)")]
+
+
+## The item a reader is looking for. `station/player.py::IDENTICARD`.
+const _CARD_ITEM := "identicard"
+## How many cards this session has put through a reader, for a gate to read.
+var customs_reads := 0
+## The last runtime verdict, kept as values so a save can carry it.
+var _customs_last := {}
+
+
+func _carrying(item: String) -> bool:
+	if _player == null:
+		return false
+	var bag = _player.get("carrying")
+	if typeof(bag) != TYPE_ARRAY and typeof(bag) != TYPE_PACKED_STRING_ARRAY:
+		return false
+	for x in bag:
+		if String(x) == item:
+			return true
+	return false
+
+
+## THE OUTCOME, INTO THE ONE DOCUMENT THAT OUTLIVES THE PROCESS.
+##
+## `record` is `station/player.py::state()`'s own key -- the same one `convict`
+## and `_record_fine` write convictions and debts into, and the same one
+## `Player.restore` reads back -- so a processed arrival comes back processed and
+## a refused one comes back refused, with the station that refused them still on
+## the record. NOT A NEW FILE and not a new key at the top of the ledger: a
+## second place to look for "what happened to this person" is how a save ends up
+## disagreeing with itself.
+##
+## `_save_ledger()` writes only when something moved, which is `interact.gd`'s
+## standing rule -- a launch that reads no card leaves the document untouched.
+func _record_customs(v: Dictionary) -> void:
+	_customs_last = {
+		"status": String(v.get("status", "")),
+		"worst": String(v.get("worst", "")),
+		"at_station": int(v.get("at_station", 0)),
+		"station": String(v.get("station", "")),
+		"place": String(v.get("place", "")),
+		"why": String(v.get("why", "")),
+		"struck": (v.get("dropped", []) as Array).duplicate(),
+		"npc_id": String(v.get("npc_id", "")),
+		"day": int(_led.get("day", 0)),
+	}
+	var rec := _record()
+	rec["customs"] = _customs_last.duplicate(true)
+	var seen: Array = rec.get("customs_history", [])
+	seen.append(_customs_last.duplicate(true))
+	rec["customs_history"] = seen
+	# THE STATUS IS ON THE PURSE ITSELF AS WELL, because `player.py::Player.
+	# status` is a field of the PERSON rather than of their record, and
+	# `restore` reads it from there. Two writes, one fact, and they are the two
+	# places Python already keeps it.
+	var st := _my_purse()
+	if not st.is_empty():
+		st["status"] = String(v.get("status", ""))
+	_put_record(rec)
+	_save_ledger()
+	print("interact: customs outcome written to %s -- record.customs.status=%s, "
+		% [String(v.get("npc_id", "?")), String(v.get("status", ""))]
+		+ "purse.status=%s, %d reading(s) on this card"
+		% [String(st.get("status", "-")), seen.size()])
+
+
+## The last runtime customs verdict, for a gate that would rather not parse a log.
+func customs_status() -> String:
+	return String(_customs_last.get("status", ""))
+
+
+## THE PLATE ABOVE THE RETICLE, AND WHY THIS IS NOT A CHANGE TO `hud.gd`.
+##
+## `hud.gd::_check` already draws `check_text` -- above the reticle, AMBER unless
+## the line begins `IDENTICARD ACCEPTED`, and its own comment says that plate is
+## "the one message on this HUD that is about the player rather than about the
+## world". A customs verdict is exactly that message. `enforcement.gd::_say`
+## already writes into the same field from outside, so this is an established
+## channel with an established owner and not a new one; what it needs is a
+## SECOND writer, not a second plate, and a second plate is what an edit to
+## `hud.gd` would most likely have produced.
+##
+## THE SENTENCE IS SHAPED SO THE COLOUR RULE ALREADY WORKS. `_verb_operate`
+## returns `IDENTICARD ACCEPTED -- ...` on an admit and `IDENTICARD REFUSED --
+## ...` otherwise, which is the two prefixes `hud.gd:466` and `hud.gd:468` write
+## themselves. Nothing in `hud.gd` has to learn a third word.
+##
+## FOUND BY CAPABILITY, two properties deep, which is `_find_clock`'s rule one
+## file up: `check_text` alone is not distinctive (this node has a `_hud` Label
+## and `enforcement.gd` holds a reference), `check_text` + `tier` is.
+var _panel = null
+var _panel_looked := false
+
+
+func _card_panel():
+	if _panel != null or _panel_looked:
+		return _panel
+	_panel_looked = true
+	var scene := get_tree().current_scene if get_tree() != null else null
+	for root in [scene, get_parent()]:
+		if root == null:
+			continue
+		var n := _search_panel(root, 0)
+		if n != null:
+			_panel = n
+			print("interact: card panel at %s" % n.get_path())
+			return n
+	print("interact: no card panel in this build -- a customs verdict will be "
+		+ "said under the prompt and not on the plate above the reticle")
+	return null
+
+
+func _search_panel(node: Node, depth: int) -> Node:
+	if depth > 6:
+		return null
+	if node != self:
+		var props := {"check_text": false, "tier": false}
+		for e in node.get_property_list():
+			var nm := String(e.get("name", ""))
+			if props.has(nm):
+				props[nm] = true
+		if bool(props["check_text"]) and bool(props["tier"]):
+			return node
+	for c in node.get_children():
+		var got := _search_panel(c, depth + 1)
+		if got != null:
+			return got
+	return null
+
+
+## How long the verdict stays up. Longer than `hud.gd::_CHECK_HOLD_S`'s 5 s on
+## purpose: a boundary reading is a fact in passing and a customs verdict is the
+## outcome of the last ten minutes.
+const CUSTOMS_HOLD_S := 12.0
+
+
+func _show_on_panel(line: String) -> void:
+	var p = _card_panel()
+	if p == null:
+		return
+	p.set("check_text", line)
+	p.set("_check_until", CUSTOMS_HOLD_S)
+
+
+## What the arrest chain did about it, in the words `enforcement.gd` counts in.
+## Asked THROUGH this node rather than found again, because this node is the one
+## that built the director and is the only one holding a reference to it.
+func enforcement_report() -> String:
+	if _enforce == null:
+		return "enforcement is not in this build"
+	if not _enforce.has_method("report"):
+		return "enforcement is present and reports nothing"
+	return String(_enforce.call("report"))
 
 
 ## What the last verb DID, in one sentence, held for a few seconds. `hud.gd`
@@ -1634,12 +2043,22 @@ func verb_report() -> String:
 # "identical", whatever it was when the snapshot was taken.
 # ===========================================================================
 
+## AND THE CUSTOMS OUTCOME, WHICH NEEDS NO CHANGE TO `save.gd` AND GETS NONE.
+## `save.gd` is duck-typed -- `capture()` calls `save_state()` on every subject
+## `main.gd::_subjects` found, and this node is one of them (by `verb_report` +
+## `pressable_count`). So a key added here is a key in the snapshot. It is also
+## already inside `ledger` above, because `_record_customs` writes into the
+## purse's record; it is repeated at the top level so a reload can report the
+## verdict WITHOUT reconstructing a person from a wallet, and the two cannot
+## drift because `load_state` re-reads the ledger's copy on the way back in.
 func save_state() -> Dictionary:
 	return {
 		"ledger": _led.duplicate(true),
 		"sales": sales,
 		"refusals": refusals,
 		"use_count": _use_count,
+		"customs": _customs_last.duplicate(true),
+		"customs_reads": customs_reads,
 	}
 
 
@@ -1674,3 +2093,21 @@ func load_state(d: Dictionary) -> void:
 	sales = int(d.get("sales", sales))
 	refusals = int(d.get("refusals", refusals))
 	_use_count = int(d.get("use_count", _use_count))
+	customs_reads = int(d.get("customs_reads", customs_reads))
+	# THE LEDGER'S COPY WINS, and the top-level one is the fallback. The record
+	# inside the restored ledger is the same object `_record_customs` wrote and
+	# the same one Python's `Player.restore` would read; taking that in
+	# preference is what stops the snapshot's two copies becoming two answers.
+	var from_led: Dictionary = _record().get("customs", {})
+	if typeof(from_led) == TYPE_DICTIONARY and not from_led.is_empty():
+		_customs_last = from_led.duplicate(true)
+	else:
+		var c = d.get("customs", null)
+		if typeof(c) == TYPE_DICTIONARY:
+			_customs_last = (c as Dictionary).duplicate(true)
+	if not _customs_last.is_empty():
+		print("interact: restored a customs outcome -- %s at %s (station %d, %s)"
+			% [String(_customs_last.get("status", "?")),
+				String(_customs_last.get("place", "?")),
+				int(_customs_last.get("at_station", 0)),
+				String(_customs_last.get("station", "?"))])

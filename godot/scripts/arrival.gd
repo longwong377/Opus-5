@@ -62,6 +62,84 @@ const ROOM_ARRIVE_M := 3.0
 ## of this cluster's corridor.
 @export var step_budget: int = 600
 
+# ===========================================================================
+#  THE CARD IS READ AT RUNTIME, AND THE VERDICT IS NOT IN THE FILE
+# ===========================================================================
+## WHAT THIS CLOSES, AND IT IS THE WHOLE POINT OF AN ARRIVAL. Until session 4u
+## the sidecar carried `"status": "admitted"` and `"verdict": "Cleared. Welcome
+## to Babylon 5."` -- computed by `station/arrival.py::checks` BEFORE the game
+## started -- and `_verdict()` printed those two strings. A player who walked to
+## the reader and pressed it got the same sentence as a player who did not, and
+## a card with its visa struck off got the same sentence as a valid one. That is
+## not a customs post, it is a caption.
+##
+## SO THE TEN STATIONS ARE EVALUATED HERE, AGAINST THE CARD IN THE PLAYER'S
+## HAND, at the moment the reader is operated. `interact.gd::_verb_operate`
+## calls `customs_verdict()`; nothing reads `seq["status"]` or `seq["verdict"]`
+## to decide anything any more. Both are still PRINTED, beside the runtime
+## answer, because a disagreement between them is evidence and hiding it would
+## be throwing the control away.
+##
+## WHICH STATIONS ARE RE-DERIVED AND WHICH ARE INHERITED, stated per row rather
+## than blurred. Five of the ten stations read a field the prop actually carries
+## (3 presented, 5 record, 6 visa, 7 atmosphere, 8 telepath) and those are
+## computed here from `_card_fields`. The other five are not facts about the
+## card at all -- 1 and 2 are the ramp and the queue, 4 is a genetic match this
+## project does not model as a forgeable item, 9 is a contraband draw on
+## (npc_id, day, seed) -- so they are taken from the sidecar's own `checks`
+## rows, which is READING A DERIVED INPUT rather than copying a rule. Every row
+## in the result says which it was, in `from`.
+##
+## THE RULES ARE `station/arrival.py`'S AND ARE PORTED, NOT INVENTED.
+## `entry_class` below is that function line for line; the severity ladder is
+## `_SEVERITY`; the three verdict sentences are the ones in `arrival.py:777`;
+## `outcome_of`'s "PASS/FLAG both admit" is `_outcome_of`. A second SET of rules
+## would be this repository's most-repeated defect. What makes the port checkable
+## rather than trusted is `_agree`: on the UNMODIFIED card this file's
+## `entry_class` must return the class Python already wrote into
+## `seq["entry_class"]`, and the arrival line prints whether it did.
+const PASS := "pass"
+const FLAG := "flag"
+const REFER := "refer"
+const REFUSE := "refuse"
+const SEVERITY := {"pass": 0, "flag": 1, "refer": 2, "refuse": 3}
+
+const ADMITTED := "admitted"
+const REFERRED := "referred"
+const REFUSED := "refused"
+
+## `arrival.py:777`. Not paraphrased: the same three sentences, so a player hears
+## what the Python half says they hear.
+const VERDICT_LINE := {
+	"admitted": "Cleared. Welcome to Babylon 5.",
+	"referred": "Step aside, please. Secondary inspection.",
+	"refused": "You are not going anywhere. Hold him.",
+}
+
+## `arrival.py::entry_class`'s five classes and its expiry suffix.
+const EA_CITIZEN := "ea_citizen"
+const RESIDENT := "resident"
+const TRANSIT := "transit"
+const SANCTUARY := "sanctuary"
+const NO_STATUS := "no_status"
+const EXPIRED_SUFFIX := " -- EXPIRED"
+
+## The item a customs reader is looking for. `station/player.py::IDENTICARD`.
+const IDENTICARD_ITEM := "identicard"
+
+## The card as the player is carrying it: label -> value. Built once from the
+## sidecar and then STRUCK by `--card-drop`, so the thing the reader reads and
+## the thing the card face draws are one dictionary and cannot disagree.
+var _card_fields := {}
+## Which labels `--card-drop` struck, in the order given. The negative control
+## for the whole loop: a run with this empty must ADMIT and a run naming the
+## fields the visa hangs on must REFUSE, and both go through this same code.
+var _card_dropped: Array[String] = []
+## The last runtime verdict, or {} until the reader has been used.
+var _customs := {}
+## Does this file's `entry_class` agree with Python's, on the untouched card?
+var _agree := "unchecked"
+
 var seq: Dictionary = {}
 var plan: Array = []            ## the steps this build can actually play
 var offbuild: Array = []        ## the ones it cannot, and why
@@ -105,11 +183,25 @@ func _ready() -> void:
 		return
 	_adopt_build()
 
+	# THE CARD IS BUILT BEFORE `super._ready()`, not after, and the ordering is
+	# load-bearing rather than tidy. `walk.gd::_make_interact` -> `watch()` reads
+	# the ledger and hands the body a purse during that call, and `_my_purse`
+	# asks THIS node who is playing (`player_npc_id`). A card built afterwards
+	# would be a card that arrived one function too late to name the player, and
+	# the body would carry ANNA ALLAN's wallet again -- see `player_identity`.
+	_build_card()
+
 	# walk.gd does all of the loading, dressing, collision, doors, crowd and
 	# HUD, and its own args still win over anything adopted above.
 	super._ready()
 	_load_boxes()
 	_build_plan()
+	# THE READER NEEDS A CARD TO READ, AND IT IS THIS NODE THAT HAS ONE.
+	# `interact.gd` holds no customs rule and no identicard -- it dispatches the
+	# verb and asks whoever owns the card. On a `walk.gd` build nothing answers
+	# and `operate` on a reader says so rather than inventing a verdict.
+	if _interact != null and _interact.has_method("bind_card"):
+		_interact.call("bind_card", self)
 	print("arrival: %s -- %s aboard %s, bay %s, %s area %s"
 		% [seq.get("name", "?"), seq.get("species", "?"),
 			seq.get("ship", "?"), seq.get("bay_label", "?"),
@@ -122,6 +214,44 @@ func _ready() -> void:
 		_make_card()
 	_testing_arrival = args.has("arrival-test")
 	_trace_every = int(args.get("arrival-trace", "0"))
+	if args.has("arrival-budget"):
+		# HOW FAR A STEP IS ALLOWED TO WALK, and 600 frames is not far enough on
+		# the SHIPPED build. `boot.json` spawns the body in the CORRIDOR
+		# (`spawn_at: "corridor"`, ring angle 89.3 deg) and the customs hall's
+		# reader stands at 40.0 deg, which is 181 m of arc at r=211 m. Measured:
+		# 600 frames buys 54-68 m, so every customs step timed out 174 m short
+		# and the sequence could not reach its own verdict on the build a player
+		# launches. That is a property of the walk, not of the reader, and the
+		# right cure is a navmesh -- see `_physics_process`'s note on the
+		# bug-algorithm sidestep. Until there is one, this says how long to try.
+		step_budget = maxi(1, int(args["arrival-budget"]))
+		print("arrival: step budget %d frames (default 600) -- the shipped spawn "
+			% step_budget + "is 181 m of corridor from the customs reader")
+	if args.has("arrival-from"):
+		# WHERE THE PLAN STARTS, AND WHY THAT IS NOT THE SAME AS CAPPING IT.
+		# `--arrival-steps` cuts from the END, which on this build keeps the two
+		# steps a body cannot reach: `blue_0_0_z7440.glb` carries the z7120
+		# docking bays as well as the z7440 halls, so `berth` and `disembark`
+		# resolve to real mesh 364 m down the axis -- measured, closest approach
+		# 419.7 m and 399.8 m against a 600-frame budget that buys 68 m. They are
+		# on the build and they are not reachable inside a step, which is a
+		# different thing from `offbuild` and is why they are not silently
+		# dropped. This cuts from the FRONT so a run can start at the customs
+		# hall the body actually spawns in, and says what it skipped.
+		var from_id := String(args["arrival-from"])
+		var cut := 0
+		for i in plan.size():
+			if String((plan[i]["step"] as Dictionary).get("id", "")) == from_id:
+				cut = i
+				break
+		if cut > 0:
+			var skipped := PackedStringArray()
+			for i in cut:
+				skipped.append(String((plan[i]["step"] as Dictionary).get("id", "?")))
+			plan = plan.slice(cut)
+			print("arrival: --arrival-from=%s skips %d step(s) BEFORE it (%s) -- "
+				% [from_id, cut, ", ".join(skipped)]
+				+ "they are on this build and are not walked in this run")
 	if args.has("arrival-steps"):
 		# Diagnosis is 600 frames a step at about 7 physics frames a second on
 		# this box, so a six-step run is a quarter of an hour. Capping the plan
@@ -177,6 +307,351 @@ func _adopt_build() -> void:
 		var sp = b.get("spawn")
 		if typeof(sp) == TYPE_ARRAY and sp.size() == 3:
 			spawn = Vector3(float(sp[0]), float(sp[1]), float(sp[2]))
+
+
+# ===========================================================================
+#  THE CARD IN THE PLAYER'S HAND
+# ===========================================================================
+## THE ONE COPY OF THE CARD THIS SESSION IS PLAYING WITH.
+##
+## `--card-drop=VISAS,ORIGIN` strikes fields off it, and that flag is the
+## negative control the whole consequence loop is worth nothing without: a
+## refusal branch that cannot be reached on demand is a branch nobody can show
+## you. It strikes by LABEL, which is the prop's own vocabulary
+## (`npc/resident.py::CARD`), so a typo names a field that does not exist and is
+## reported instead of silently doing nothing.
+func _build_card() -> void:
+	_card_fields.clear()
+	_card_dropped.clear()
+	var order := PackedStringArray()
+	for r in seq.get("identicard", []):
+		if typeof(r) != TYPE_DICTIONARY:
+			continue
+		var label := String((r as Dictionary).get("label", ""))
+		if label == "":
+			continue
+		_card_fields[label] = String((r as Dictionary).get("value", ""))
+		order.append(label)
+	var a := _args()
+	if a.has("card-drop"):
+		for raw in String(a["card-drop"]).split(",", false):
+			var label := String(raw).strip_edges().to_upper()
+			if label == "":
+				continue
+			if not _card_fields.has(label):
+				push_error("arrival: --card-drop=%s names no field on this card "
+					% label + "-- the nine are %s" % ", ".join(order))
+				continue
+			if String(_card_fields[label]) == "":
+				print("arrival: --card-drop=%s was ALREADY empty on this card, "
+					% label + "so striking it changes nothing")
+			_card_fields[label] = ""
+			_card_dropped.append(label)
+	# THE PORT IS CHECKED AGAINST THE THING IT IS A PORT OF, on every run, before
+	# anything is decided. `seq["entry_class"]` is `station/arrival.py`'s own
+	# answer for the untouched card; if this file's `entry_class` disagrees the
+	# verdict below is computed by a rule that has drifted, and a silent
+	# disagreement is exactly the shape of defect this repository keeps paying
+	# for. Checked on the ORIGINAL fields, so a `--card-drop` run still reports
+	# whether the port is sound.
+	var orig := {}
+	for r in seq.get("identicard", []):
+		if typeof(r) == TYPE_DICTIONARY:
+			orig[String((r as Dictionary).get("label", ""))] = String(
+				(r as Dictionary).get("value", ""))
+	var mine: Array = entry_class(orig)
+	var theirs := String(seq.get("entry_class", ""))
+	_agree = ("agrees:%s" % theirs if String(mine[0]) == theirs
+		else "DISAGREES:gd=%s/py=%s" % [String(mine[0]), theirs])
+	print("arrival: identicard %s -- %d field(s), %s; entry_class %s (%s), "
+		% [String(seq.get("card_name", "?")), _card_fields.size(),
+			("nothing struck" if _card_dropped.is_empty()
+				else "STRUCK " + ", ".join(_card_dropped)),
+			String(mine[0]), String(mine[2])]
+		+ "port %s" % _agree)
+
+
+## Who this session is playing, for `interact.gd::_my_purse`. THE ARRIVAL
+## SIDECAR IS THE ONLY THING IN THE BUILD THAT KNOWS. `economy.json` is keyed by
+## npc_id and carries `player:downbelow`; the sequence's player is
+## `player:player`, and until this method existed the wallet on the HUD named a
+## different person from the card in the hand.
+func player_npc_id() -> String:
+	return String(seq.get("npc_id", ""))
+
+
+## `consequence.TIERS`' six rungs, by the labels the bake writes. Ported for one
+## reason and it is a narrow one: a MINTED purse has no `tier` field, and
+## `player.gd::rung_of` reads that field as the card's own frozen reading when
+## the record is empty -- so a purse without it hands the body rung -99 and every
+## counter, checkpoint and ladder in the build then misreads a live card. This is
+## the card's READING and not a stored derivation, which is the distinction
+## `interact.gd::_sync_purse`'s header draws in as many words.
+const TIER_NAME := {0: "no_status", 1: "sanctuary", 2: "transit",
+	3: "resident", 4: "citizen", 5: "accredited"}
+## `consequence.ACCREDITED_ROLES`.
+const ACCREDITED_ROLES := ["diplomat", "envoy"]
+
+
+## `consequence.tier_of`, on the card as it reads NOW. No record is consulted --
+## custody and revocation are the record's half and `player.gd::rung_of` already
+## applies them on top of this number, which is exactly the split Python makes.
+func card_rung() -> int:
+	if ACCREDITED_ROLES.has(String(seq.get("role", ""))):
+		return 5
+	var ec: Array = entry_class(_card_fields)
+	if bool(ec[1]):
+		return 0                      # expired is not a lesser permission
+	return {EA_CITIZEN: 4, RESIDENT: 3, TRANSIT: 2, SANCTUARY: 1,
+		NO_STATUS: 0}[String(ec[0])]
+
+
+## Enough to MINT a purse when the ledger has none for this person, and not one
+## field more. Every value is read out of the sidecar `station/arrival.py`
+## already derived -- credits from `player.credits_for`, name and species and
+## role from the same `resident()` that mints every other person aboard -- so
+## this is reading a generated artefact rather than re-deriving anybody. The two
+## exceptions are `tier`/`tier_name`, and `card_rung` above says why they cannot
+## be left out.
+func player_identity() -> Dictionary:
+	var rung := card_rung()
+	return {
+		"npc_id": player_npc_id(),
+		"name": String(seq.get("card_name", seq.get("name", ""))),
+		"species": String(seq.get("species", "")),
+		"role": String(seq.get("role", "")),
+		"credits": float(seq.get("credits", 0.0)),
+		"carrying": [IDENTICARD_ITEM, "kit_bag"],
+		"at": "docking_bays",
+		"status": "unprocessed",
+		"quarters": "",
+		"tier": rung,
+		"tier_name": String(TIER_NAME.get(rung, "")),
+		"generated": true,
+	}
+
+
+## The nine fields as the card reads NOW: (label, value, state). A struck field
+## comes back EMPTY, which is the prop's red row with no colon -- so the drop is
+## visible on the card face as well as in the verdict, and a player can see the
+## reason they were refused.
+func identicard_rows() -> Array:
+	var out := []
+	for r in seq.get("identicard", []):
+		if typeof(r) != TYPE_DICTIONARY:
+			continue
+		var label := String((r as Dictionary).get("label", ""))
+		var value := String(_card_fields.get(label, ""))
+		out.append([label, value, ("filled" if value != "" else "empty")])
+	return out
+
+
+func card_dropped() -> Array:
+	return _card_dropped.duplicate()
+
+
+# ===========================================================================
+#  THE TEN STATIONS, RESOLVED AGAINST THAT CARD
+# ===========================================================================
+## `station/arrival.py::entry_class`, ported line for line. Returns
+## [class, expired, the field it was read off].
+##
+## ONE INPUT IT CANNOT SEE, NAMED RATHER THAN GUESSED. Python reads `card.job`
+## in its last branch to tell a RESIDENT from a NO_STATUS; a job is not one of
+## the nine fields on the prop and the sidecar does not carry one, so this
+## cannot know it. The branch is only reached by a card with NO visa and a
+## non-EARTH origin, and it says in its own `why` that the job was unknown --
+## which is the honest answer and is why the returned reason is a sentence
+## rather than a flag.
+func entry_class(fields: Dictionary) -> Array:
+	var v := String(fields.get("VISAS", ""))
+	var expired := v.ends_with(EXPIRED_SUFFIX)
+	var base := (v.substr(0, v.length() - EXPIRED_SUFFIX.length()) if expired
+		else v)
+	if base.begins_with("TRANSIT"):
+		return [TRANSIT, expired, "VISAS=%s" % v]
+	if base.begins_with("SANCTUARY"):
+		return [SANCTUARY, expired, "VISAS=%s" % v]
+	if base.begins_with("NO STATUS"):
+		return [NO_STATUS, expired, "VISAS=%s" % v]
+	if String(fields.get("ORIGIN", "")) == "EARTH":
+		return [EA_CITIZEN, false, "ORIGIN=EARTH"]
+	return [NO_STATUS, false, "ORIGIN=%s, VISAS empty, no job on the card"
+		% (String(fields.get("ORIGIN", "")) if String(fields.get("ORIGIN", "")) != ""
+			else "(struck)")]
+
+
+## `arrival.py::outcome_of` -- PASS and FLAG both admit; REFER and REFUSE do not.
+func _outcome_of(worst: int) -> String:
+	if worst <= SEVERITY[FLAG]:
+		return ADMITTED
+	return REFERRED if worst == SEVERITY[REFER] else REFUSED
+
+
+## The sidecar's own row for station `n`, or {}. Used for the five stations that
+## are not facts about the card -- see the header block above.
+func _baked_check(n: int) -> Dictionary:
+	for r in seq.get("checks", []):
+		if typeof(r) == TYPE_DICTIONARY and int((r as Dictionary).get("n", 0)) == n:
+			return r
+	return {}
+
+
+func _inherit(n: int, station: String, auth: int) -> Dictionary:
+	var b := _baked_check(n)
+	return {"n": n, "station": String(b.get("station", station)),
+		"auth": int(b.get("auth", auth)),
+		"result": String(b.get("result", PASS)),
+		"detail": String(b.get("detail", "")), "from": "sidecar"}
+
+
+func _row(n: int, station: String, auth: int, result: String,
+		detail: String) -> Dictionary:
+	return {"n": n, "station": station, "auth": auth, "result": result,
+		"detail": detail, "from": "card"}
+
+
+## THE VERDICT, COMPUTED NOW, FROM THE CARD THIS BODY IS CARRYING.
+##
+## `has_card` is the player's INVENTORY answer -- `player.gd::carrying` holds
+## `identicard` as an item because `station/player.py` makes it one and 6.4
+## makes losing it an arc. It is passed in rather than read here because the
+## body belongs to `interact.gd`, which is the node that dispatched the verb.
+func customs_verdict(has_card: bool, place: String = "") -> Dictionary:
+	var rows := []
+	rows.append(_inherit(1, "Disembark", 4))
+	rows.append(_inherit(2, "Queue", 5))
+
+	if not has_card:
+		rows.append(_row(3, "Identicard presented", 1, REFUSE,
+			"NO IDENTICARD. 6.4: the card is passport, licence, credit and "
+			+ "medical file at once -- without it there is no record to pull"))
+		rows.append(_row(10, "Admit / refer / refuse", 5, REFUSE,
+			"held pending identity; 6.3 station 10"))
+		return _close(rows, place)
+	rows.append(_row(3, "Identicard presented", 1, PASS,
+		"inserted into the reader"))
+	rows.append(_inherit(4, "Genetic match", 4))
+
+	# 5. THE RECORD, REBUILT FROM WHAT IS STILL ON THE CARD. Python joins the
+	# FILLED fields; a struck field simply is not in the sentence, so the record
+	# a refused player is read back is visibly shorter than a clean one.
+	var filled := PackedStringArray()
+	for r in identicard_rows():
+		if String(r[2]) == "filled":
+			filled.append("%s=%s" % [String(r[0]), String(r[1])])
+	rows.append(_row(5, "Record pulled", 1, PASS, " / ".join(filled)))
+
+	# 6. VISAS.
+	var ec: Array = entry_class(_card_fields)
+	var cls := String(ec[0])
+	var expired: bool = bool(ec[1])
+	var why := String(ec[2])
+	if expired:
+		rows.append(_row(6, "Visa checked", 1, REFUSE,
+			"%s -- FACTIONS.md 3.4 calls expired status the station's most " % why
+			+ "ordinary crime"))
+	elif cls == EA_CITIZEN:
+		rows.append(_row(6, "Visa checked", 1, PASS,
+			"%s: Earth Alliance sovereign territory, entry by right, " % why
+			+ "VISAS properly empty"))
+	elif cls == RESIDENT:
+		rows.append(_row(6, "Visa checked", 1, PASS,
+			"%s: standing is the residency record, not a visa" % why))
+	elif cls == TRANSIT:
+		rows.append(_row(6, "Visa checked", 1, PASS,
+			"%s (FACTIONS.md 2.3)" % why))
+	elif cls == SANCTUARY:
+		rows.append(_row(6, "Visa checked", 1, REFER,
+			"%s: stateless -- referred to immigration (FACTIONS.md 6.2's " % why
+			+ "13,000)"))
+	else:
+		rows.append(_row(6, "Visa checked", 1, REFUSE,
+			"%s -- FACTIONS.md 3.4, and the reason lurkers avoid readers" % why))
+
+	# 7. DES/ATMOS. The prop writes it as `<DES>/<code>`; the code is what the
+	# customs board's own subject is, so an unnumbered mix is a FLAG and not a
+	# refusal -- the board says others "MAY BE CREATED BY PRIOR ARANGEMENT".
+	var des := String(_card_fields.get("DES/ATMOS", ""))
+	var code := (des.get_slice("/", 1) if des.find("/") >= 0 else "")
+	if code != "":
+		rows.append(_row(7, "Atmosphere declared", 1, PASS,
+			"%s -- the standard mix" % des))
+	else:
+		rows.append(_row(7, "Atmosphere declared", 1, FLAG,
+			"DES/ATMOS %s: unnumbered, the board says others \"MAY BE CREATED "
+			% ("is struck" if des == "" else "reads %s" % des)
+			+ "BY PRIOR ARANGEMENT\" (sic, authority 1)"))
+
+	# 8. LICENSED PSI.
+	if String(_card_fields.get("LICENSED PSI", "")) != "":
+		rows.append(_row(8, "Telepath status", 1, FLAG,
+			"LICENSED PSI: REGISTERED -- Psi Corps liaison notified "
+			+ "(FACTIONS.md 4.1)"))
+	else:
+		rows.append(_row(8, "Telepath status", 1, PASS,
+			"no registration on the record; an UNregistered telepath is not a "
+			+ "field the prop carries and is not modelled"))
+
+	rows.append(_inherit(9, "Scan", 4))
+	return _close(rows, place)
+
+
+## Station 10 is the worst of the nine, and the sentences are `arrival.py`'s.
+func _close(rows: Array, place: String) -> Dictionary:
+	var worst := 0
+	var worst_row := {}
+	for r in rows:
+		if int((r as Dictionary).get("n", 0)) == 10:
+			continue
+		var s := int(SEVERITY.get(String((r as Dictionary).get("result", PASS)), 0))
+		if s > worst:
+			worst = s
+			worst_row = r
+	if worst_row.is_empty():
+		worst_row = rows[0]
+	var res := PASS
+	for k in SEVERITY:
+		if int(SEVERITY[k]) == worst:
+			res = String(k)
+	var detail: String = {
+		"pass": "through to the arrival concourse",
+		"flag": "through to the arrival concourse, with a note on the record",
+		"refer": "secondary inspection -- station %d, %s"
+			% [int(worst_row.get("n", 0)), String(worst_row.get("station", ""))],
+		"refuse": "refused and held for the next ship out -- station %d, %s"
+			% [int(worst_row.get("n", 0)), String(worst_row.get("station", ""))],
+	}[res]
+	var has_ten := false
+	for r in rows:
+		if int((r as Dictionary).get("n", 0)) == 10:
+			has_ten = true
+	if not has_ten:
+		rows.append(_row(10, "Admit / refer / refuse", 5, res, detail))
+	var status := _outcome_of(worst)
+	_customs = {
+		"status": status,
+		"verdict": String(VERDICT_LINE.get(status, "")),
+		"worst": res,
+		"at_station": int(worst_row.get("n", 0)),
+		"station": String(worst_row.get("station", "")),
+		"why": String(worst_row.get("detail", "")),
+		"disposal": detail,
+		"place": place,
+		"rows": rows,
+		"dropped": _card_dropped.duplicate(),
+		"port": _agree,
+		"baked_status": String(seq.get("status", "")),
+		"npc_id": player_npc_id(),
+		"who": String(seq.get("card_name", "")),
+	}
+	return _customs
+
+
+## The last runtime verdict, or {}. `interact.gd` and the card face both read it
+## rather than each keeping one.
+func customs() -> Dictionary:
+	return _customs
 
 
 func _steps() -> Array:
@@ -344,6 +819,52 @@ func _floor_r() -> float:
 	return sqrt(p.x * p.x + p.y * p.y)
 
 
+## HOW FAR ROUND THE RING TO AIM, and a straight line is the wrong answer on a
+## barrel.
+##
+## MEASURED, ON THE BUILD A PLAYER LAUNCHES. `boot.json` spawns the body in the
+## corridor at ring angle 89.3 deg and the customs reader stands at 40.0 deg --
+## 49.3 deg, which at r = 211.5 m is 182 m of floor. The chord between those two
+## points dips 19 m INSIDE the ring, and the corridor is a few metres wide, so
+## `target - p` points the body straight into the inner wall from the first
+## frame. Run that way with a 9,000-frame budget it walked **402.95 m and closed
+## 0.0 m**: ring angle 89.3 -> 89.0, 136 sidesteps, a body oscillating against a
+## wall while the bug-algorithm heuristic flipped its sign. `_build_plan`'s own
+## header already says that heuristic "would not get round a maze"; a 49-degree
+## arc turns out to be enough of one.
+##
+## SO THE BEARING IS THE RING'S OWN. A corridor here is an arc at constant
+## radius, so the way to reach an angle is to walk TANGENTIALLY towards it --
+## `Vector3(0,0,1).cross(radial)` is the spinward tangent, the same expression
+## `hud.gd` derives its heading tape from, signed by the short way round. The
+## axial gap rides along as a small component so the body drifts to the target's
+## z as it goes.
+##
+## IT IS STILL NOT A NAVMESH and this is not a claim that it is. It knows one
+## fact about the station -- corridors run around the ring at constant r -- and
+## it is right for exactly as long as that is true. Inside `NEAR_ARC_M` of the
+## target it hands back to the straight line, because a reader against a side
+## wall is not on the ring and the last few metres are the part the arc cannot
+## express.
+const NEAR_ARC_M := 8.0
+const RING_TOL_DEG := 0.6
+
+
+func _bearing(p: Vector3, target: Vector3) -> Vector3:
+	var pr := Vector2(p.x, p.y)
+	var tr := Vector2(target.x, target.y)
+	if pr.length() < 1.0 or tr.length() < 1.0:
+		return target - p
+	var dang: float = wrapf(tr.angle() - pr.angle(), -PI, PI)
+	var arc: float = absf(dang) * pr.length()
+	if arc < NEAR_ARC_M or absf(rad_to_deg(dang)) < RING_TOL_DEG:
+		return target - p
+	var radial := Vector3(pr.x, pr.y, 0.0).normalized()
+	var tangent := Vector3(0, 0, 1).cross(radial).normalized()
+	var dz: float = target.z - p.z
+	return tangent * signf(dang) + Vector3(0, 0, clampf(dz / 20.0, -0.5, 0.5))
+
+
 # ---------------------------------------------------------------------------
 # Driving it
 # ---------------------------------------------------------------------------
@@ -353,6 +874,9 @@ func _physics_process(delta: float) -> void:
 	# where it lands. Stepping it a second time here would move the camera
 	# between the settle and the grab, which is the sort of thing that produces
 	# a frame nobody can reproduce.
+	if _done and _hold_left > 0 and _player != null:
+		_hold_tick(delta)
+		return
 	if _shooting or _done or plan.is_empty() or _player == null:
 		return
 	if _settled < settle_frames:
@@ -393,7 +917,7 @@ func _physics_process(delta: float) -> void:
 	# not get round a maze, and when the player track needs one the answer is a
 	# navmesh rather than a bigger angle here.
 	if _testing_arrival:
-		var dir := target - p
+		var dir := _bearing(p, target)
 		if _slide_frames > 0:
 			dir = dir.rotated(_player.body_up(), deg_to_rad(70.0 * _slide_sign))
 			_slide_frames -= 1
@@ -470,6 +994,22 @@ func _physics_process(delta: float) -> void:
 		_advance()
 
 
+## THE SEQUENCE IS NOT OVER WHILE SOMEBODY IS WALKING TOWARDS YOU.
+##
+## `--arrival-test` used to `quit(0)` on the frame the last step finished, which
+## was correct while the last step was the end of everything that could happen.
+## It is not any more: a refusal at the reader NOTIFIES SECURITY, and the pair
+## then has to turn out, cross the floor and do something. Quitting on the press
+## would kill the process between the cause and the effect and report the run as
+## complete -- a consequence that is only ever measured before it happens.
+##
+## COSTS NOTHING ON THE ADMIT PATH, which is why it is a default rather than a
+## flag: it is armed only when the runtime verdict was not `admitted`. A clean
+## card quits exactly as fast as it did before.
+@export var arrest_hold_frames: int = 1500
+var _hold_left := 0
+
+
 func _advance() -> void:
 	step_i += 1
 	_frames_here = 0
@@ -479,8 +1019,35 @@ func _advance() -> void:
 		return
 	_done = true
 	_verdict()
-	if _testing_arrival:
-		get_tree().quit(0)
+	if not _testing_arrival:
+		return
+	var a := _args()
+	if a.has("arrival-hold"):
+		arrest_hold_frames = maxi(0, int(a["arrival-hold"]))
+	var refused := (not _customs.is_empty()
+		and String(_customs.get("status", "")) != ADMITTED)
+	if refused and arrest_hold_frames > 0:
+		_hold_left = arrest_hold_frames
+		print("arrival: HOLDING %d frames after a %s verdict -- security has "
+			% [arrest_hold_frames, String(_customs.get("status", ""))]
+			+ "been notified and the run does not end before they arrive")
+		return
+	get_tree().quit(0)
+
+
+## Stand still while the consequence plays, then say what came of it.
+func _hold_tick(delta: float) -> void:
+	_hold_left -= 1
+	if _player != null:
+		_player.step(delta, Vector2.ZERO, false, false)
+	if _hold_left > 0:
+		return
+	var said := ""
+	if _interact != null and _interact.has_method("enforcement_report"):
+		said = String(_interact.call("enforcement_report"))
+	print("arrival: AFTER THE REFUSAL -- %s"
+		% (said if said != "" else "nothing in this build answered it"))
+	get_tree().quit(0)
 
 
 ## One line, and every number on it is a claim a player would notice.
@@ -491,8 +1058,18 @@ func _advance() -> void:
 ## the deck getting there. `outcome` is what the station decided about this
 ## person -- the thing the whole first ten minutes is for.
 func _verdict() -> void:
+	# `outcome` IS THE RUNTIME ANSWER AND NOTHING ELSE. It used to be
+	# `seq["status"]`, a string `station/arrival.py` wrote before the process
+	# started, printed identically whether or not the body ever reached the
+	# reader. It is now whatever the ten stations decided when the card went in,
+	# and `outcome_source` says which -- `runtime` when a reader was operated,
+	# `NOT-COMPUTED` when it was not. The baked answer is still printed, as
+	# `baked=`, because the two agreeing is worth seeing and the two disagreeing
+	# is worth seeing more.
+	var runtime := not _customs.is_empty()
 	print(("ARRIVAL who=%s species=%s ship=%s bay=%s hall=%s area=%s "
-		+ "entry=%s outcome=%s quarters=%s unit=%s "
+		+ "entry=%s outcome=%s outcome_source=%s baked=%s worst=%s "
+		+ "at_station=%s card_struck=%s port=%s quarters=%s unit=%s "
 		+ "steps=%d/%d reached=%d timeout=%d offbuild=%d "
 		+ "reader_used=%s path_m=%.2f offfloor=%d sidesteps=%d "
 		+ "interactables=%d") % [
@@ -500,13 +1077,37 @@ func _verdict() -> void:
 		seq.get("species", "-"), String(seq.get("ship", "-")).replace(" ", "_"),
 		seq.get("bay_label", "-"), seq.get("hall", "-"),
 		str(int(seq.get("area", 0))), seq.get("entry_class", "-"),
-		seq.get("status", "-"),
+		(String(_customs.get("status", "-")) if runtime else "NOT-COMPUTED"),
+		("runtime" if runtime else "none-the-reader-was-not-used"),
+		String(seq.get("status", "-")),
+		(String(_customs.get("worst", "-")) if runtime else "-"),
+		(str(int(_customs.get("at_station", 0))) if runtime else "-"),
+		("none" if _card_dropped.is_empty() else "+".join(_card_dropped)),
+		_agree,
 		seq.get("destination", {}).get("place", "-"),
 		String(seq.get("unit", "-")) if String(seq.get("unit", "")) != "" else "-",
 		plan.size(), _steps().size(), _reached.size(), _timeouts.size(),
 		offbuild.size(), str(_used_reader).to_lower(), _arr_path_m,
 		_arr_off_floor, _slides,
 		(0 if _interact == null else _interact.count())])
+	if runtime:
+		print("arrival: VERDICT %s -- \"%s\" (%s)"
+			% [String(_customs.get("status", "")).to_upper(),
+				String(_customs.get("verdict", "")),
+				String(_customs.get("disposal", ""))])
+		for r in _customs.get("rows", []):
+			print("arrival:   station %2d %-24s auth %d  %-6s [%s] %s"
+				% [int((r as Dictionary).get("n", 0)),
+					String((r as Dictionary).get("station", "")),
+					int((r as Dictionary).get("auth", 0)),
+					String((r as Dictionary).get("result", "")).to_upper(),
+					String((r as Dictionary).get("from", "?")),
+					String((r as Dictionary).get("detail", "")).left(96)])
+	else:
+		print("arrival: NO VERDICT -- the identicard reader was never operated, "
+			+ "so nothing decided anything. The sidecar's baked \"%s\" is NOT "
+				% String(seq.get("status", "-"))
+			+ "used as a substitute.")
 	print("arrival: closest approach per step -- %s" % ", ".join(_closest))
 	if not _timeouts.is_empty():
 		print("arrival: never reached %s" % ", ".join(_timeouts))
@@ -535,24 +1136,40 @@ func _make_card() -> void:
 	add_child(_card)
 
 
+## THE LINE ACROSS THE TOP OF THE FRAME, AND IT IS THE RUNTIME VERDICT.
+##
+## It used to return `seq["verdict"]` -- the baked sentence -- the moment the
+## last step finished, whether or not the reader had been touched. So a player
+## who walked past the reader and out of the hall was told "Cleared. Welcome to
+## Babylon 5." by a station that had never read their card. Now the sentence
+## exists only once something decided it, and a refusal says so on the frame the
+## reader says it: this is the surface `hud.gd` does not own, so the answer
+## reaches the player with no change to any file this session does not hold.
 func current_text() -> String:
+	if not _customs.is_empty():
+		var s := String(_customs.get("status", ""))
+		var line := String(_customs.get("verdict", ""))
+		if s != ADMITTED:
+			return "%s -- %s  (station %d, %s)" % [s.to_upper(), line,
+				int(_customs.get("at_station", 0)),
+				String(_customs.get("station", ""))]
+		return line
 	if _done:
-		return String(seq.get("verdict", ""))
+		return ""
 	if step_i < plan.size():
 		return String(plan[step_i]["step"].get("text", ""))
 	return ""
 
 
 func card_lines() -> Array:
-	## The nine fields, in the prop's order, with the prop's two states. Emitted
-	## by `resident.identicard()`; not re-ordered here.
+	## The nine fields, in the prop's order, with the prop's two states -- as the
+	## card READS NOW rather than as it was baked. A field `--card-drop` struck
+	## comes back EMPTY and the face draws it red with no colon, which is the
+	## whole point: the player can see the reason the reader refused them on the
+	## same panel as the refusal.
 	if not _used_reader:
 		return []
-	var out := []
-	for r in seq.get("identicard", []):
-		out.append([String(r.get("label", "")), String(r.get("value", "")),
-			String(r.get("state", ""))])
-	return out
+	return identicard_rows()
 
 
 ## Drawn rather than assembled from Control nodes, for `hud.gd`'s stated reason:
