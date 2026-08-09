@@ -82,6 +82,52 @@ and the collision we would bake describes a different shaft. That refuses
 rather than bakes a mismatched pair.
 
 ===========================================================================
+**5. THE PLACEMENT COMES FROM THE MANIFEST, NOT FROM A SECOND DERIVATION** --
+and this is the fix for the three columns that refused to bake in Windows
+build run 9.
+===========================================================================
+
+`column_site.site(rule="floor")` IS NOT A PURE FUNCTION OF THE SCHEMA. It picks
+the candidate z whose landing stack meets the most **baked deck cells on disk**,
+and it says so in its own header, including the chicken-and-egg: with no cells
+it falls back to `routes.column_z` and records `source: "routes.column_z (no
+baked deck cells on disk)"`.
+
+`tools/build_world.py`'s STEPS put `export_station.py` at **step 1** and
+`bake_station.py` -- the thing that creates those cells -- at **step 3**. On a
+fresh checkout `station/generated/scene/station/cells/` does not exist, so:
+
+    step 1  export_station  ->  no cells    ->  column_site falls back
+                                                yellow z=160, blue 7120, green 4000
+    step 3  bake_station    ->  126 deck cell sets appear
+    step 5  bake_columns    ->  cells now exist  ->  column_site MEASURES
+                                                yellow z=240, blue 7520, green 4720
+
+Same function, same arguments, two answers, because the world changed between
+them. This file then rebuilt the shaft at the *measured* z and compared it to a
+GLB built at the *fallback* z. Grey and red agree under both rules and baked;
+blue and green refused on triangle count; yellow's stack is congruent under a
+pure shift, so it refused on bounds -- `sits 80.000 m away` -- which is what
+guard 4 exists for and it was right.
+
+**So the placement is read from `station_manifest.json`**, the row
+`export_station.py` writes in the same loop iteration as the mesh. That is the
+only description on disk of what the shipped GLB actually IS, and rebuilding a
+shaft from anything else is a second opinion about a file that already exists.
+`--site-from=derive` restores the old behaviour and is the negative control.
+
+**The disagreement is not swallowed, it is reported.** When the manifest z and
+the z `column_site` derives today differ, the shipped mesh is at a provisional
+placement: the bake still runs (the collision matches the render, which is this
+file's actual job) and `main()` names the sector, both z values, and exits 1.
+Producing the artefact and reporting the defect are different things and run 5
+of the Windows build was lost to conflating them.
+
+Fixing it at the source is one line in a file this one does not own: either
+export the columns *after* `bake_station.py`, or re-run
+`tools/export_station.py` once the cells exist.
+
+===========================================================================
 THE BAKE SUCCEEDING AND THE COLUMNS CONNECTING ARE TWO DIFFERENT CLAIMS
 ===========================================================================
 
@@ -131,6 +177,10 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 SRC = os.path.join(ROOT, "station/generated/scene/station")
 CELLS = os.path.join(SRC, "cells")
 CELL_MANIFEST = os.path.join(ROOT, "station/generated/cell_manifest.json")
+# WHAT `export_station.py` SAYS IT BUILT. The only record on disk of the
+# (angle, z) each `column_<sector>.glb` was actually generated at, written in
+# the same loop iteration as the mesh. See `manifest_sites`.
+STATION_MANIFEST = os.path.join(SRC, "station_manifest.json")
 
 SECTORS = ("blue", "green", "grey", "red", "yellow")
 
@@ -173,22 +223,50 @@ def _work_list():
     return decks, rings, ang
 
 
-def columns(legacy=False):
+def manifest_sites(path=STATION_MANIFEST):
+    """-> {sector: row} from `station_manifest.json`'s `columns` list.
+
+    THE RECORD OF WHAT WAS BUILT, WHICH IS NOT THE SAME QUESTION AS WHERE IT
+    SHOULD GO. `export_station.py` writes this row in the same loop iteration
+    that writes `column_<sector>.glb`, carrying `angle_deg`, `z_m` and the
+    `z_source` string that says whether `column_site` measured or fell back.
+    Only `ok` rows are returned: a failed export wrote no mesh either.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            man = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    out = {}
+    for row in man.get("columns", ()):
+        key = str(row.get("key", ""))
+        if not key.startswith("column_") or not row.get("ok"):
+            continue
+        if "z_m" not in row or "angle_deg" not in row:
+            continue                    # a row from before 4t recorded neither
+        out[key[len("column_"):]] = row
+    return out
+
+
+def columns(legacy=False, site_source="manifest", cells_dir=CELLS):
     """-> [{sector, rings, angle_deg, z_m, glb}] for every exported column.
 
-    THE PLACEMENT COMES FROM `tools/column_site.py`, WHICH IS ALSO WHERE
-    `export_station.py` GETS IT, and that shared call is not a convenience.
-    `bake_one` REBUILDS the shaft with `spoke_way(..., angle_deg, z_m)` to
-    recover the collision half the export drops, and refuses if the rebuilt
-    render half does not match the shipped GLB triangle for triangle. So a
-    second opinion about z here does not merely mislabel the manifest -- it
-    makes every bake refuse, because it is rebuilding a different shaft.
+    THE PLACEMENT IS READ FROM `station_manifest.json`, NOT DERIVED A SECOND
+    TIME, and header section 5 is the whole argument. `bake_one` REBUILDS the
+    shaft with `spoke_way(..., angle_deg, z_m)` to recover the collision half
+    the export drops, and refuses if the rebuilt render half does not match the
+    shipped GLB triangle for triangle and bound for bound. So the z used here is
+    not a preference about where the column belongs -- it is a claim about what
+    the file on disk IS, and the only witness to that is the row the export
+    wrote beside it.
 
-    This used to be `min(z for ... )`, a verbatim copy of the expression
-    `export_station.py` used, with a comment saying it was not the same thing
-    as "a z where this sector has floor at the transit angle". It was right,
-    and copying the defect is how the two files stayed consistent while both
-    were wrong. `legacy=True` restores it for the negative control.
+    `column_site.site()` is still called, every time, on both paths: its answer
+    is carried as `derived_z_m` so a stale mesh can be NAMED rather than
+    silently baked. `site_source="derive"` uses that answer instead, which is
+    the behaviour that refused 3 of 5 columns in Windows build run 9 and is
+    kept as the negative control.
+
+    `legacy=True` additionally asks `column_site` for the pre-4t `min(z)` rule.
     """
     import column_site as CS                                     # noqa: PLC0415
     import interior as it                                        # noqa: PLC0415
@@ -196,6 +274,7 @@ def columns(legacy=False):
     _decks, rings, _ang = _work_list()
     nodes = RT.clusters()
     schema, profile = it.load()
+    rec = manifest_sites()
     by_sector = collections.defaultdict(set)
     for s, r in rings:
         by_sector[s].add(r)
@@ -203,12 +282,38 @@ def columns(legacy=False):
     for sec, rs in sorted(by_sector.items()):
         glb = os.path.join(SRC, "column_%s.glb" % sec)
         site = CS.site(schema, profile, nodes, sec, rings=sorted(rs),
+                       cells_dir=cells_dir,
                        rule="legacy" if legacy else "floor")
+        row = rec.get(sec)
+        if site_source == "manifest" and row is not None:
+            angle, z = float(row["angle_deg"]), float(row["z_m"])
+            src = "station_manifest.json (%s)" % str(row.get("z_source", "?"))
+        else:
+            angle, z = site["angle_deg"], site["z_m"]
+            src = ("column_site, re-derived now (%s)" % site["source"]
+                   if row is None else
+                   "column_site, re-derived now -- --site-from=derive")
         out.append({
             "sector": sec,
             "rings": sorted(rs),
-            "angle_deg": site["angle_deg"],
-            "z_m": site["z_m"],
+            "angle_deg": angle,
+            "z_m": z,
+            "placement_source": src,
+            "have_manifest_row": row is not None,
+            # WHAT THE MESH ON DISK IS, kept separately from what we chose to
+            # rebuild at, so `--site-from=derive` cannot make the staleness
+            # report compare a number with itself.
+            "manifest_z_m": None if row is None else float(row["z_m"]),
+            # WHERE THIS COLUMN WOULD GO IF IT WERE BUILT TODAY. Kept beside
+            # the placement rather than instead of it, because the gap between
+            # the two IS the defect and a single number cannot express it.
+            "derived_z_m": site["z_m"],
+            "derived_angle_deg": site["angle_deg"],
+            "derived_source": site["source"],
+            "stale": (row is not None
+                      and (abs(float(row["z_m"]) - site["z_m"]) > 1e-6
+                           or abs(float(row["angle_deg"])
+                                  - site["angle_deg"]) > 1e-6)),
             "site": site,
             "glb": glb,
             "have_glb": os.path.exists(glb),
@@ -423,6 +528,14 @@ def bake_one(col, work, timeout=600, quiet=True):
     # connecting, and the player gets a render/collision split with a green
     # gate over it. The other columns refuse only because their landing COUNT
     # happens to change; the guard was audited where it works.
+    #
+    # THE CAUSE OF THAT 80 m IS NOW KNOWN AND THE GUARD IS UNCHANGED. It was
+    # not a schema move: `column_site.site` measures against baked deck cells,
+    # `build_world.py` exports the columns two steps BEFORE those cells exist,
+    # and this file used to re-derive the placement after they did. Header
+    # section 5. The placement now comes from `station_manifest.json`, so a
+    # matched pair reaches this guard and a mismatch here means the manifest
+    # and the mesh disagree -- which is a thing worth refusing over.
     #
     # `box` was already computed above and thrown away. This compares it.
     if V:
@@ -641,7 +754,7 @@ def deck_cell_rows(cells_dir=CELLS):
     return out
 
 
-def verify(cells_dir=CELLS, near_m=NEAR_M, sector=None):
+def verify(cells_dir=CELLS, near_m=NEAR_M, sector=None, dz=0.0):
     """Does each column's landings sit where a deck a player can walk sits?
 
     THE MEASUREMENT IS PER LANDING, NOT PER COLUMN, because a column is a
@@ -652,6 +765,12 @@ def verify(cells_dir=CELLS, near_m=NEAR_M, sector=None):
 
     Returns (rows, bad) -- `bad` is the list of columns with no landing within
     `near_m` of any deck cell, and is what the exit code is taken from.
+
+    `dz` shifts every landing along the axis before scoring and is used by
+    `_selftest` and by nothing else. It is a parameter rather than a copy of
+    this loop in the test because a control that runs a reimplementation of the
+    measurement proves the reimplementation works; the verdict has to come out
+    of the function that produces the verdict.
     """
     decks = deck_cell_rows(cells_dir)
     rows, bad = [], []
@@ -664,7 +783,7 @@ def verify(cells_dir=CELLS, near_m=NEAR_M, sector=None):
         col = man.get("column", {})
         mine = man.get("cells", [])
         a = math.radians(float(col.get("angle_deg", 0.0)))
-        z = float(col.get("z_m", 0.0))
+        z = float(col.get("z_m", 0.0)) + dz
         near, worst, best = 0, 0.0, (1e18, "")
         for r in col.get("landing_r_m", []):
             pt = (r * math.cos(a), r * math.sin(a), z)
@@ -810,7 +929,45 @@ def _selftest():
         bad.append("point 3,4 off a box measured %.3f, want 5"
                    % _point_gap((4.0, 5.0, 0.5), a))
 
-    # 4. IT DISCRIMINATES, on the station's own baked cells.
+    # 4. THE PLACEMENT USED TO REBUILD A SHAFT DESCRIBES THE SHIPPED MESH.
+    #    The check that would have caught Windows build run 9 without a bake,
+    #    a Godot, or a GPU: for every column with a mesh on disk, the z the
+    #    manifest records must be the z the GLB is actually at. It is the same
+    #    comparison `bake_one`'s bounds guard makes, hoisted to where it costs
+    #    a JSON read instead of a minute of `spoke_way`.
+    #
+    #    AND IT IS RUN BOTH WAYS. `--site-from=derive` against an empty floor
+    #    table reproduces run 9 exactly -- `column_site` falls back to
+    #    `routes.column_z` and hands back yellow z=160 for a mesh at z=240 --
+    #    so the assertion below is asserted to FAIL on that path. A placement
+    #    check that cannot fail is the defect this project keeps producing.
+    for c in columns():
+        if not c["have_glb"] or not c["have_manifest_row"]:
+            continue
+        n += 1
+        z_glb = glb_bounds(c["glb"])[2][2]
+        mid = 0.5 * (z_glb[0] + z_glb[1])
+        if abs(mid - c["z_m"]) > 2.0:
+            bad.append("column_%s.glb sits at z=%.1f and %s says it was built "
+                       "at z=%.1f -- rebuilding it here would describe a "
+                       "different shaft"
+                       % (c["sector"], mid,
+                          os.path.basename(STATION_MANIFEST), c["z_m"]))
+    n += 1
+    off = []
+    for c in columns(site_source="derive", cells_dir=os.devnull + "_nope"):
+        if not c["have_glb"]:
+            continue
+        mid = 0.5 * sum(glb_bounds(c["glb"])[2][2])
+        if abs(mid - c["z_m"]) > 2.0:
+            off.append("%s %.0f vs glb %.0f" % (c["sector"], c["z_m"], mid))
+    if not off:
+        bad.append("with no floor table and --site-from=derive, every column "
+                   "should be rebuilt at column_site's routes.column_z "
+                   "fallback and disagree with the shipped mesh -- none did, "
+                   "so this check cannot fail and proves nothing")
+
+    # 5. IT DISCRIMINATES, on the station's own baked cells.
     decks = deck_cell_rows()
     if not decks:
         print("bake_columns selftest: %d box checks passed; NO BAKED DECK "
@@ -824,24 +981,63 @@ def _selftest():
               "sets baked yet, so the discrimination check could not run "
               "-- run the bake first" % n)
         return 1
-    for sec in ("grey", "red"):
-        if sec not in by:
-            continue
-        n += 1
-        if by[sec]["box_gap_m"] > 0.0:
-            bad.append("%s lands on deck geometry (measured 0.00 m before "
-                       "this test existed) and now measures %.2f m"
-                       % (sec, by[sec]["box_gap_m"]))
-    for sec, want in (("blue", 70.0), ("green", 100.0)):
-        if sec not in by:
-            continue
-        n += 1
-        if by[sec]["box_gap_m"] < want:
-            bad.append("%s must NOT touch a deck -- it is %.1f m of vacuum "
-                       "from the nearest baked deck cell, and a proximity test "
-                       "that cannot say so reports five connected columns "
-                       "(measured %.2f m)"
-                       % (sec, want, by[sec]["box_gap_m"]))
+    # THE OLD FORM OF THIS CHECK NAMED FOUR SECTORS AND TWO DISTANCES --
+    # "grey and red must measure 0.00 m, blue must be 70 m of vacuum away and
+    # green 100 m" -- taken from the tree as it stood before session 4t moved
+    # the placement into `column_site.py`. Those numbers were a description of
+    # a DEFECT, and when the defect was fixed the assertion started failing for
+    # being right: blue and green now land on floor and measure 0.00 m, so the
+    # selftest read FAILED on a station that had just been improved. A check
+    # written against the current content is a check that expires; this one is
+    # written against the measurement instead and cannot.
+    #
+    # BOTH HALVES, BECAUSE EITHER ALONE IS SATISFIED BY A BROKEN MEASUREMENT.
+    # A proximity test stuck at 0 passes "something touches"; one stuck at
+    # infinity passes "something is far". So: at least one real column must
+    # measure 0, AND the same column displaced 200 m up the axis -- the axis
+    # these columns were actually wrong on -- must measure at least 190.
+    n += 1
+    touching = [r["sector"] for r in rows if r["box_gap_m"] <= 0.0]
+    if not touching:
+        bad.append("no baked column touches deck geometry at all (%s) -- a "
+                   "proximity test that never returns 0 reports every column "
+                   "as standing clear and cannot be trusted when it does"
+                   % ", ".join("%s %.1f" % (r["sector"], r["box_gap_m"])
+                               for r in rows))
+    # AND THE DISPLACED FORM IS SCORED BY `verify` ITSELF, ON THE VERDICT AND
+    # NOT ON A DISTANCE. Two earlier shapes of this control were both wrong in
+    # ways worth keeping, because each looked right:
+    #
+    #   min over every deck cell, 200 m of z, expect >= 190 m
+    #       -> 0.0 m on blue, green and yellow. Correct, and useless: the
+    #          station is 8 km of axis with floor at hundreds of z values, so a
+    #          column shoved 200 m up the spine lands on SOMEBODY ELSE'S deck.
+    #   the same, against the one cell it had been touching
+    #       -> 77-166 m, still under the threshold, because a deck cell is
+    #          itself ~120 m long in z. A distance threshold here is a number
+    #          about cell size, not about the measurement.
+    #
+    # The question the file actually answers is "does this landing meet floor",
+    # so the control asks that: displace and the verdict must flip to STANDS
+    # CLEAR on every column.
+    #
+    # **AND THE DISPLACEMENT HAS TO LEAVE THE STATION, WHICH IS A FINDING ABOUT
+    # THE MEASUREMENT AND NOT A CHOICE OF CONSTANT.** Swept: +200 m flips 2 of
+    # 5, +600 m flips 2, +1200 m flips 2, +20000 m flips 5. Yellow reads
+    # `nearest_landing 0.0 m` at every one of those, because its inner landing
+    # is at r=30.5 -- on the axial spine, whose cell AABB spans most of the
+    # 8,047 m of axis. **A point-to-AABB test cannot resolve z near the axis**,
+    # so `landings_near` is a weaker statement there than it looks, and a
+    # reader of a CONNECTS verdict on an axis-hugging landing should know it.
+    # 20 km is past both ends of the station, so nothing can be near anything.
+    n += 1
+    moved_rows, moved_bad = verify(dz=20000.0)
+    still = [r["sector"] for r in moved_rows if r["landings_near"]]
+    if len(moved_bad) != len(moved_rows) or still:
+        bad.append("with every landing displaced 200 m along z, %s still "
+                   "report landings on a deck -- the verdict does not depend "
+                   "on where the column is, so CONNECTS means nothing"
+                   % (", ".join(still) or "some columns"))
     if bad:
         print("bake_columns selftest FAILED on %d:" % len(bad))
         for b in bad:
@@ -867,12 +1063,31 @@ def main(argv=None):
     ap.add_argument("--verify", action="store_true",
                     help="measure the baked columns against the baked decks "
                          "and bake nothing. Exits 1 if a column joins nothing")
+    ap.add_argument("--check-mesh", action="store_true",
+                    help="does each column_<sector>.glb sit at the z "
+                         "station_manifest.json says it was built at, and is "
+                         "that still the z column_site would choose? Seconds, "
+                         "no Godot, no spoke_way, no bake -- this is the check "
+                         "that would have caught Windows build run 9 before "
+                         "45 minutes of export")
     ap.add_argument("--gate-placement", action="store_true",
                     help="score where the columns WILL be built, without a "
                          "bake or a mesh. Exits 1 if a column joins nothing")
     ap.add_argument("--legacy", action="store_true",
                     help="with --gate-placement, score the pre-4t rule "
                          "(min z-cluster). The negative control; it FAILS")
+    ap.add_argument("--site-from", choices=("manifest", "derive"),
+                    default="manifest",
+                    help="where the (angle, z) to rebuild each shaft at comes "
+                         "from. 'manifest' is what export_station RECORDED "
+                         "building the shipped glb at; 'derive' re-derives it "
+                         "from column_site against whatever deck cells are on "
+                         "disk NOW, which is the pre-fix behaviour and the "
+                         "negative control")
+    ap.add_argument("--cells", default=CELLS,
+                    help="deck cell directory column_site measures against. "
+                         "Point it at an empty path to reproduce the state a "
+                         "fresh checkout is in at build step 1")
     ap.add_argument("--near", type=float, default=NEAR_M,
                     help="how near a landing must be to a deck cell to count "
                          "as joined (default %.1f m)" % NEAR_M)
@@ -887,6 +1102,61 @@ def main(argv=None):
     if a.selftest:
         return _selftest()
 
+    if a.check_mesh:
+        # TWO QUESTIONS, AND THEY FAIL DIFFERENTLY ON PURPOSE.
+        #   mismatch  the manifest does not describe the file beside it. Nobody
+        #             can rebuild that shaft's collision; the bake will refuse.
+        #   stale     the manifest and the file agree, and both were decided
+        #             before the deck cells existed. The bake works and the
+        #             lift may open onto nothing.
+        rows = columns(cells_dir=a.cells)
+        if a.sector:
+            rows = [c for c in rows if c["sector"] == a.sector]
+        print("\n  DOES EACH COLUMN MESH SIT WHERE ITS MANIFEST SAYS?\n")
+        print("    %-7s %9s %9s %9s  %s"
+              % ("sector", "glb z", "manifest", "today", "verdict"))
+        mismatch, stale = [], []
+        for c in rows:
+            if not c["have_glb"]:
+                print("    %-7s %9s %9s %9s  NO MESH"
+                      % (c["sector"], "-", "-", "-"))
+                mismatch.append(c["sector"])
+                continue
+            zb = glb_bounds(c["glb"])[2][2]
+            mid = 0.5 * (zb[0] + zb[1])
+            if not c["have_manifest_row"]:
+                verdict = "NO MANIFEST ROW"
+                mismatch.append(c["sector"])
+            elif abs(mid - c["manifest_z_m"]) > 2.0:
+                verdict = "MANIFEST DOES NOT DESCRIBE THE MESH"
+                mismatch.append(c["sector"])
+            elif c["stale"]:
+                verdict = ("STALE -- built %.0f m from where it would go now"
+                           % abs(c["derived_z_m"] - c["manifest_z_m"]))
+                stale.append(c["sector"])
+            else:
+                verdict = "ok"
+            print("    %-7s %9.0f %9s %9.0f  %s"
+                  % (c["sector"], mid,
+                     "-" if c["manifest_z_m"] is None
+                     else "%.0f" % c["manifest_z_m"],
+                     c["derived_z_m"], verdict))
+        if mismatch:
+            print("\n  %d MESH(ES) NOT DESCRIBED BY THE MANIFEST: %s -- the "
+                  "bake cannot rebuild their\n  collision and will refuse. Run "
+                  "tools/export_station.py." % (len(mismatch),
+                                                ", ".join(mismatch)))
+        if stale:
+            print("\n  %d MESH(ES) AT A PROVISIONAL PLACEMENT: %s. "
+                  "tools/build_world.py exports the\n  columns at step 1 and "
+                  "bakes the deck cells column_site measures against at step "
+                  "3,\n  so a fresh checkout places them before it can know "
+                  "where the floor is." % (len(stale), ", ".join(stale)))
+        if not mismatch and not stale:
+            print("\n  every column mesh sits where its manifest says, at the "
+                  "z column_site would choose today")
+        return 1 if (mismatch or stale) else 0
+
     if a.gate_placement:
         # THE OTHER HALF OF `--verify`, AND THEY ARE NOT THE SAME QUESTION.
         # `--verify` scores the cells that were BAKED, so it cannot answer
@@ -898,7 +1168,7 @@ def main(argv=None):
         return CS.main(["--gate", "--report"]
                        + (["--legacy"] if a.legacy else [])
                        + (["--sector", a.sector] if a.sector else [])
-                       + ["--near", str(a.near)])
+                       + ["--cells", a.cells, "--near", str(a.near)])
 
     if a.verify:
         rows, bad = verify(near_m=a.near, sector=a.sector or None)
@@ -909,7 +1179,8 @@ def main(argv=None):
         print_verify(rows, bad, a.near, len(deck_cell_rows()))
         return 1 if bad else 0
 
-    work = list(columns(legacy=a.legacy))
+    work = list(columns(legacy=a.legacy, site_source=a.site_from,
+                        cells_dir=a.cells))
     if a.sector:
         work = [c for c in work if c["sector"] == a.sector]
     if not work:
@@ -917,8 +1188,20 @@ def main(argv=None):
         return 1
 
     print("\nBAKE THE TRANSIT COLUMNS\n")
-    print("  %d column(s); %d have a mesh on disk"
-          % (len(work), sum(1 for c in work if c["have_glb"])))
+    print("  %d column(s); %d have a mesh on disk; placement from %s"
+          % (len(work), sum(1 for c in work if c["have_glb"]), a.site_from))
+    print("\n    %-7s %9s %9s %9s  %s"
+          % ("sector", "angle", "z (build)", "z (today)", "placement source"))
+    for c in work:
+        print("    %-7s %9.2f %9.0f %9.0f  %s%s"
+              % (c["sector"], c["angle_deg"], c["z_m"], c["derived_z_m"],
+                 c["placement_source"][:58],
+                 "   <- STALE MESH" if c["stale"] else ""))
+    if not any(c["have_manifest_row"] for c in work):
+        print("\n    no station_manifest.json column rows -- falling back to "
+              "column_site for every one of them.\n    Run "
+              "tools/export_station.py; a placement derived here is a second "
+              "opinion about a mesh that already exists.")
     if a.dry_run:
         for c in work:
             print("     column_%-7s rings %s at %.2f deg, z %.1f%s%s"
@@ -983,10 +1266,45 @@ def main(argv=None):
           % os.path.relpath(CELLS, ROOT))
 
     # AND THE OTHER QUESTION, ALWAYS, because they are not the same question.
+    # `--cells` moves the floor table `column_site` measures against, not the
+    # place cells are written to and not the table this scores them on; the
+    # baked columns are always in CELLS and are always judged against the decks
+    # beside them.
     rows, bad = verify(near_m=a.near)
     if rows:
         print_verify(rows, bad, a.near, len(deck_cell_rows()))
-    return 0 if len(good) == len(work) else 1
+
+    # AND A THIRD, WHICH THE OTHER TWO CANNOT ASK. `--verify` scores the cells
+    # that exist; the placement gate scores where a column WOULD go. Neither
+    # notices that the mesh on disk was built at a z nobody would choose today,
+    # because both are right about their own question -- the exact shape of
+    # defect `column_site.py` was written to close, arriving one level up.
+    #
+    # THE ARTEFACTS ARE PRODUCED AND THE DEFECT IS REPORTED. Run 5 of the
+    # Windows build shipped nothing because this file refused; refusing is not
+    # what protects a player, matching the collision to the render is, and that
+    # is done above. This is the honest exit code over the top of it.
+    stale = [c for c in work if c["stale"]]
+    if stale:
+        print("\n  %d COLUMN MESH(ES) ARE AT A PROVISIONAL PLACEMENT:" % len(stale))
+        for c in stale:
+            print("    column_%-7s mesh built at z=%.0f, per %s"
+                  % (c["sector"], c["manifest_z_m"],
+                     os.path.basename(STATION_MANIFEST)))
+            print("    %-14s measured today: z=%.0f -- %.0f m away, %s"
+                  % ("", c["derived_z_m"],
+                     abs(c["derived_z_m"] - c["manifest_z_m"]),
+                     c["derived_source"]))
+            print("    %-14s rebuilt here at z=%.0f, from %s"
+                  % ("", c["z_m"], c["placement_source"][:70]))
+        print("    The collision baked above MATCHES the render mesh, which is "
+              "this file's job. What is\n    wrong is upstream: "
+              "tools/build_world.py runs tools/export_station.py at step 1 and\n"
+              "    tools/bake_station.py at step 3, so the export places its "
+              "columns before the deck\n    cells column_site measures against "
+              "exist. Re-run tools/export_station.py now that\n    they do, "
+              "then this file with --force.")
+    return 0 if (len(good) == len(work) and not stale) else 1
 
 
 if __name__ == "__main__":

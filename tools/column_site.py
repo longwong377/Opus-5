@@ -129,8 +129,12 @@ sys.path.insert(0, os.path.join(ROOT, "tools"))
 CELLS = os.path.join(ROOT, "station/generated/scene/station/cells")
 
 # How near a landing has to be to a deck cell before it counts as joined.
-# THE SAME NUMBER `tools/bake_columns.py` GATES ON, imported rather than
-# restated so the placement and the verification cannot drift apart. A cell
+# THE SAME NUMBER `tools/bake_columns.NEAR_M` GATES ON. This comment used to
+# say "imported rather than restated so the placement and the verification
+# cannot drift apart" and the line below is a literal -- it IS restated, and a
+# comment claiming a safety property the code does not have is worse than no
+# comment. `_selftest` asserts the two are equal instead, which is the property
+# that was wanted and can actually fail. A cell
 # AABB is the bounding box of its CONTENT and a portal is ~2.2 m wide, so a
 # landing that opens onto a deck is a doorway's worth from that deck's box.
 NEAR_M = 5.0
@@ -512,6 +516,10 @@ def _selftest():
     check("a corner point is the diagonal",
           abs(point_gap((13, 14, 5), b) - 5.0) < 1e-9,
           "3-4-5 = %.3f" % point_gap((13, 14, 5), b))
+
+    import bake_columns as BC                                    # noqa: PLC0415
+    check("NEAR_M matches the number bake_columns gates on",
+          BC.NEAR_M == NEAR_M, "%.1f vs %.1f" % (NEAR_M, BC.NEAR_M))
 
     boxes = floor_boxes()
     n = sum(len(v) for v in boxes.values())

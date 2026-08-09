@@ -569,7 +569,42 @@ func _configure_walk(w: Node) -> void:
 	# the export var would have stayed "" and the occluder would never have
 	# loaded. That is the same defect the chain exists to catch, hiding
 	# underneath the chain.
-	w.set("occluder_path", String(_boot.get("occluder", "")))
+	#
+	# AND SETTING IT WAS STILL NOT ENOUGH, WHICH IS THE POINT OF THE PRINT
+	# BELOW. The key existed and carried "" for six sessions, because the only
+	# occluder anyone had ever generated landed in `scene/deck/` -- the
+	# one-cluster walk-test fixture -- while `boot.py::preferred_deck_dir`
+	# correctly boots from `scene/station/`, where `tools/export_station.py`
+	# wrote no occluder at all. `walk.gd::_load_occluder` then returned in
+	# silence, because "a missing file is not an error", and 24% of submitted
+	# geometry went uncollected with every gate green.
+	#
+	# So this says WHICH MODE IT IS RUNNING IN, on every run, in the engine's
+	# own output -- the rule this project already wrote down for any tool that
+	# can substitute a lesser mode for the one it was asked for. It is four
+	# lines and it is the only thing here that could have caught it: a static
+	# scan can see a caller exists, and only running the thing shows what the
+	# caller was handed. `boot.py::occluder` supplies `occluder_why`.
+	var occ := String(_boot.get("occluder", ""))
+	if occ == "":
+		print("main: OCCLUDER NOT SET -- rendering with NO occlusion culling. "
+			+ "boot.json says: %s" % String(_boot.get("occluder_why",
+				"no reason recorded; run `python3 station/boot.py`")))
+	elif not FileAccess.file_exists(occ):
+		print("main: OCCLUDER MISSING -- boot.json names %s and it is not " % occ
+			+ "on this machine; rendering with NO occlusion culling")
+		occ = ""
+	elif not ProjectSettings.get_setting(
+			"rendering/occlusion_culling/use_occlusion_culling", false):
+		# THE SECOND RUNG, CHECKED RATHER THAN ASSUMED. Godot 4.4's own default
+		# for this key is FALSE, measured; an OccluderInstance3D in a project
+		# without it is inert geometry that costs memory and culls nothing.
+		print("main: occluder %s WILL BE IGNORED -- " % occ.get_file()
+			+ "rendering/occlusion_culling/use_occlusion_culling is off")
+	else:
+		print("main: occluder %s (%d bytes), occlusion culling ON"
+			% [occ.get_file(), FileAccess.get_file_as_bytes(occ).size()])
+	w.set("occluder_path", occ)
 	# WHERE A CARD IS READ ON THE WAY IN -- `place -> {need, name, why}` for the
 	# 98 of 129 register places that check one. `consequence.certain_check` has
 	# carried the six-rung ladder since P1-G2 and had NO RUNTIME CALLER: the

@@ -416,6 +416,58 @@ def sidecar(stem, suffix, deck_dir=None):
     return p if os.path.exists(p) else ""
 
 
+def occluder(stem, deck_dir=None, out=print):
+    """The deck's occluder, AND WHAT WAS LOOKED FOR WHEN THERE ISN'T ONE.
+
+    THE SILENT "" IS THE WHOLE DEFECT AND IT IS WHY THIS FUNCTION EXISTS.
+    `sidecar()` returns "" for an absent file, which is right for a dialogue
+    sidecar and catastrophic for this one: `boot.json` shipped
+    `"occluder": ""`, `main.gd` passed "", `walk.gd::_load_occluder` returned
+    with no print, and `station/budget.py::occlusion_chain` -- a STATIC SOURCE
+    SCAN that can see a caller exists but not what its argument holds -- went
+    on printing `PASS occluder reaches the engine`. Worth 24% of submitted
+    geometry, uncollected, for as long as nobody launched the thing.
+
+    The cause was a DIRECTORY, not a missing generator. The only occluder that
+    has ever been written lands in `scene/deck/`, because
+    `tools/export_scene.py::write_deck_occluder` is called from its `--mode=deck`
+    path alone -- and that directory is `walkable.py`'s one-cluster walk-test
+    fixture. `preferred_deck_dir()` correctly prefers `scene/station/`, the
+    shipped export, and `tools/export_station.py` never wrote an occluder there.
+    Run `python3 station/occluders.py --emit` to fill it.
+
+    Returns (path_or_empty, why). `why` is written into the manifest as
+    `occluder_why` and printed on every build, because a tool that can
+    substitute a lesser mode for the one asked for has to say which one it used
+    on EVERY run, not only when someone goes looking.
+    """
+    dd = deck_dir or preferred_deck_dir()
+    p = os.path.join(dd, stem + "_occ.tscn")
+    if os.path.exists(p):
+        why = "%s (%.0f kB)" % (os.path.relpath(p, ROOT),
+                                os.path.getsize(p) / 1024.0)
+        out("  occluder: %s" % why)
+        return p, why
+    # WHERE ELSE IT COULD BE, named rather than guessed at by the reader. A
+    # deck built into the other directory is a DIFFERENT BUILD of the same
+    # name -- one z-cluster of it -- so this is reported and NOT silently used.
+    other = [d for d in (STATION_DIR, DECK_DIR) if d != dd]
+    near = [os.path.relpath(os.path.join(d, stem + "_occ.tscn"), ROOT)
+            for d in other
+            if os.path.exists(os.path.join(d, stem + "_occ.tscn"))]
+    why = ("NONE: looked for %s and it is not there"
+           % os.path.relpath(p, ROOT))
+    if near:
+        why += ("; there IS one at %s, which is a DIFFERENT BUILD of this deck "
+                "(the walk-test fixture is one z-cluster) and is not used"
+                % ", ".join(near))
+    why += "; run `python3 station/occluders.py --emit` to write one"
+    out("  occluder: %s" % why)
+    out("            the deck renders identically without it, only slower -- "
+        "every triangle behind every wall is submitted")
+    return "", why
+
+
 # ---------------------------------------------------------------------------
 # THE CELL SET -- found, measured, and named. Never authored.
 # ---------------------------------------------------------------------------
@@ -908,16 +960,21 @@ def build(stem=None, hour=None, deck_dir=None, single_deck=False):
             cells["why"] = ((cells["why"] + "; ") if cells["why"] else "") + (
                 "the spawn %.1f,%.1f,%.1f is in none of the %d cells"
                 % (spawn[0], spawn[1], spawn[2], cells["count"]))
+    _occ_path, _occ_why = occluder(stem, dd)
     return {
         "deck": stem,
         "glb": os.path.join(dd, stem + ".glb"),
         "collision": col_glb,
         "interact": sidecar(stem, "_interact.json", dd),
         # The deck's occlusion geometry, written by
-        # `export_scene.write_deck_occluder`. `sidecar` returns "" when the file
-        # is absent, and walk.gd treats "" as "render without it" -- a deck that
-        # has never been exported must still be walkable.
-        "occluder": sidecar(stem, "_occ.tscn", dd),
+        # `station/occluders.py --emit`. walk.gd treats "" as "render without
+        # it" -- a deck that has never been exported must still be walkable --
+        # so the ONLY thing standing between an empty string here and 24% of
+        # submitted geometry going uncollected for six sessions is that both
+        # this file and the engine now SAY which of the two happened. See
+        # `occluder()`; `occluder_why` is the sentence.
+        "occluder": _occ_path,
+        "occluder_why": _occ_why,
         # WHERE A CARD IS READ ON THE WAY IN, and what rung it wants.
         # `consequence.certain_check` is P-05's boundary as a predicate and it
         # had NO RUNTIME CALLER -- visa revocation was reachable in Python and

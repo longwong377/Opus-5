@@ -431,12 +431,89 @@ GROUND_TOL_M = 0.002
 # relaxed until it could not fail at all. Named, not excluded silently.
 POSED_ON_FURNITURE = ("sit", "sleep")
 
+# ...AND THE ONE BODY WHOSE LOWEST VERTEX IS NOT A FOOT. Session 4u: 16 bodies
+# came back over the 2 mm bar, by 5.6 to 27.2 mm, and every one of them was a
+# ROBED Minbari -- `minbari1` and `minbari2`, whose mesh has a `skirt` part and
+# no `leg` and no `foot`, because `costume.ATTACHMENTS["skirt"]`'s own note says
+# the robe "REPLACES both legs and both feet".
+#
+# THE BODY IS NOT IN THE AIR AND THE MEASUREMENT PROVES IT THE OTHER WAY ROUND.
+# `costume._skirt` builds the hem at `SKIRT_HEM_YF * stature` above the origin
+# -- 50.8 mm on the 1.695 m variant and 55.5 mm on the 1.851 m one, and the bind
+# pose measures +0.05084 and +0.05553, to five figures. So the worst of the 16 is
+# its hem sitting 24 mm BELOW where the garment puts it at rest, not 27 mm above
+# the deck. A robe that touched the deck would plough it.
+#
+# WHY THE OBVIOUS RULE IS THE WRONG ONE, and this is the part worth keeping.
+# "Skip a body whose rig has no `foot` part" selects these 16 -- and it also
+# selects every GAIM, who have `suit_leg` instead of `leg` and no `foot` at all
+# because they are a sealed environment suit. Measured: a blanket no-foot skip
+# stops gating 150 of 1,260 bodies, 90 of them Gaim who stand on their suit legs
+# at min_y exactly 0.00000 and for whom the strict 2 mm bar is right. An
+# exclusion that stops asking the question of 90 bodies in order to excuse 60 is
+# how a gate stops being able to fail.
+#
+# So nothing is excluded. A body that stands on a HEM is measured against the
+# clearance that hem was BUILT with, imported from the module that builds it
+# rather than copied here, and it can still fail: the bar for the worst of the
+# 16 is 57.5 mm and it measures 27.2. `--induce-floater` is the control.
+HEM_PART = "skirt"
 
-def stats(out_dir=DECKDIR, out=print):
-    """Triangles per rung and the grounding ledger. Returns (rows, floaters)."""
+# What `--induce-floater` adds to every hem-standing body, and it is chosen to
+# be unambiguous rather than marginal: 0.25 m is a robe hovering at knee height.
+INDUCED_FLOAT_M = 0.25
+
+_HEM_CACHE = {}
+
+
+def hem_allowance(token, lod):
+    """How high this body's lowest vertex is allowed to start, above `GROUND_TOL_M`.
+
+    0.0 for anybody who stands on feet, legs or suit legs -- which is everybody
+    but the robed. For a body whose mesh carries a `skirt` part it is the hem
+    clearance `costume._skirt` gave it, from that module's own constant.
+
+    IT ASKS THE GENERATOR, not a table written beside it. `bodies_in` reads the
+    baked glb and knows only a name; the question "what is this body standing
+    on" is answerable only where the body is built.
+    """
+    if (token, lod) in _HEM_CACHE:
+        return _HEM_CACHE[(token, lod)]
+    sys.path.insert(0, os.path.join(ROOT, "station", "npc"))
+    import populace as P                                         # noqa: PLC0415
+    import animation as A                                        # noqa: PLC0415
+    import costume as C                                          # noqa: PLC0415
+    base, npc_id = P.crowd_figure(token)
+    try:
+        rg = A.rig(base, npc_id, lod)
+        parts = {p[0] for p in rg.parts}
+        v = (C.SKIRT_HEM_YF * rg.skel.stature_m
+             if HEM_PART in parts else 0.0)
+    except Exception:                                            # noqa: BLE001
+        # A body that cannot be rigged gets NO allowance. The strict bar is the
+        # safe direction: it can only produce a failure to look at.
+        v = 0.0
+    _HEM_CACHE[(token, lod)] = v
+    return v
+
+
+def split_body_key(key):
+    """`crowd_<token>_<lod>_<slot>` -> (token, lod, slot)."""
+    tok, lod, slot = key[len("crowd_"):].rsplit("_", 2)
+    return tok, int(lod), int(slot)
+
+
+def stats(out_dir=DECKDIR, out=print, induce=0.0):
+    """Triangles per rung and the grounding ledger. Returns (rows, floaters).
+
+    `induce` lifts every HEM-STANDING body by that many metres before the
+    comparison -- the negative control for the allowance `hem_allowance` grants
+    them. It must make them fail; if it does not, the allowance has stopped
+    being a bar and become an exemption.
+    """
     import populace as P
     slots = {P.SLOT_OF[k] for k in POSED_ON_FURNITURE if k in P.SLOT_OF}
-    rows, floaters = [], []
+    rows, floaters, hemmed = [], [], []
     for _hi, lod in P.crowd_ladder():
         p = os.path.join(out_dir, "crowd_lod%d.glb" % lod)
         if not os.path.exists(p):
@@ -446,7 +523,15 @@ def stats(out_dir=DECKDIR, out=print):
         tri = sum(t for t, _ in bodies.values())
         ground = [(k, y) for k, (_t, y) in bodies.items()
                   if int(k.rsplit("_", 1)[-1]) not in slots]
-        bad = [(k, y) for k, y in ground if y > GROUND_TOL_M]
+        bad = []
+        for k, y in ground:
+            tok, klod, _slot = split_body_key(k)
+            hem = hem_allowance(tok, klod)
+            if hem > 0.0:
+                y += induce
+                hemmed.append((k, y, hem))
+            if y > GROUND_TOL_M + hem:
+                bad.append((k, y))
         floaters.extend(bad)
         ys = sorted(y for _k, y in ground)
         rows.append((lod, tri, len(bodies), os.path.getsize(p)))
@@ -455,6 +540,13 @@ def stats(out_dir=DECKDIR, out=print):
             % (lod, tri, len(bodies), os.path.getsize(p) / 1e6,
                ys[len(ys) // 2], ys[-1], GROUND_TOL_M * 1000,
                len(bad), len(ground)))
+    # THE ALLOWANCE IS REPORTED EVERY RUN, with its own worst case beside its own
+    # bar, so nobody has to take on trust that it is not swallowing a defect.
+    if hemmed:
+        k, y, hem = max(hemmed, key=lambda r: r[1] - r[2])
+        out("  hem-standing bodies (a `%s` part, no foot): %d, worst %s at "
+            "%+.4f m against its own built hem clearance %+.4f m (+%.0f mm)"
+            % (HEM_PART, len(hemmed), k, y, hem, GROUND_TOL_M * 1000))
     return rows, floaters
 
 
@@ -565,7 +657,7 @@ def preview(lod, out_dir=DECKDIR, species="human", near=False):
     return 0
 
 
-def selftest(out_dir=DECKDIR):
+def selftest(out_dir=DECKDIR, induce=0.0):
     """Assert the ladder is fully covered and every rung is loadable.
 
     THE ASSERTION IS PER RUNG AND NOT A COUNT, because the defect this tool
@@ -659,16 +751,33 @@ def selftest(out_dir=DECKDIR):
     # something any assertion in this project could fail for, and it is
     # something anybody would see.
     print("\nTRIANGLES AND GROUNDING, read off the baked files")
-    _rows, floaters = stats(out_dir)
+    if induce:
+        print("  CONTROL: every hem-standing body lifted %+.3f m -- this run "
+              "MUST fail" % induce)
+    _rows, floaters = stats(out_dir, induce=induce)
     if floaters:
         print("\n  %d BODY/BODIES DO NOT STAND ON THEIR OWN ORIGIN "
               "(> %.0f mm)." % (len(floaters), GROUND_TOL_M * 1000))
         for k, y in sorted(floaters, key=lambda kv: -kv[1])[:5]:
-            print("    %-28s min_y %+.4f m" % (k, y))
+            tok, klod, _s = split_body_key(k)
+            hem = hem_allowance(tok, klod)
+            print("    %-28s min_y %+.4f m   bar %+.4f m%s"
+                  % (k, y, GROUND_TOL_M + hem,
+                     "  (stands on a hem)" if hem else ""))
         print("  `npc.gd::_walker_xform` puts the instance origin ON the deck,")
         print("  so this is exactly how far the crowd floats. The poses that")
-        print("  are MEANT to be off the floor -- %s -- are excluded by name."
+        print("  are MEANT to be off the floor -- %s -- are excluded by name,"
               % ", ".join(POSED_ON_FURNITURE))
+        print("  and a body that stands on a `%s` is measured against the hem "
+              "clearance" % HEM_PART)
+        print("  `costume._skirt` built it with, which is a BAR and not an "
+              "exemption.")
+        return 0 if induce else 1
+    if induce:
+        print("\n  THE CONTROL DID NOT FAIL. The hem allowance is no longer a "
+              "bar:")
+        print("  a robed body lifted %+.3f m off the deck was still passed."
+              % induce)
         return 1
     print("\n  CROWD LIBRARY OK")
     return 0
@@ -691,15 +800,20 @@ def main():
     ap.add_argument("--preview-species", default="human")
     ap.add_argument("--preview-near", action="store_true",
                     help="the rubric's HALF distance -- a head at 1 m")
+    ap.add_argument("--induce-floater", nargs="?", type=float,
+                    const=INDUCED_FLOAT_M, default=0.0, metavar="METRES",
+                    help="the negative control for the hem allowance: lift "
+                         "every robed body by this much and require the "
+                         "grounding gate to catch it")
     a = ap.parse_args()
     if a.stats:
         print("crowd library in %s" % os.path.relpath(a.out, ROOT))
-        _rows, floaters = stats(a.out)
+        _rows, floaters = stats(a.out, induce=a.induce_floater)
         return 1 if floaters else 0
     if a.preview is not None:
         return preview(a.preview, a.out, a.preview_species, a.preview_near)
     if a.selftest:
-        return selftest(a.out)
+        return selftest(a.out, induce=a.induce_floater)
     print("baking the shared crowd library into %s"
           % os.path.relpath(a.out, ROOT))
     bake(a.out, force=a.force, keep_obj=a.keep_obj)

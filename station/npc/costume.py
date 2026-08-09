@@ -2603,8 +2603,24 @@ def _band_e(m, cx, cz, y, rx, rz, half_h, group, part, seg, taper=1.0,
     m.add(v, t, group, part)
 
 
+# HOW FAR A ROBE'S HEM STANDS OFF THE DECK, as a fraction of the wearer's own
+# stature: 51 mm on a 1.695 m Minbari, 56 mm on a 1.851 m one. It is not a
+# tolerance, it is the garment -- a floor-length robe that touched the deck
+# would plough it at every step, and `Vorlon moree.jpg` (authority 2, cited by
+# `animation.py`'s gait note) shows a robe hem clear of the floor with no feet
+# visible under it.
+#
+# NAMED RATHER THAN LEFT AS A DEFAULT ARGUMENT because a second module has to
+# know it: `tools/bake_crowd.py`'s grounding gate asks "does this body stand on
+# its own origin", and for a robed figure the lowest vertex is this hem rather
+# than a foot, so the gate must compare against THIS number. It imports the
+# constant instead of copying it -- hard rule 4 at the scale of a hem. Session
+# 4u; before it, 16 robed bodies read as floaters.
+SKIRT_HEM_YF = 0.030
+
+
 def _skirt(m, torso_verts, stature, group, seg, dist=0.0, flare=1.85,
-           hem_yf=0.030):
+           hem_yf=SKIRT_HEM_YF):
     """A floor-length robe: one capped loft replacing two legs and two feet.
 
     The top ring is INSIDE the torso -- taken at 0.34 of the torso's height and
@@ -3263,6 +3279,74 @@ def dressed_ratio(chain=None, datum=ERA_DATUM, sample=8):
     return out
 
 
+# THE CLOTHING BUDGET, AND WHY ITS DENOMINATOR IS A CONSTANT -- session 4u.
+#
+# What this replaces: `clothing < 0.75 * (budget - bare)`, "clothing takes under
+# three quarters of the headroom the bodies leave". That check went RED in this
+# session and NOTHING IN THIS FILE HAD CHANGED. `body.py` added faces, ears,
+# lips, feet and ankles to the crowd, the bare Zocalo went 132,198 -> 146,413,
+# and clothing FELL from 67,661 to 67,227 -- and the ratio rose 70.6% -> 82.4%
+# past a 75% bar. A gate that turns red when the quantity it names gets smaller
+# is not measuring that quantity.
+#
+# The arithmetic, because "it feels like a proxy" is not an argument. With
+# r = C / (B - b), the elasticities are
+#
+#     dln r / dln C = 1                    the thing the gate is named for
+#     dln r / dln b = b / (B - b) = 1.79   the thing it is not
+#
+# so the check responds 1.79x harder to `body.py` than to this module, and the
+# factor DIVERGES as the crowd approaches the frame budget: the denominator is a
+# residual of two large numbers. A ratchet whose leverage on the confounder
+# exceeds its leverage on the subject is a proxy, and this one is a proxy for
+# `within_budget` -- which is right above it, is the joint constraint that
+# actually matters, names the total honestly, and still passes at 93.7%.
+#
+# So the constraint is kept and its denominator is made one this module can be
+# held to: `body.FRAME_TRIANGLES * body.NPC_FRAME_SHARE`, a stated allowance
+# rather than a measurement of the bodies. That is the form the ratchet three
+# checks below already argued for in its own comment -- "AND THE ONE THAT IS A
+# BUDGET RATHER THAN A RATCHET ... The two above are fractions of the bare body,
+# so a coarser body makes room for more clothing" -- applied to the crowd
+# instead of to one figure.
+#
+# THE VALUE IS THE NEXT ROUND NUMBER ABOVE THE MEASURED ONE, which is this
+# file's own convention for a ratchet, so it bites immediately: measured 29.49%
+# (67,227 of 228,000), cap 30%, margin 1,163 triangles = 13 a figure over 90.9
+# figures. Any new garment piece costing more than that a person fails here.
+#
+# AND IT IS NOT A LOOSENING BOUGHT WITH A ROUNDING. Before moving the bar this
+# session went looking for the triangles instead, and found none -- three
+# measurements, recorded here so nobody spends the afternoon again:
+#
+#   * THE YOKE IS THE BIGGEST PIECE AND IT IS UNDER-RESOLVED, NOT OVER. At the
+#     crowd's own levels it is 384 triangles (lod0-2, K=6) and 160 (lod3-4,
+#     K=5), 23% of the whole clothing bill. Sampling the built outer sheet
+#     against the surface it is sewn to, the shipped K=6 already misplaces the
+#     panel by 32.5 mm where the affordable error at lod0 is 0.0 mm; K=12 would
+#     be needed to reach 11 mm. Dropping a level saves 64 triangles and makes
+#     the near-range defect judge-4t r3 has just reported ("a hard yoke across
+#     the shoulders") worse.
+#   * THE PLACKET'S FIVE STATIONS ARE THE SAME STORY. Its taper and its 28 mm
+#     wrap offset are both LINEAR in t, so the stations resolve only the torso's
+#     own vertical curvature, and that curvature is the one measured above.
+#   * NOTHING IS CULLABLE. Every piece's `honest_from_m` was re-checked against
+#     the shipped crowd distance: a 35 mm cuff band aliases out at 36.0 m and
+#     the crowd is baked at 23.6 m, so each piece is inside its own derived
+#     range. The clothing bill is what this module's own rules produce.
+#
+# WHAT WOULD ACTUALLY PAY, named rather than left to be rediscovered, and NOT
+# done here because it cannot be judged without a frame: the yoke is built as a
+# full ring with a tilted seam, and this file's own authority-1 measurement
+# (YOKE_SEAM_TILT_M, INV-1191) says "the panel is FRONT-ONLY ... over the back
+# view it returns ZERO pixels ... a band that rings the shoulders at constant
+# height does not exist on the reference at all". Building it front-only is a
+# FIDELITY fix that also halves the largest piece: ~10,700 triangles off this
+# crowd, 16% of the bill. It needs `_sheath` to close an open azimuthal strip
+# with two side rims, and it needs a render to accept.
+CROWD_CLOTHING_BUDGET_F = 0.30
+
+
 def zocalo_crowd(bays=3, density="busy", chain=None, datum=ERA_DATUM, sample=8):
     """The brief's question, with the crowd dressed: does clothing break it?"""
     chain = chain or body.lod_chain()
@@ -3390,10 +3474,17 @@ def report(out=print):
     out(f"  {z['figures_in_view']:.0f} figures in view: bodies "
         f"{z['bare_triangles']:,} + clothing {z['clothing_triangles']:+,} = "
         f"{z['triangles']:,} of {z['budget']:,} ({100*z['triangles']/z['budget']:.1f}%)")
-    out(f"  clothing is {100*z['clothing_triangles']/max(z['budget']-z['bare_triangles'],1):.1f}% "
-        f"of the headroom the bodies leave, or "
+    out(f"  clothing is {100*z['clothing_triangles']/z['budget']:.2f}% of the "
+        f"NPC frame allowance (cap {100*CROWD_CLOTHING_BUDGET_F:.0f}%), or "
         f"{z['clothing_triangles']/max(z['figures_in_view'],1):+.0f} triangles a "
         f"person -- robes and cowls SUBTRACT, uniforms add")
+    # The old headline, kept as a REPORTED number and no longer a gate. It is
+    # still the interesting quantity to look at; it is just not one this module
+    # controls -- see `CROWD_CLOTHING_BUDGET_F`.
+    out(f"  (for reference, and not a bound: that is "
+        f"{100*z['clothing_triangles']/max(z['budget']-z['bare_triangles'],1):.1f}% "
+        f"of the headroom the bodies leave, a figure body.py moves 1.79x "
+        f"harder than this module does)")
     out("")
     for dist in (2.0, 12.0, 40.0):
         c = crowd_cost(1, distance_m=dist, chain=chain, sample=6)
@@ -4244,11 +4335,25 @@ def _selftest():
     # SUBTRACT -- and the assertion would be measuring the draw. At 8 the
     # clothing bill settles at about +1,000 triangles for the whole crowd.
     z = zocalo_crowd(chain=chain, sample=6)
+    # THE MARGIN IS PRINTED, not just the verdict. This is the check that owns
+    # the total, it is the one the ratio check below was a proxy for, and at the
+    # time of writing it passes with 6.3% of the NPC allowance unspent -- a fact
+    # a bare PASS hides and the next person to grow `body.py` needs.
     check(z["within_budget"],
           f"a DRESSED busy Zocalo fits the NPC budget "
-          f"({z['triangles']:,} of {z['budget']:,})")
-    # THIS BOUND MOVED IN 4t ROUND 2, FROM 0.25 TO 0.75, AND IT IS THE MOST
-    # EXPENSIVE THING IN THE ROUND. Measured with `_LEGACY_PANELS` as the
+          f"({z['triangles']:,} of {z['budget']:,} = "
+          f"{100.0 * z['triangles'] / z['budget']:.1f}%, "
+          f"{z['budget'] - z['triangles']:,} unspent)")
+    # THE DENOMINATOR OF THIS CHECK CHANGED IN 4u AND THE ARGUMENT IS AT
+    # `CROWD_CLOTHING_BUDGET_F`, not here -- read it before touching the number.
+    # In one line: the old form divided by `budget - bare`, a residual, so it
+    # went red when `body.py` grew while clothing was FALLING. It now divides by
+    # the stated NPC allowance, which nothing outside this module moves.
+    #
+    # THE 4t HISTORY IS KEPT BECAUSE THE EXCHANGE IT RECORDS IS STILL THE REASON
+    # THE BILL IS THE SIZE IT IS. It moved from 0.25 to 0.75 of the headroom and
+    # was the most expensive thing in that round. Measured with `_LEGACY_PANELS`
+    # as the
     # control, on the same crowd: 19,035 clothing triangles against 67,340, a
     # factor of 3.54. The crowd still fits -- `within_budget` is True either
     # way -- but clothing went from a fifth of the headroom the bodies leave to
@@ -4266,10 +4371,13 @@ def _selftest():
     # proxy. The real question is whether the camera can reach it, and
     # answering that means testing each near-horizontal face against the
     # underlying part's own surface. That is the next move on this subsystem.
-    check(z["clothing_triangles"] < 0.75 * (z["budget"] - z["bare_triangles"]),
-          f"and clothing takes under three quarters of the headroom the bodies "
-          f"leave ({z['clothing_triangles']:,} of "
-          f"{z['budget'] - z['bare_triangles']:,})")
+    check(z["clothing_triangles"] < CROWD_CLOTHING_BUDGET_F * z["budget"],
+          f"and the crowd's clothing takes under "
+          f"{100.0 * CROWD_CLOTHING_BUDGET_F:.0f}% of the NPC frame allowance "
+          f"({z['clothing_triangles']:,} of {z['budget']:,} = "
+          f"{100.0 * z['clothing_triangles'] / z['budget']:.2f}%, "
+          f"{int(CROWD_CLOTHING_BUDGET_F * z['budget']) - z['clothing_triangles']:,} "
+          f"to spare over {z['figures_in_view']:.0f} figures)")
     tm = texture_memory()
     check(tm["fraction"] < 0.01,
           f"every garment texture on the station is under 1% of the texture "
