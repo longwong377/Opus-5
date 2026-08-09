@@ -6574,6 +6574,70 @@ def build_emission(name):
     return _np().clip(emis, 0.0, 1.0)
 
 
+def check_textures(outdir=TEXTURE_DIR, out=print):
+    """Do the 49 committed texture PNGs match what this module would write today?
+
+    THE .tres DRIFT CHECK EXISTS AND DOES NOT COVER THESE. `_selftest` compares
+    every exported `.tres` against what the library would emit, and that check
+    was written for a real defect -- two emission energies re-tuned in source
+    while the engine went on reading the old ones. It reads the MATERIAL
+    DEFINITION only. A change inside a texture GENERATOR leaves every `.tres`
+    byte-identical, because the .tres just names `wall_plate_orm.png` and the
+    filename does not change when its contents should.
+
+    So the textures are a tracked, shipped artefact that nothing regenerated and
+    nothing checked, which is this repository's own catalogued defect -- *a gate
+    that reads a committed artefact must be able to rebuild it* -- one directory
+    over from where it was last found. Measured when this was written: a change
+    that took the corridor wall's roughness spread from 11.6% to 36.8% altered
+    no `.tres` at all, so the whole selftest stayed green while the game kept
+    shipping the old surface. Nothing in `tools/build_world.py` or in either
+    workflow runs `materials.py --export`.
+
+    It REGENERATES rather than hashing a manifest, because a manifest of the
+    files on disk can only catch a hand-edit -- it agrees with itself by
+    construction after any export, including one nobody ran. Regenerating is the
+    only thing that can answer "is the shipped PNG what the current source
+    produces", and it is minutes rather than seconds, which is why this is a
+    gate and not part of `_selftest`.
+
+    SKIPPED, NOT FAILED, on a texture that is not there: absent means "not
+    exported yet on this checkout", which is the same rule the .tres check uses.
+    """
+    import hashlib
+    stale, checked, absent = [], 0, 0
+    for name in sorted(TEX_SIZE):
+        albedo, orm, nrm = build_texture(name)
+        want = {f"{name}_albedo.png": albedo, f"{name}_orm.png": orm,
+                f"{name}_normal.png": nrm * 0.5 + 0.5}
+        if name in EMISSIVE_SHEETS:
+            want[f"{name}_emission.png"] = build_emission(name)
+        for fn, arr in want.items():
+            path = os.path.join(outdir, fn)
+            if not os.path.exists(path):
+                absent += 1
+                continue
+            tmp = path + ".check"
+            _write_png(tmp, arr)
+            try:
+                with open(tmp, "rb") as a, open(path, "rb") as b:
+                    fresh = hashlib.md5(a.read()).hexdigest()
+                    disk = hashlib.md5(b.read()).hexdigest()
+            finally:
+                os.remove(tmp)
+            checked += 1
+            if fresh != disk:
+                stale.append(fn)
+    out("textures: %d checked, %d STALE, %d not exported on this checkout"
+        % (checked, len(stale), absent))
+    for fn in stale[:12]:
+        out("    stale  %s" % fn)
+    if stale:
+        out("  run: python3 station/materials.py --export   "
+            "-- the engine reads these PNGs, not the generator")
+    return stale
+
+
 def export_textures(outdir=TEXTURE_DIR, only=None):
     os.makedirs(outdir, exist_ok=True)
     written = []
@@ -8634,6 +8698,9 @@ def main():
     ap.add_argument("--texture-sheet", nargs=2, metavar=("NAME", "PNG"))
     ap.add_argument("--surface", nargs=2, metavar=("MATERIAL", "PNG"),
                     help="one material's trim sheet under a grazing key")
+    ap.add_argument("--check-textures", action="store_true",
+                    help="CI: are the committed texture PNGs what this module "
+                         "would write today? Regenerates and compares. Minutes.")
     ap.add_argument("--budget", action="store_true")
     ap.add_argument("--rules", metavar="SCENE")
     args = ap.parse_args()
@@ -8654,6 +8721,8 @@ def main():
     if args.surface:
         print(preview_surface(args.surface[1], args.surface[0]))
         return 0
+    if args.check_textures:
+        return 1 if check_textures() else 0
     if args.textures_only:
         for f in export_textures():
             print("  textures/" + f)

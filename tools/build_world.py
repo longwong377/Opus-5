@@ -138,6 +138,17 @@ GATES: list[list[str]] = [
     # producing. With `--cell-manifest` now running as step 1 the drift should be
     # zero; this is what proves it rather than assuming it.
     ["tools/bake_station.py", "--shell-audit"],
+    # ARE THE 49 COMMITTED TEXTURE PNGs WHAT THE GENERATOR WOULD WRITE TODAY?
+    #
+    # They are tracked, the engine reads them directly, and NOTHING in this file
+    # or in either workflow runs `materials.py --export` -- so a change inside a
+    # texture generator ships nothing until a human remembers. The existing
+    # drift check covers the `.tres` files and cannot see this: a generator
+    # change leaves every .tres byte-identical, because the .tres only names
+    # `wall_plate_orm.png` and the filename does not change when its contents
+    # should. Found the way these always are -- a roughness change that tripled
+    # the corridor wall's spread altered no .tres and the suite stayed green.
+    ["station/materials.py", "--check-textures"],
 ]
 
 
