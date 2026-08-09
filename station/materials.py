@@ -5531,9 +5531,57 @@ def _pack(ao, rough, metal):
     return np.stack([ao, rough, metal], axis=2)
 
 
+def _fastener_field(size, D, inset_px, pitch_px, r_px):
+    """Discrete fixings in a line parallel to every seam, `inset_px` inboard.
+
+    THE SECOND DETAIL TIER, AND THE WALL HAD ONLY ONE. `docs/AAA-STANDARD.md`
+    asks for *"two detail tiers minimum: something that reads at the normal
+    distance and something that reads at 1 m"*, and a blind craft audit put a
+    camera at 1.68 m from the corridor wall and measured mean |Laplacian| 0.81
+    against the deck's 6.7 -- eight times less high-frequency content on the
+    surface a player stands closest to.
+
+    The cause was not lighting and not the material: it is the two generators.
+    `gen_stud_sheet` puts 16 studs across a 1.21 m repeat -- a feature every
+    7.6 cm. `gen_plate_sheet` at the wall's settings puts 6 plate courses across
+    a 4 m repeat -- a feature every 0.67 m. **8.8x**, which is the audit's 8x,
+    arrived at from the generator rather than from a picture.
+
+    The 0.67 m course is NOT the thing to change: it is measured off
+    `grey level 1.webp` against a 2.1 m door and is authority 1. What was
+    missing is everything below it. `grain` is in there already and contributes
+    0.06 of height where the seam contributes 1.0, so it is 6% of the read and
+    invisible past a metre.
+
+    A plate is BOLTED, and the bolt line is the detail a plated wall carries at
+    arm's length. Placed against `D` -- distance to the nearest active seam,
+    which `_plate_maps` already computes -- so the fixings follow whatever
+    irregular, merged plate lattice that function produced and cannot drift
+    from it. A square lattice supplies the spacing ALONG the seam; intersecting
+    the two leaves dots only where a bolt line belongs.
+
+    INV: the fixings themselves are an extrapolation, authority 5. The frame
+    resolves the courses and the seams and does not resolve a bolt head at that
+    distance; what is claimed is only that a station's plate courses are
+    mechanically fastened, and the pitch and inset are chosen to read as
+    machinery rather than as pattern. A frame that resolves the wall at 1 m and
+    shows a smooth unbroken plate would overturn it.
+    """
+    np = _np()
+    band = np.clip(1.0 - np.abs(D - inset_px) / max(r_px * 2.2, 1e-3), 0.0, 1.0)
+    t = (np.arange(size, dtype=np.float32) + 0.5) / max(pitch_px, 1e-3)
+    off = np.abs((t % 1.0) - 0.5) * pitch_px
+    OX = np.broadcast_to(off[None, :], (size, size))
+    OY = np.broadcast_to(off[:, None], (size, size))
+    dot = np.clip(1.0 - np.sqrt(OX * OX + OY * OY) / max(r_px, 1e-3), 0.0, 1.0)
+    dot = dot * dot * (3.0 - 2.0 * dot)              # smoothstep dome
+    return dot * band
+
+
 def gen_plate_sheet(size, seed, nx, ny, base_rough, base_metal,
                     seam_px, wear_px, jitter, streaks, weld=False,
-                    seam_darken=0.35):
+                    seam_darken=0.35, fasteners=None, grain_h=0.06,
+                    grain_base=8):
     """The workhorse: an irregular rectangular plate lattice.
 
     This is the shape the reference actually shows and the shape the existing
@@ -5556,7 +5604,7 @@ def gen_plate_sheet(size, seed, nx, ny, base_rough, base_metal,
     wear = np.clip(1.0 - D / max(wear_px, 1e-3), 0.0, 1.0)
     wear = wear * _plate_gate(PID, seed, 0.35, "wear")
 
-    grain = _fbm(size, (seed, "grain"), octaves=6, base=8)
+    grain = _fbm(size, (seed, "grain"), octaves=6, base=grain_base)
     blotch = _fbm(size, (seed, "blotch"), octaves=3, base=2)
     # A field two or three plates across, so that runs of plates share a tone.
     # The measured hull varies at plate scale (sd 0.037-0.095 along a latitude)
@@ -5566,7 +5614,14 @@ def gen_plate_sheet(size, seed, nx, ny, base_rough, base_metal,
     dirt = _streaks(size, (seed, "dirt"), streaks, size / 90.0, size / 6.0, 0.5)
 
     # Height: plates stand proud, seams cut in, welds bead up along some seams.
-    height = val * 0.5 + grain * 0.06 - seam * 1.0
+    height = val * 0.5 + grain * grain_h - seam * 1.0
+    # THE FIXINGS. `None` is the default and every existing caller keeps it, so
+    # the hull, the deck plate and the truss sheets are byte-identical -- the
+    # A/B for this change is one texture against itself with one argument added.
+    fast = (0.0 if not fasteners
+            else _fastener_field(size, D, *fasteners))
+    if fasteners:
+        height = height + fast * 0.34
     if weld:
         wmask = _plate_gate(PID, seed, 0.22, "weld")
         bead = np.clip(1.0 - D / max(seam_px * 1.6, 1e-3), 0.0, 1.0)
@@ -5578,9 +5633,15 @@ def gen_plate_sheet(size, seed, nx, ny, base_rough, base_metal,
              - dirt * 0.28)
     value = np.clip(value, 0.05, 1.6)
 
+    # A fixing is a different material from the plate it holds: harder, more
+    # metallic, and it catches a specular the plate does not. That is most of
+    # what makes it read at 1 m -- a height bump alone under diffuse light is
+    # nearly invisible, which is the same lesson `kit_deck`'s own note records
+    # about the studs ("the brightness is the highlights").
     rough = np.clip(base_rough + seam * 0.18 + dirt * 0.22 - wear * 0.20
-                    + (grain - 0.5) * 0.08, 0.04, 1.0)
-    metal = np.clip(base_metal + wear * 0.35 - dirt * 0.15, 0.0, 1.0)
+                    + (grain - 0.5) * 0.08 - fast * 0.26, 0.04, 1.0)
+    metal = np.clip(base_metal + wear * 0.35 - dirt * 0.15 + fast * 0.45,
+                    0.0, 1.0)
     ao = np.clip(1.0 - seam * 0.65 - dirt * 0.15, 0.0, 1.0)
     return value, rough, metal, ao, height
 
@@ -6307,11 +6368,21 @@ def build_texture(name):
         # the seam: a thin, hard, dark line between courses, which is most of
         # the wall's read. So the seam is widened and darkened here rather than
         # the plates being made noisier.
+        #
+        # AND A SECOND TIER UNDER IT. See `_fastener_field`: the course pitch
+        # above is the only thing this sheet resolved, so the wall said nothing
+        # at 1 m that it had not already said at 10. In metres against the 4 m
+        # repeat the fixings are 40 mm in from the seam, 160 mm apart, 13 mm
+        # across -- machinery scale, an order finer than the 0.67 m course and
+        # an order coarser than the grain, which is the tier that was missing.
         v, r, m, ao, h = gen_plate_sheet(size, "wall", 6, 4, 0.56, 0.10,
                                          seam_px=size / 150.0,
                                          wear_px=size / 150.0,
                                          jitter=0.055, streaks=40,
-                                         seam_darken=0.62)
+                                         seam_darken=0.62,
+                                         fasteners=(size * 0.040 / 4.0,
+                                                    size * 0.160 / 4.0,
+                                                    size * 0.013 / 4.0))
         base = np.array([1.0, 1.0, 1.0], dtype=np.float32)
     elif name == "deck_plate":
         v, r, m, ao, h = gen_plate_sheet(size, "deckplate", 4, 3, 0.62, 0.20,
