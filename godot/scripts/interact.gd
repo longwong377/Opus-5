@@ -431,6 +431,13 @@ const LEDGER_REL := "../station/generated/economy.json"
 var _led: Dictionary = {}
 var _led_path := ""
 var _led_dirty := false
+## ONCE, NOT EVERY FRAME. `_my_purse()` is on the per-frame path, and the
+## warning below was built as a 400-character formatted string inside it --
+## 40,165 emissions in a 240 s session, ~196 a second, **99.93% of the shipped
+## build's entire runtime output**. A diagnostic that drowns the log it is
+## written into destroys the evidence it exists to provide, and this one buried
+## every other print the build makes.
+var _warned_no_player := false
 ## Transactions this session, for the gate to report. `sales` counts what the
 ## till took; `refusals` counts what it would not.
 var sales := 0
@@ -550,7 +557,8 @@ func _my_purse() -> Dictionary:
 			if want != "" and String(k) != want:
 				push_error("interact: FALLING BACK to %s -- this is NOT the "
 					% String(k) + "person the session named (%s)" % want)
-			elif want == "":
+			elif want == "" and not _warned_no_player:
+				_warned_no_player = true
 				# NOBODY DECLARED WHO THIS SESSION IS PLAYING, AND THAT IS THE
 				# SHIPPED PATH. In `--mode=arrival` the parent is `arrival.gd`,
 				# which answers `player_npc_id`; on the default `--mode=station`
