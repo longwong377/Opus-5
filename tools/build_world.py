@@ -84,6 +84,13 @@ GATES: list[list[str]] = [
     # cells exist, so the export placed the columns provisionally and step 5
     # re-derived them 80 m away.
     ["tools/bake_columns.py", "--check-mesh"],
+    # THE PAIRWISE QUESTION merge_cells asks, asked in seconds instead of after
+    # a 49-minute world build. Every deck of a ring must sit at a distinct
+    # radius at least MIN_HEADROOM_M apart -- which `--ladder` reads OUT of
+    # merge_cells rather than restating, so this gate cannot pass a build that
+    # tool would refuse. It is RED until Shell B stops claiming rungs the
+    # register already holds, and that is the point of it.
+    ["station/interior.py", "--ladder"],
 ]
 
 

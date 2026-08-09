@@ -1284,7 +1284,32 @@ def main():
         return _selftest()
 
     schema, profile = it.load()
-    plan = it.ring_cells(schema, profile, a.sector, a.ring, a.deck)
+    # `--deck` IS A REGISTER DECK NAME, NOT A RUNG. Grey's locations carry the
+    # numbers the show uses -- 24 through 80 -- on a 23-deep ring, so the CLI's
+    # raw int is a NAME and `ring_cells` wants an INDEX. `ring_cells` used to
+    # clamp with min(deck_index, len-1) and silently answer about the innermost
+    # deck; it now RAISES, so this call has to translate like every other
+    # consumer does. `deck.deck_index` has existed for exactly this since the
+    # session that found 14 of 67 decks failing to assemble.
+    # AND IT SAYS WHICH READING IT TOOK, rather than falling back silently.
+    # A bare `except: use the raw number` is precisely the defect that let
+    # bake_station.py stamp 15 Shell B decks with a residency band up to 68.4 m
+    # from their own floor -- the guess is indistinguishable from the answer.
+    import deck as _D                                          # noqa: PLC0415
+    _rungs = len(it.decks_in_ring(schema, profile, a.sector, a.ring))
+    try:
+        _dk = _D.deck_index(schema, profile, a.sector, a.ring, a.deck)
+        _how = f"register name {a.deck} -> rung {_dk}"
+    except Exception as _e:                                    # noqa: BLE001
+        if not 0 <= a.deck < _rungs:
+            raise SystemExit(
+                f"--deck {a.deck} is neither a register deck name on "
+                f"{a.sector} ring {a.ring} ({_e}) nor a rung index in "
+                f"0..{_rungs - 1}") from None
+        _dk = a.deck
+        _how = f"rung {a.deck} (not a register name on this ring)"
+    print(f"  reading --deck as {_how}")
+    plan = it.ring_cells(schema, profile, a.sector, a.ring, _dk)
     v, t, m = corridor_shell(schema, profile, a.sector, a.ring,
                              degrees=a.degrees, start_deg=a.start_deg,
                              radius_m=plan["radius_m"], z_offset=a.z)
