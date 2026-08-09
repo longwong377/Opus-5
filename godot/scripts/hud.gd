@@ -1187,6 +1187,20 @@ class Face extends Control:
 		var px := int(roundf(8.0 * s))
 		var y := top
 		var rows: Array[String] = h.record_rows
+		# THE WASH FIRST, AND IT IS NOT OPTIONAL HERE. Measured on
+		# `docs/frames/hud-record-band-4u.png`: the customs hall is a white room
+		# and amber at 0.55 over white cargo is close to invisible -- the same
+		# finding `_hair2`'s header records for the reticle, which is why the
+		# purse block below already has one. The band is above that scrim, so it
+		# needed its own.
+		var wmax0 := 0.0
+		for t0 in rows:
+			wmax0 = maxf(wmax0, _tracked_width(String(t0).to_upper(), px,
+				1.2 * s))
+		var bh: float = 12.0 * s * float(rows.size()) + 14.0 * s
+		_scrim(Rect2(sz.x - 34.0 * s - wmax0 - 34.0 * s, top - bh + 12.0 * s,
+			wmax0 + 68.0 * s, bh), 0.60, Vector2(0.34, 0.0),
+			Vector2(0.30, 0.24))
 		# Drawn bottom-up so the newest line is nearest the rung and the band
 		# grows into the empty part of the frame rather than over the systems
 		# readout.

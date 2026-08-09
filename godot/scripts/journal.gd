@@ -674,6 +674,10 @@ func _watch(delta: float) -> void:
 ## the block above `_seen_opened`. A player refused at customs at 13:04 has a row
 ## in their notebook at 13:04 whether or not anybody is testing.
 func _watch_costs() -> void:
+	# ONE DECISION PER FRAME, SHARED. `_interact()` and `_enforcement()` both
+	# consult it, so a frame that searches searches once for each and a frame
+	# that does not costs two null checks. See `_look_now`.
+	_looking = _look_now()
 	var it = _interact()
 	var body = _body()
 	# A RESTORE IS NOT A CONSEQUENCE. Identical in shape to `_watch_talk`'s
@@ -868,16 +872,39 @@ func cost_lines() -> Array:
 
 
 # -- the nodes the watcher reads, all found by capability --------------------
+#
+# CACHED ON A HIT, AND BOUNDED ON A MISS. `_dlg()` above caches only a hit,
+# because in a streamed build the node it wants arrives with a cell rather than
+# with the scene -- and that is right. What it does not have to worry about, and
+# these three do, is a build where the node NEVER arrives: `--mode=station` has
+# no `arrival.gd` and never will, and `_watch_costs` runs every frame in every
+# build. An unbounded `find_children("*", "Node", true, false)` per frame over a
+# 907-cell streamed world is a cost with no upside and no error -- which is the
+# shape of defect this project has twice mistaken for a content regression.
+#
+# So: retried every `_LOOK_EVERY` frames for `_LOOK_FRAMES`, then never again.
+# Ten seconds at 60 fps is longer than any cell has taken to arrive here, and
+# after it the answer for that build is settled.
+const _LOOK_EVERY := 30
+const _LOOK_FRAMES := 600
 var _interact_n = null
 var _card_n = null
 var _enforce_n = null
+var _look_frame := 0
+var _looking := true
+
+
+func _look_now() -> bool:
+	_look_frame += 1
+	return _look_frame <= _LOOK_FRAMES and _look_frame % _LOOK_EVERY == 0
 
 
 ## `customs_status` is `interact.gd`'s and nothing else in the tree answers it.
 func _interact():
 	if _interact_n != null and is_instance_valid(_interact_n):
 		return _interact_n
-	_interact_n = _find_by_method(_host, "customs_status")
+	if _looking:
+		_interact_n = _find_by_method(_host, "customs_status")
 	return _interact_n
 
 
@@ -887,6 +914,9 @@ func _interact():
 func _card_holder():
 	if _card_n != null and is_instance_valid(_card_n):
 		return _card_n
+	# ALWAYS LOOKED FOR WHEN ASKED, because this one is only asked on the frame a
+	# card goes through a reader -- which is rare, and which is exactly the frame
+	# the answer must not be "I stopped looking".
 	_card_n = _find_by_method(_host, "customs_verdict")
 	return _card_n
 
@@ -895,7 +925,8 @@ func _card_holder():
 func _enforcement():
 	if _enforce_n != null and is_instance_valid(_enforce_n):
 		return _enforce_n
-	_enforce_n = _find_by_method(_host, "refuse_at")
+	if _looking:
+		_enforce_n = _find_by_method(_host, "refuse_at")
 	return _enforce_n
 
 
@@ -1468,7 +1499,15 @@ func _page_shot(path: String) -> void:
 	# ROWS BEFORE PIXELS. An empty notebook photographs as an empty notebook, so
 	# a shot run seeds nothing and instead SAYS what was in it -- if the answer is
 	# "nothing", the frame is honest and the reader knows why.
-	open_page()
+	# `--shot-closed` LEAVES IT SHUT, and that is the A/B for the whole overlay:
+	# the same frame with and without the page is what says this file draws
+	# anything at all, and it is also the only way to photograph `hud.gd`'s
+	# record band without a full-screen wash over it.
+	if _args().has("shot-closed"):
+		print("journal: SHOT WITH THE PAGE CLOSED (control) -- what is on the "
+			+ "frame is hud.gd's band and nothing of this file's")
+	else:
+		open_page()
 	for _i in 8:
 		await RenderingServer.frame_post_draw
 	var img := get_viewport().get_texture().get_image()
@@ -1478,7 +1517,12 @@ func _page_shot(path: String) -> void:
 			costs.size(), RenderingServer.get_video_adapter_api_version(),
 			RenderingServer.get_video_adapter_name()]
 		+ "err=%d" % err)
-	get_tree().quit(0 if err == OK and _page_ops > 0 else 1)
+	# THE CLOSED SHOT MUST NOT BE ASKED TO HAVE DRAWN. `ops > 0` is the assertion
+	# that the page renders when it is open; requiring it of the control would
+	# make the control fail on the very thing it withholds, which is a control
+	# that proves nothing.
+	var want_ops: bool = not _args().has("shot-closed")
+	get_tree().quit(0 if err == OK and (_page_ops > 0 or not want_ops) else 1)
 
 
 func _unhandled_input(e: InputEvent) -> void:
@@ -1660,15 +1704,26 @@ class Page extends Control:
 		var s: float = maxf(sz.y / 720.0, 0.35)
 		# THE WHOLE FRAME GOES DARK, and that is the one place this overlay is
 		# allowed to be heavier than the HUD: a log is a thing you stop to read.
-		# Not opaque -- 0.88 -- because the station carrying on behind the page is
+		# Not opaque -- 0.90 -- because the station carrying on behind the page is
 		# the scope document's own sentence about existing around you.
-		_rect(Rect2(Vector2.ZERO, sz), Color(P_INK, 0.88))
+		#
+		# AND THE FIRST FRAME OF IT WAS MEASURED RATHER THAN ASSUMED, which is why
+		# the panels below get plates of their own. At 0.88 over the whole screen,
+		# 12% of every layer underneath came through -- and two of those layers are
+		# TEXT: `arrival.gd`'s card caption (layer 9) landed across the words
+		# PERSONAL LOG, and `hud.gd`'s own record band (layer 8) read through the
+		# bottom right corner. A wash that is uniform cannot distinguish the
+		# corridor behind the page, which should show, from another interface's
+		# lettering, which must not. The cure is local: dark where this page has
+		# words, thin where it does not.
+		_rect(Rect2(Vector2.ZERO, sz), Color(P_INK, 0.90))
 
 		var m := 46.0 * s
 		var top := 40.0 * s
 
 		# -- the head ---------------------------------------------------------
 		var head: Array = j.page_header()
+		_rect(Rect2(0.0, 0.0, sz.x, top + 62.0 * s), Color(P_INK, 0.86))
 		_caps(Vector2(m, top), "PERSONAL LOG", int(roundf(24.0 * s)),
 			Color(P_CYAN, 0.98), 4.0 * s)
 		_bracket(Vector2(m - 14.0 * s, top - 22.0 * s), 18.0 * s, 26.0 * s,
@@ -1703,6 +1758,8 @@ class Page extends Control:
 
 		# -- the foot ---------------------------------------------------------
 		var fy := sz.y - 26.0 * s
+		_rect(Rect2(0.0, fy - 20.0 * s, sz.x, sz.y - fy + 20.0 * s),
+			Color(P_INK, 0.86))
 		_line(Vector2(m, fy - 14.0 * s), Vector2(sz.x - m, fy - 14.0 * s),
 			Color(P_CYAN, 0.30), s)
 		_caps(Vector2(m, fy), String(j.page_footer()), int(roundf(10.0 * s)),
@@ -1715,45 +1772,58 @@ class Page extends Control:
 	# -- one titled panel of lines -----------------------------------------
 	func _panel(r: Rect2, head: String, rows: Array, s: float, scroll: int,
 			scrollable: bool) -> void:
-		_line(r.position, Vector2(r.end.x, r.position.y), Color(P_CYAN, 0.55), s)
-		_bracket(r.position, 14.0 * s, 12.0 * s, Color(P_CYAN, 0.75), s)
-		var hpx := int(roundf(12.0 * s))
-		_caps(r.position + Vector2(2.0 * s, -6.0 * s), head, hpx,
-			Color(P_AMBER, 0.90), 2.4 * s)
 		var px := int(roundf(10.0 * s))
 		var lh: float = px * 1.62
-		var y: float = r.position.y + 22.0 * s
 		var room := int(floorf((r.size.y - 24.0 * s) / lh))
 		if room < 1:
 			room = 1
 		var first := 0
 		if scrollable:
 			first = clampi(scroll, 0, maxi(0, rows.size() - room))
+		# LAID OUT BEFORE ANYTHING IS DRAWN, so the plate can be the size of the
+		# WORDS rather than the size of the panel. A plate the size of the panel
+		# would black out most of the frame -- and the point of a 0.90 wash is
+		# that the station is still there behind the page.
+		#
+		# WRAPPED BY MEASUREMENT, NOT BY A CHARACTER COUNT. A fact line carries
+		# its whole source sentence and the panel is a measured width, so cutting
+		# at "80 characters" would clip on one frame size and leave a gap on
+		# another.
+		var lines: Array = []
 		var shown := 0
 		for i in range(first, rows.size()):
 			if shown >= room:
 				break
 			var raw := String(rows[i])
-			# WRAPPED BY MEASUREMENT, NOT BY A CHARACTER COUNT. A fact line
-			# carries its whole source sentence and the panel is a measured
-			# width, so cutting at "80 characters" would clip on one frame size
-			# and leave a gap on another.
 			var parts := _wrap(raw, r.size.x - 16.0 * s, px, 1.2 * s)
 			for k in parts.size():
 				if shown >= room:
 					break
-				var dim: float = (0.86 if k == 0 else 0.52)
-				var col: Color = (P_AMBER if raw.begins_with("day ") and k == 0
-					else P_CYAN)
-				_caps(Vector2(r.position.x + 8.0 * s, y), String(parts[k]), px,
-					Color(col, dim), 1.2 * s)
-				y += lh
+				lines.append({"s": String(parts[k]), "lead": k == 0,
+					"cost": raw.begins_with("day ")})
 				shown += 1
+		var used: float = 26.0 * s + lh * float(lines.size()) + 6.0 * s
+		_rect(Rect2(r.position - Vector2(8.0 * s, 16.0 * s),
+			Vector2(r.size.x + 16.0 * s, used + 16.0 * s)),
+			Color(P_INK, 0.80))
+
+		_line(r.position, Vector2(r.end.x, r.position.y), Color(P_CYAN, 0.55), s)
+		_bracket(r.position, 14.0 * s, 12.0 * s, Color(P_CYAN, 0.75), s)
+		var hpx := int(roundf(12.0 * s))
+		_caps(r.position + Vector2(2.0 * s, -6.0 * s), head, hpx,
+			Color(P_AMBER, 0.90), 2.4 * s)
+		var y: float = r.position.y + 22.0 * s
+		for row in lines:
+			var col: Color = (P_AMBER if bool(row["cost"]) else P_CYAN)
+			var dim: float = (0.88 if bool(row["lead"]) else 0.55)
+			_caps(Vector2(r.position.x + 8.0 * s, y), String(row["s"]), px,
+				Color(col, dim), 1.2 * s)
+			y += lh
 		if scrollable and rows.size() > room:
 			var more := "%d MORE  (%d-%d OF %d)" % [
 				maxi(0, rows.size() - first - shown), first + 1,
 				first + shown, rows.size()]
-			_caps(Vector2(r.position.x + 8.0 * s, r.end.y - 4.0 * s), more,
+			_caps(Vector2(r.position.x + 8.0 * s, y + 6.0 * s), more,
 				int(roundf(9.0 * s)), Color(P_AMBER, 0.60), 1.2 * s)
 
 	# -- primitives ---------------------------------------------------------
@@ -2285,6 +2355,11 @@ func _phase_persist(host) -> void:
 	print("PERSIST: slot %s cleared -- this launch starts with no memory"
 		% Save.slot_path(Save.AUTO_SLOT))
 
+	# THE LOOKUP BUDGET IS LIFTED FOR THIS ONE CALL. `_look_now()` throttles the
+	# watcher's search so a build with no `enforcement.gd` does not walk a
+	# 907-cell tree every frame for ever; a gate asking once must not inherit the
+	# throttle and report "no interact node" because it asked on the wrong frame.
+	_looking = true
 	var it = _interact()
 	var body = _body()
 	if it == null or body == null:
