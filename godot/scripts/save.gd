@@ -46,6 +46,22 @@ const VERSION := 1
 ## into `station/generated/` is a bug this file does not inherit.
 const DIR := "user://saves"
 
+## THE SLOT THE FRONT DOOR OFFERS, AND THE REASON IT IS NAMED HERE.
+##
+## `main.gd::MENU_SLOT` is the string CONTINUE reads and `main.gd::_front_door`
+## passes it to `read()` below. Until session 4u **nothing anywhere called
+## `write()` with it**: CONTINUE was permanently disabled, not because the save
+## system was broken but because the save system had no caller on the shipped
+## path. That is instance twelve of the defect CLAUDE.md counts eleven of, and it
+## is the reason this constant exists rather than living only in `main.gd` -- a
+## writer and a reader that agree by coincidence of two string literals is the
+## same hazard one level down.
+##
+## `main.gd` is not edited to import this; the two literals are asserted equal by
+## `journal.gd::--phase=persist`, which reads `main.gd`'s own `MENU_SLOT` through
+## the host and refuses to run if they differ.
+const AUTO_SLOT := "auto"
+
 
 static func slot_path(slot: String) -> String:
 	return "%s/%s.json" % [DIR, slot]
@@ -128,10 +144,54 @@ static func capture(subjects: Dictionary, meta: Dictionary = {}) -> Dictionary:
 		"_partial": au["partial"],
 		"_exempt": au["exempt"],
 		"_failed": failed,
+		"_headline": _headlines(subjects),
 	}
 	for k in meta:
 		snap["_" + String(k)] = meta[k]
 	return snap
+
+
+## WHAT HAPPENED TO YOU, IN THE SNAPSHOT, IN ENGLISH.
+##
+## THE THIRD METHOD OF THE CONTRACT, AND IT IS OPTIONAL FOR A REASON THE OTHER
+## TWO ARE NOT. `save_state`/`load_state` are about a world coming back; this is
+## about a PLAYER being told what it is coming back to. Most subsystems have
+## nothing to say -- the crowd, the streamer, the ambience -- and a subsystem
+## that stays silent is not a gap:
+##
+##     func save_headline() -> String     # "" when nothing happened to you
+##
+## SO A SAVE FILE CARRIES ITS OWN SENTENCE, and `describe()` puts it in front of
+## the section list. That is not decoration: `main.gd::_front_door` calls
+## `describe()` for the CONTINUE blurb, so the front door stops reading
+## "save v1: 6 of 6 savable subsystems" and starts reading "REFUSED at customs
+## north -- transit withdrawn, 1 conviction". A consequence a player cannot read
+## on the way back in is a consequence they have to take the log's word for.
+##
+## IT IS COLLECTED AT CAPTURE, NOT DERIVED AT READ. Deriving it from `_state`
+## would put a second copy of every subsystem's own shape in this file -- the
+## defect this repository has paid for three times -- and would go stale the day
+## one of them changes a key. Asking the live node is the same duck-typed move
+## `audit()` already makes.
+static func _headlines(subjects: Dictionary) -> String:
+	var names: Array = subjects.keys()
+	names.sort()
+	var out := PackedStringArray()
+	for name in names:
+		var n = subjects[name]
+		if n == null or not is_instance_valid(n):
+			continue
+		if not n.has_method("save_headline"):
+			continue
+		var s := String(n.save_headline()).strip_edges()
+		if s != "":
+			out.append(s)
+	return "; ".join(out)
+
+
+## The sentence a snapshot carries, or "" when nothing in it had one to give.
+static func headline(snap: Dictionary) -> String:
+	return String(snap.get("_headline", "")).strip_edges()
 
 
 ## Put a snapshot back. Returns what was applied, what the file carried that
@@ -180,6 +240,36 @@ static func write(slot: String, snap: Dictionary) -> String:
 	return ""
 
 
+## CAPTURE AND WRITE, IN ONE CALL, BECAUSE THE TWO-CALL VERSION IS WHAT WENT
+## UNCALLED. `main.gd::save_to` already pairs them and is the right caller for a
+## save the PLAYER asks for; this exists for the saves nobody asks for -- the one
+## the world takes the moment something happens to you. Returns the snapshot with
+## `_write_error` set, so a caller that ignores the return value still leaves the
+## failure inside the artefact rather than only in a console nobody sees.
+static func checkpoint(subjects: Dictionary, slot: String,
+		meta: Dictionary = {}) -> Dictionary:
+	var snap := capture(subjects, meta)
+	var why := write(slot, snap)
+	snap["_write_error"] = why
+	if why != "":
+		push_error("save: " + why)
+	return snap
+
+
+## Delete a slot. THE NEGATIVE CONTROL NEEDS THIS AND NOTHING ELSE DOES.
+##
+## "Show the world forgetting" is only a control if the second launch starts with
+## nothing to find. Withholding the WRITE while a file from an earlier run is
+## still on disk produces a run that loads the old save and reports continuity --
+## a control that passes for the reason it was written to catch, which is the
+## vacuous A/B this project has recorded twice.
+static func erase(slot: String) -> bool:
+	var path := slot_path(slot)
+	if not FileAccess.file_exists(path):
+		return false
+	return DirAccess.remove_absolute(ProjectSettings.globalize_path(path)) == OK
+
+
 ## Read a slot. Returns {} when there is none -- a first run is not an error.
 static func read(slot: String) -> Dictionary:
 	var path := slot_path(slot)
@@ -209,7 +299,13 @@ static func describe(snap: Dictionary) -> String:
 	# THE DENOMINATOR EXCLUDES THE EXEMPT ONES, and the exempt count is printed
 	# beside it rather than folded in. "4 of 4, 5 exempt" and "4 of 9" describe
 	# the same build and only the first says whether anything is outstanding.
-	var out := "save v%d: %d of %d savable subsystems -- %s" % [
+	# THE SENTENCE FIRST AND THE BOOKKEEPING AFTER. This string is the CONTINUE
+	# button's blurb (`main.gd::_front_door` -> `_menu.save_why`), and a player
+	# standing at the front door wants to know what happened to them, not how many
+	# subsystems implement a duck-typed interface.
+	var head := headline(snap)
+	var out := ("%s. " % head if head != "" else "")
+	out += "save v%d: %d of %d savable subsystems -- %s" % [
 		int(snap.get("_version", 0)), kept.size(),
 		kept.size() + _len(snap.get("_missing", [])),
 		", ".join(PackedStringArray(kept)) if kept.size() > 0 else "nothing",

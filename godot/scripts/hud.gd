@@ -109,6 +109,40 @@ var eye_m := 0.0
 ## seconds, drawn under the prompt beside a `read`'s text.
 var did_text := ""
 
+# ===========================================================================
+#  WHAT IS ON YOUR RECORD -- session 4u
+# ===========================================================================
+#
+# WHAT THIS FACE COULD NOT SAY BEFORE. It drew a balance, a bag, a rung and a
+# place. It could not say that your card had been REFUSED, that there was a
+# conviction on it, that a rung had been withdrawn, or WHOSE WALLET IT WAS
+# DRAWING -- and that last one is not hypothetical: measured on the shipped
+# `--mode=station` launch this session,
+#
+#     interact: purse player:downbelow (ALLAN, ANNA, no_status) 420.71 cr
+#     hud: purse player:downbelow (ALLAN, ANNA, no_status) 420.71 cr
+#
+# while the card in the player's hand belongs to Michael Chowdhury. The HUD was
+# faithful -- it drew what the body was carrying -- and a player could not have
+# told, because a balance with no name on it is a balance that cannot be wrong.
+# `person` is now on the face beside the credits for exactly that reason: it is
+# the cheapest possible check that the wallet and the card are the same person,
+# and it is a check the PLAYER makes rather than a log.
+#
+# EVERY FIELD BELOW IS READ, NEVER DERIVED. `journal.gd::consequence_state()`
+# assembles them from `interact.gd`'s and `player.gd`'s own accessors; this file
+# decides where they sit and what colour they are, which is what a face is for.
+# A build with no journal leaves `record_rows` empty and nothing is drawn -- the
+# same rule as `credits < 0`: no system has run, so there is nothing true to say.
+var person := ""
+## `{kind: text}` pairs, already worded by the journal. Drawn in order.
+var record_rows: Array[String] = []
+## True when the record contains something that costs the player a permission --
+## a refusal, a conviction or a withdrawn rung. Decides the colour and nothing
+## else, so a clean card is not drawn in the colour of bad news.
+var record_bad := false
+var _journal = null
+
 # UNTYPED ON PURPOSE, all three. `_player`'s `gravity_mode`, `_interact`'s
 # `refresh()` and `Face`'s `h` are SCRIPT members, not members of CharacterBody3D,
 # Node or Control -- and GDScript resolves a statically typed variable's members
@@ -249,6 +283,8 @@ func _purse() -> void:
 		return
 	credits = float(_player.credits)
 	purse_who = String(_player.npc_id)
+	# WHOSE WALLET THIS IS. See the block above `record_rows`.
+	person = String(_player.person)
 	tier_name = String(_player.tier_name)
 	# THE RUNG ITSELF, NOT ONLY ITS NAME. `player.gd` has carried `tier` beside
 	# `tier_name` since the purse landed and nothing read the integer -- so the
@@ -263,6 +299,73 @@ func _purse() -> void:
 	eye_m = float(_player.eye_now_m())
 	if _interact != null and _interact.has_method("wages"):
 		wages_cr = float(_interact.wages())
+	_record()
+
+
+## WHAT IS ON YOUR RECORD, read off the notebook that keeps it.
+##
+## FOUND BY CAPABILITY AND RE-ASKED UNTIL IT IS THERE. `journal.gd` is a child of
+## `main.gd` and this HUD is built by `walk.gd`, so the two are cousins and the
+## journal may not exist yet on the frame `bind()` runs -- the same "bind
+## describes the tree at the instant it was called" trap `main.gd::_rebind_on_
+## stream` was written for. Caching only a HIT is what makes that safe.
+##
+## THE HUD DOES NOT DECIDE WHAT A CONSEQUENCE IS, and could not: the rung ladder
+## is `consequence.py`'s, the verdict is `arrival.gd`'s, the conviction is
+## `interact.gd`'s. `consequence_state()` is one read of what those three already
+## concluded. That is the same relationship this file has to the purse, and the
+## reason it no longer parses `economy.json` itself.
+var _journal_tries := 0
+## How many frames this face will hunt for a journal before it stops looking.
+## A RECURSIVE TREE WALK EVERY FRAME FOR EVER IS A COST WITH NO UPSIDE: a
+## `--mode=starfury` or `--walk-test` build has no journal and never will, and
+## `hud.gd`'s own history has one of these -- `_hud_cache` exists in `main.gd`
+## because `_find_where` was being run per frame. Six seconds at 60 fps is long
+## enough for a streamed build to finish arriving and short enough to be free.
+const _JOURNAL_TRIES := 360
+
+
+func _record() -> void:
+	if _journal == null or not is_instance_valid(_journal):
+		if _journal_tries < _JOURNAL_TRIES:
+			_journal_tries += 1
+			_journal = _find_journal(get_tree().get_root(), 0)
+	record_rows.clear()
+	record_bad = false
+	if _journal == null:
+		return
+	var st: Dictionary = _journal.consequence_state()
+	var customs := String(st.get("customs", ""))
+	if customs != "" and customs != "admitted":
+		record_rows.append("CARD %s" % customs.to_upper())
+		record_bad = true
+	elif customs == "admitted":
+		record_rows.append("CARD CLEARED")
+	var cv := int(st.get("convictions", 0))
+	if cv > 0:
+		record_rows.append("%d CONVICTION%s" % [cv, ("" if cv == 1 else "S")])
+		record_bad = true
+	var last := String(st.get("last", ""))
+	if last != "":
+		var where := String(st.get("last_place", ""))
+		record_rows.append(last.to_upper()
+			+ ("  [%s]" % where.to_upper() if where != "" else ""))
+	# THE NOTEBOOK ITSELF, so a player knows there is one and that it has
+	# something in it. A key nobody is told about is a key nobody presses.
+	record_rows.append("J  LOG -- %d FACT(S), %d ON THE RECORD"
+		% [int(st.get("facts", 0)), int(st.get("rows", 0))])
+
+
+func _find_journal(n: Node, depth: int):
+	if depth > 6:
+		return null
+	for c in n.get_children():
+		if c.has_method("consequence_state") and c.has_method("journal_report"):
+			return c
+		var hit = _find_journal(c, depth + 1)
+		if hit != null:
+			return hit
+	return null
 
 
 ## The address, off the name of the mesh. `shot_blue_0_0.glb`, `blue_0_0.glb`
@@ -566,6 +669,14 @@ func report() -> String:
 	s += " carrying=%s" % ("-" if carrying.is_empty()
 		else ",".join(carrying).replace(" ", "_"))
 	s += " seated=%s eye_m=%.2f" % [("-" if seated == "" else seated), eye_m]
+	# WHO THE WALLET BELONGS TO AND WHAT IS ON THEIR RECORD, on the line every
+	# gate already parses. `person=` is what makes the purse-identity defect
+	# visible to a log as well as to a face; `record=` is how a headless run
+	# proves the band has something in it without a raster.
+	s += " person=%s" % ("-" if person == ""
+		else person.to_lower().replace(" ", "_").replace(",", ""))
+	s += " record=%s" % ("-" if record_rows.is_empty()
+		else "%d%s" % [record_rows.size(), ("!" if record_bad else "")])
 	return s
 
 
@@ -1012,6 +1123,17 @@ class Face extends Control:
 		# Amber, because amber on this face is the thing you can act on and
 		# credits are the only number here you can spend.
 		_tracked(Vector2(cx, y), cr, px, Color(AMBER, 0.78), 1.4 * s)
+		# WHOSE PURSE. Drawn to the LEFT of the balance on the same baseline, in
+		# the dimmer cyan the bag and the rung use, because it is context for the
+		# number rather than a second number. See `hud.gd`'s `record_rows` block:
+		# a balance with no name on it is a balance that cannot be wrong, and the
+		# wallet and the identicard named different people for two sessions.
+		if h.person != "":
+			var who: String = h.person.to_upper()
+			var wpx := int(roundf(8.0 * s))
+			var ww := _tracked_width(who, wpx, 1.2 * s)
+			_tracked(Vector2(cx - 12.0 * s - ww, y), who, wpx,
+				Color(CYAN, 0.50), 1.2 * s)
 		var row := y - 13.0 * s
 		if h.wages_cr > 0.0:
 			var sub := "EARNED %0.2f" % h.wages_cr
@@ -1043,3 +1165,48 @@ class Face extends Control:
 			var tw := _tracked_width(tn, bpx, 1.2 * s)
 			_tracked(Vector2(sz.x - 34.0 * s - tw, row), tn, bpx,
 				Color(AMBER, 0.55), 1.2 * s)
+			row -= 12.0 * s
+		_record_band(sz, s, row)
+
+	## WHAT IS ON YOUR RECORD, STACKED UPWARDS FROM THE RUNG.
+	##
+	## HERE AND NOT ABOVE THE RETICLE, and the distinction is the one `_check`'s
+	## header already draws. The plate above the reticle is an EVENT -- a reader
+	## has just refused you, and it fades after five seconds. This is a STATE: it
+	## is true until something changes it, so it belongs with the other standing
+	## facts about the player, in the corner they are already read from.
+	##
+	## AMBER WHEN IT COSTS YOU A PERMISSION, and the rule is a rule rather than a
+	## list of strings, for the reason `_check` gives one screen up: keying on a
+	## list of bad sentences is a list that goes stale the day another system
+	## learns to write one. `journal.gd` sets `record_bad` from what the
+	## consequence actually was.
+	func _record_band(sz: Vector2, s: float, top: float) -> void:
+		if h.record_rows.is_empty():
+			return
+		var px := int(roundf(8.0 * s))
+		var y := top
+		var rows: Array[String] = h.record_rows
+		# Drawn bottom-up so the newest line is nearest the rung and the band
+		# grows into the empty part of the frame rather than over the systems
+		# readout.
+		for i in range(rows.size() - 1, -1, -1):
+			var t: String = String(rows[i]).to_upper()
+			var w := _tracked_width(t, px, 1.2 * s)
+			# The trailing hint line is always the dimmest thing on the face --
+			# it is a control, not a consequence.
+			var lead: bool = (i == 0 and h.record_bad)
+			var col: Color = (Color(AMBER, 0.85) if lead
+				else Color(AMBER, 0.55) if h.record_bad and i < rows.size() - 1
+				else Color(CYAN, 0.42))
+			_tracked(Vector2(sz.x - 34.0 * s - w, y), t, px, col, 1.2 * s)
+			y -= 12.0 * s
+		# A hairline under the block, only when there is something on the record
+		# worth separating from the purse above it.
+		if h.record_bad:
+			var wmax := 0.0
+			for t2 in rows:
+				wmax = maxf(wmax, _tracked_width(String(t2).to_upper(), px,
+					1.2 * s))
+			_hair(Vector2(sz.x - 34.0 * s - wmax, top + 5.0 * s),
+				Vector2(sz.x - 34.0 * s, top + 5.0 * s), Color(AMBER, 0.35), s)

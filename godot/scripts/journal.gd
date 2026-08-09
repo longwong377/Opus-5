@@ -58,6 +58,58 @@ extends Node3D
 ## PERSISTENCE IS `save.gd`'s CONTRACT, both halves. `save_state`/`load_state`,
 ## and `main.gd::_subjects` offers this node by name. A journal with no save is
 ## R7's own phrase for it: *"a notebook that forgets"*.
+##
+## ===========================================================================
+## SESSION 4u -- A WINDOW, A COST LEDGER, AND THE CALLER THE SAVE NEVER HAD
+## ===========================================================================
+##
+## THREE THINGS WERE MEASURED AT THE START OF 4u AND ALL THREE ARE THE SAME
+## DEFECT WEARING THREE COSTUMES.
+##
+## 1. `grep -c "CanvasLayer\|_draw\|draw_string\|Control"` over this file was
+##    **0**. Seventeen hundred lines, eight kinds of knowledge, thirteen standing
+##    ledgers, a witness that can tell a lived night from a skipped one -- and
+##    **no surface**. Everything above was true and none of it was ever on a
+##    screen. That is the largest built-and-invisible machine in the repository.
+##
+## 2. `save.gd` was complete, tested, and **had no caller that WRITES on the
+##    shipped path**. `main.gd::_front_door` reads slot `auto` to decide whether
+##    CONTINUE is offered; `grep -rn "save_to"` found two call sites and both are
+##    gates. So CONTINUE has been disabled since it was built, and not because
+##    anything was broken.
+##
+## 3. The one thing in this project that reacts to the player -- a customs
+##    verdict computed at runtime, refused, and answered by two officers who walk
+##    to you -- left **no trace the player could come back to**. The record
+##    reaches `station/generated/economy.json` through `interact.gd`, which is
+##    real persistence and is invisible: no window shows it and no save carries
+##    the rest of the world beside it.
+##
+## SO THIS FILE GAINS A COST LEDGER, A PAGE AND A CHECKPOINT, and the reason all
+## three land HERE rather than in three files is not convenience. The journal is
+## already the node whose entire subject is *what the player knows and what
+## passing time cost them*; it already watches the world every frame through
+## other nodes' public accessors and mints from what it sees. A consequence is
+## the same shape as a rumour: something that happened, with an hour, a place and
+## a source. `_watch_costs` reads `interact.gd`, `enforcement.gd`, `arrival.gd`
+## and the body through methods and fields those files already expose -- nothing
+## is reached into, nothing there is edited, and no rule is copied.
+##
+## WHAT THIS FILE DELIBERATELY DOES NOT DECIDE. Not what a verdict is
+## (`arrival.gd::customs_verdict`), not what a conviction costs
+## (`consequence.py` through `enforcement.gd`), not which ledger a person sits on
+## (the manifest). It records, keeps, saves and DRAWS. A journal that computed a
+## consequence would be a second copy of a rule, which is the defect this
+## repository has paid for three times.
+##
+## THE CHECKPOINT IS A CALLER, AND ITS HOME IS ADMITTEDLY WRONG. Autosave
+## belongs in `main.gd`, which owns the world and already owns `save_to`. It is
+## driven from here because 4u's brief gave this agent three files and `main.gd`
+## is not one of them, and because a checkpoint with a bad home beats a save
+## system with no caller by exactly the margin this project keeps measuring.
+## `_checkpoint()` calls `host.save_to(save.gd::AUTO_SLOT)` -- the same method
+## the save gate uses and the same slot the front door reads. See
+## `docs/MASTER-PLAN.md` for the one-line move.
 
 ## Where the station writes what a fact is. Relative to the repo root.
 const MANIFEST_REL := "station/generated/journal.json"
@@ -139,6 +191,27 @@ var stance_favour: Dictionary = {}
 var facts: Dictionary = {}             # fid -> fact dictionary
 var people: Dictionary = {}            # npc_id -> CAST-05 memory slot
 var standing: Dictionary = {}          # ledger -> scalar
+
+## --- WHAT IT COST YOU ------------------------------------------------------
+##
+## The consequence ledger: an ordered list of things that were DONE TO the
+## player, each with the hour and place it happened and the sentence whichever
+## system decided it produced. Ordered rather than keyed, because unlike a fact
+## a consequence does not supersede -- two refusals at the same reader are two
+## refusals, and collapsing them by id would make the second one free.
+##
+## EVERY ROW IS A QUOTE, NOT A JUDGEMENT. `what` is the other file's own words:
+## `arrival.gd`'s verdict line, `enforcement.gd::booking`, the offence string
+## `interact.gd::convict` was handed. This file adds the hour, the place and the
+## order.
+var costs: Array = []
+## The baselines the watcher compares against. Re-taken on `load_state` for the
+## reason `_resync` exists: a restored counter moving is not the world moving.
+var _seen_reads := -1
+var _seen_convictions := -1
+var _seen_booking := ""
+var _seen_tier := -99
+var _cost_resync := true
 
 # --- wiring ----------------------------------------------------------------
 var _clock = null
@@ -288,7 +361,97 @@ func install(host) -> int:
 		+ "(%s); hash %s; clock=%s life=%s"
 		% [_manifest_from, ("ok" if _hash_ok else "MISMATCH -- " + _hash_why),
 			str(_clock != null), str(_life != null)])
+	_install_persistence()
+	_install_page()
 	return kinds.size() if not kinds.is_empty() else -1
+
+
+# ===========================================================================
+#  THE CHECKPOINT -- the caller `save.gd` never had
+# ===========================================================================
+const Save = preload("res://scripts/save.gd")
+
+## Off by `--no-persist`, which is the negative control for the whole of 4u:
+## everything else identical and the slot never written, so the second launch
+## has nothing to come back to. It must FAIL.
+var _persist := true
+## Whether the shipped path has written this slot at least once this session.
+var _checkpoints := 0
+var _last_checkpoint := ""
+## Real seconds between two automatic writes of the same slot. A checkpoint is a
+## whole-world capture and a run that took one every frame would be measuring its
+## own file writes; nothing in this build produces two consequences that close
+## together except a gate.
+const CHECKPOINT_GAP_S := 2.0
+var _last_checkpoint_ms := -1
+
+
+func _install_persistence() -> void:
+	_persist = not _args().has("no-persist")
+	if not _persist:
+		print("journal: PERSISTENCE DISABLED (control) -- nothing that happens "
+			+ "to you will be written to %s" % Save.slot_path(Save.AUTO_SLOT))
+	if _args().has("forget"):
+		# The control's other half. See `save.gd::erase`.
+		var gone := Save.erase(Save.AUTO_SLOT)
+		print("journal: FORGET (control) -- slot %s %s"
+			% [Save.AUTO_SLOT, ("deleted" if gone else "was not there")])
+	if _args().has("continue"):
+		# DEFERRED, because `install()` runs inside `main.gd::_start` and the
+		# streamer, the crowd and the interactables are still being built on the
+		# frame it is called. Restoring into a half-built tree would put the
+		# ledger back into a node that has not read it yet -- the same "bind
+		# describes the tree at the instant it was called" trap `_dlg()` avoids.
+		call_deferred("_continue_from_slot")
+
+
+## THE READER SIDE, AND IT IS THE SAME CALL THE BUTTON MAKES.
+##
+## `main.gd::_on_menu_chosen` runs `load_from(MENU_SLOT)` when a player presses
+## CONTINUE. This is that line with a flag in front of it, for a headless run
+## that has no keyboard -- NOT a second restore path. If the two ever diverge the
+## gate below says so, because it asserts `MENU_SLOT` and `save.gd::AUTO_SLOT`
+## are the same string.
+func _continue_from_slot() -> void:
+	if _host == null or not _host.has_method("load_from"):
+		print("journal: --continue asked for, and this host has no load_from")
+		return
+	var snap: Dictionary = Save.read(Save.AUTO_SLOT)
+	if snap.is_empty():
+		print("journal: --continue -- NOTHING IN SLOT %s. The world starts over."
+			% Save.AUTO_SLOT)
+		return
+	print("journal: CONTINUING from %s -- %s"
+		% [Save.slot_path(Save.AUTO_SLOT), Save.describe(snap)])
+	_host.load_from(Save.AUTO_SLOT)
+
+
+## Write the whole world to the auto slot because something happened to the
+## player. Rate-limited, refused when the control is on, and LOUD either way.
+func _checkpoint(why: String) -> bool:
+	if not _persist:
+		print("journal: checkpoint SKIPPED (control) -- %s would have been "
+			% why + "written to %s" % Save.slot_path(Save.AUTO_SLOT))
+		return false
+	if _host == null or not _host.has_method("save_to"):
+		print("journal: checkpoint SKIPPED -- this host has no save_to (%s)" % why)
+		return false
+	var now := Time.get_ticks_msec()
+	if _last_checkpoint_ms >= 0 \
+			and now - _last_checkpoint_ms < int(CHECKPOINT_GAP_S * 1000.0):
+		return false
+	_last_checkpoint_ms = now
+	var snap: Dictionary = _host.save_to(Save.AUTO_SLOT)
+	_checkpoints += 1
+	_last_checkpoint = why
+	print("journal: CHECKPOINT %d -- %s -- %s -> %s"
+		% [_checkpoints, why, Save.headline(snap),
+			Save.slot_path(Save.AUTO_SLOT)])
+	return true
+
+
+func checkpoints() -> int:
+	return _checkpoints
 
 
 func _repo_root() -> String:
@@ -492,6 +655,296 @@ func _first_room_of(c: Dictionary) -> String:
 func _watch(delta: float) -> void:
 	_watch_talk()
 	_watch_feet(delta)
+	_watch_costs()
+
+
+# ===========================================================================
+#  WHAT IT COST YOU -- the observer for consequences
+# ===========================================================================
+## Four counters other files already keep, watched the way `_watch_talk` watches
+## `dialogue.gd::opened()`.
+##
+## NOT ONE OF THESE IS A RULE THIS FILE OWNS, and that is deliberate to the point
+## of pedantry. `interact.gd` decides when a card has been read and when a
+## conviction is written; `enforcement.gd` decides what a booking says; the body
+## carries the rung `player.gd::rung_of` derived. This function's entire content
+## is *notice, timestamp, place, keep*.
+##
+## AND IT RUNS IN EVERY BUILD, not only in a gate -- that is the whole lesson of
+## the block above `_seen_opened`. A player refused at customs at 13:04 has a row
+## in their notebook at 13:04 whether or not anybody is testing.
+func _watch_costs() -> void:
+	var it = _interact()
+	var body = _body()
+	# A RESTORE IS NOT A CONSEQUENCE. Identical in shape to `_watch_talk`'s
+	# `_resync`, and needed for the identical reason: `save.gd::restore` puts
+	# `interact.gd`'s `customs_reads` and the record's conviction count back to
+	# what they were, and to an observer watching a counter, a counter arriving is
+	# a counter going up. Without this a reload would mint a duplicate of every
+	# consequence in the file it just loaded.
+	if _cost_resync:
+		_cost_resync = false
+		_seen_reads = (int(it.get("customs_reads")) if it != null else -1)
+		_seen_convictions = (int(it.convictions()) if it != null
+			and it.has_method("convictions") else -1)
+		_seen_booking = _booking_now()
+		_seen_tier = (int(body.tier) if body != null else -99)
+		return
+
+	# 1. THE CARD IN THE READER.
+	if it != null:
+		var reads := int(it.get("customs_reads"))
+		if _seen_reads >= 0 and reads > _seen_reads:
+			_seen_reads = reads
+			_note_customs(it)
+		elif _seen_reads < 0:
+			_seen_reads = reads
+
+	# 2. A CONVICTION ON THE CARD.
+	if it != null and it.has_method("convictions"):
+		var n := int(it.convictions())
+		if _seen_convictions >= 0 and n > _seen_convictions:
+			var was := _seen_convictions
+			_seen_convictions = n
+			_note_cost("conviction", _where_now(),
+				"%d conviction(s) on the card" % n,
+				"was %d before this" % was)
+		elif _seen_convictions < 0:
+			_seen_convictions = n
+
+	# 3. WHAT THE OFFICERS BOOKED YOU FOR. `enforcement.gd::booking` is its own
+	#    one-line readable record and it names the fine, the hold and the rung.
+	var bk := _booking_now()
+	if bk != "" and bk != _seen_booking:
+		_seen_booking = bk
+		_note_cost("booking", _where_now(), bk, _enforce_detail())
+
+	# 4. THE RUNG ITSELF. Watched separately from the conviction because a
+	#    revocation and a conviction are not the same event -- `convict()` writes
+	#    one with `revoked=false` most of the time -- and because the rung is the
+	#    number every checkpoint in the build actually compares against.
+	if body != null:
+		var t := int(body.tier)
+		if _seen_tier > -99 and t < _seen_tier:
+			_note_cost("demotion", _where_now(),
+				"%s WITHDRAWN -- you now hold %s"
+					% [_tier_name_of(_seen_tier).to_upper(),
+						String(body.tier_name).to_upper()],
+				"rung %d -> %d" % [_seen_tier, t])
+		if t != _seen_tier:
+			_seen_tier = t
+
+
+## The customs row, with the verdict's own words when the card holder is here to
+## supply them. `interact.gd::customs_status()` is the status; the STATION it
+## failed at and the sentence are `arrival.gd::customs()`'s, read rather than
+## restated, so the notebook cannot disagree with the plate on the reader.
+func _note_customs(it) -> void:
+	var status := String(it.customs_status()) if it.has_method("customs_status") \
+		else ""
+	var v: Dictionary = {}
+	var card = _card_holder()
+	if card != null and card.has_method("customs"):
+		var c = card.call("customs")
+		if typeof(c) == TYPE_DICTIONARY:
+			v = c
+	var place := String(v.get("place", ""))
+	if place == "":
+		place = _where_now()
+	var what := ""
+	if status == "":
+		what = "a card was read and nothing decided anything"
+	elif v.is_empty():
+		what = "IDENTICARD %s" % status.to_upper()
+	else:
+		what = "IDENTICARD %s -- %s" % [status.to_upper(),
+			String(v.get("verdict", ""))]
+	var detail := ""
+	if not v.is_empty():
+		detail = "station %d, %s: %s" % [int(v.get("at_station", 0)),
+			String(v.get("station", "")), String(v.get("why", ""))]
+	_note_cost("customs", place, what, detail)
+	# THE POINT OF THE WHOLE SESSION, IN ONE CALL. A verdict that is not written
+	# to a slot is a verdict that dies with the process.
+	_checkpoint("a customs verdict")
+
+
+## Add a row, print it, and say so. Returns the row.
+func _note_cost(kind: String, place: String, what: String,
+		detail: String = "") -> Dictionary:
+	# `--no-journal` STOPS THIS TOO, and it has to. The flag's contract is
+	# "nothing will be learned", and a consequence is learned; a control that
+	# silenced the rumours and kept the convictions would be a control that only
+	# half removes its subject. It is also what keeps `--phase=continue` honest,
+	# because that phase turns minting off so every row it reports came from a
+	# file rather than from the frame it was reading in.
+	if not _minting:
+		return {}
+	var row := {
+		"kind": kind, "place": place, "what": what, "detail": detail,
+		"day": _day(), "hour": (float(_clock.hour()) if _clock != null else -1.0),
+		"credits": _credits_now(),
+	}
+	costs.append(row)
+	print("journal: COST %s at %s, day %d %05.2f -- %s%s"
+		% [kind, (place if place != "" else "-"), int(row["day"]),
+			float(row["hour"]), what,
+			(" (%s)" % detail if detail != "" else "")])
+	return row
+
+
+## The one sentence a save file carries about you. `save.gd::_headlines` asks
+## every subject for one and this is the only node in the tree that has an
+## answer, which is the correct shape: the notebook is where "what happened to
+## me" lives.
+##
+## THE WORST ROW, NOT THE LAST. A player refused at customs and then fined has
+## two rows and the refusal is the one that decides what their next day is like;
+## reporting the most RECENT would let a trivial event bury a revocation.
+func save_headline() -> String:
+	if costs.is_empty():
+		return ""
+	var rank := {"demotion": 4, "booking": 3, "customs": 2, "conviction": 1}
+	var best: Dictionary = {}
+	var best_r := -1
+	for row in costs:
+		var r := int(rank.get(String(row.get("kind", "")), 0))
+		if r >= best_r:
+			best_r = r
+			best = row
+	var out := "%s (day %d, %05.2f" % [String(best.get("what", "")),
+		int(best.get("day", 0)), float(best.get("hour", 0.0))]
+	if String(best.get("place", "")) != "":
+		out += " at %s" % String(best.get("place", ""))
+	out += ")"
+	if costs.size() > 1:
+		out += " and %d more on the record" % (costs.size() - 1)
+	return out
+
+
+## What the notebook can say about the player's standing right now, in the terms
+## a HUD can draw. Values only -- no formatting decisions, because `hud.gd` owns
+## how its own face reads.
+func consequence_state() -> Dictionary:
+	var body = _body()
+	var it = _interact()
+	var last := {}
+	for row in costs:
+		if String(row.get("kind", "")) in ["customs", "booking", "demotion"]:
+			last = row
+	return {
+		"rows": costs.size(),
+		"customs": (String(it.customs_status()) if it != null
+			and it.has_method("customs_status") else ""),
+		"convictions": (int(it.convictions()) if it != null
+			and it.has_method("convictions") else 0),
+		"tier": (int(body.tier) if body != null else -1),
+		"tier_name": (String(body.tier_name) if body != null else ""),
+		"person": (String(body.person) if body != null else ""),
+		"npc_id": (String(body.npc_id) if body != null else ""),
+		"last": String(last.get("what", "")),
+		"last_place": String(last.get("place", "")),
+		"facts": facts.size(),
+		"people": people.size(),
+	}
+
+
+func cost_count() -> int:
+	return costs.size()
+
+
+## The consequence ledger as lines, newest last. Used by the page and by the
+## gate, so what a test asserts and what a player reads are one string.
+func cost_lines() -> Array:
+	var out: Array = []
+	for row in costs:
+		out.append("day %d %05.2f  %-10s %s%s" % [
+			int(row.get("day", 0)), float(row.get("hour", 0.0)),
+			String(row.get("kind", "")).to_upper(),
+			String(row.get("what", "")),
+			(" [%s]" % String(row.get("place", ""))
+				if String(row.get("place", "")) != "" else "")])
+	return out
+
+
+# -- the nodes the watcher reads, all found by capability --------------------
+var _interact_n = null
+var _card_n = null
+var _enforce_n = null
+
+
+## `customs_status` is `interact.gd`'s and nothing else in the tree answers it.
+func _interact():
+	if _interact_n != null and is_instance_valid(_interact_n):
+		return _interact_n
+	_interact_n = _find_by_method(_host, "customs_status")
+	return _interact_n
+
+
+## `customs_verdict` is `arrival.gd`'s. A `--mode=station` build has none, and
+## that is not a fault: nobody issued a card in that build, so there is no
+## verdict for anybody to quote.
+func _card_holder():
+	if _card_n != null and is_instance_valid(_card_n):
+		return _card_n
+	_card_n = _find_by_method(_host, "customs_verdict")
+	return _card_n
+
+
+## `refuse_at` is `enforcement.gd`'s.
+func _enforcement():
+	if _enforce_n != null and is_instance_valid(_enforce_n):
+		return _enforce_n
+	_enforce_n = _find_by_method(_host, "refuse_at")
+	return _enforce_n
+
+
+func _booking_now() -> String:
+	var e = _enforcement()
+	if e == null:
+		return ""
+	return String(e.get("booking"))
+
+
+func _enforce_detail() -> String:
+	var e = _enforcement()
+	if e == null:
+		return ""
+	return "refused=%d arrived=%d moved_on=%d detained=%d searched=%d" % [
+		int(e.get("refused")), int(e.get("arrived")), int(e.get("moved_on")),
+		int(e.get("detained")), int(e.get("searched"))]
+
+
+func _body():
+	if _host != null and _host.has_method("_player"):
+		var b = _host._player()
+		if b != null and is_instance_valid(b):
+			return b
+	return null
+
+
+func _credits_now() -> float:
+	var b = _body()
+	return (float(b.credits) if b != null else -1.0)
+
+
+## The rung's own name, for a demotion row that has to say what was taken away.
+## `arrival.gd::TIER_NAME` is the bake's table and this is the same six labels;
+## it is used only to NAME a number the body already moved past, never to decide
+## one, so it cannot become a second copy of the ladder.
+func _tier_name_of(t: int) -> String:
+	return {0: "no_status", 1: "sanctuary", 2: "transit", 3: "resident",
+		4: "citizen", 5: "accredited"}.get(t, "rung %d" % t)
+
+
+## WHERE THE BODY IS STANDING, not which deck booted. `_here()` above answers the
+## second question and is right for a PA call, which is heard across a deck; a
+## consequence happens to you in a room, and `_watch_feet` has already resolved
+## which one every frame off the same place boxes the HUD uses.
+func _where_now() -> String:
+	if _here_place != "":
+		return _here_place
+	return ""
 
 
 ## A CONVERSATION THE PLAYER ACTUALLY OPENED, minted one frame after it opened.
@@ -927,6 +1380,434 @@ func entries() -> Array:
 	return out
 
 
+# ===========================================================================
+#  THE PAGE -- the surface this file did not have
+# ===========================================================================
+#
+# MEASURED BEFORE IT EXISTED: `grep -c "CanvasLayer\|_draw\|draw_string\|Control"`
+# over this file was 0, across 1,731 lines. Everything the journal knows was
+# reachable only from a log. A player could not see a single fact they had
+# learned, a single person they had met, a single ledger they stood on, or one
+# thing that had been done to them.
+#
+# WHY IT IS DRAWN AND NOT ASSEMBLED FROM CONTROLS -- the same argument
+# `hud.gd::Face` makes and it is not repeated for style: the whole interface is
+# hairlines and small tracked capitals, a StyleBox cannot express those without a
+# texture, and a texture is a binary this project has a standing rule against.
+# Drawing it also keeps the entire look in one reviewable function.
+#
+# THE PALETTE IS `hud.gd`'s, TO THE THREE DECIMALS, and it is duplicated rather
+# than imported for a reason worth stating: `hud.gd` is a CanvasLayer script and
+# preloading it here would instantiate a second HUD's worth of constants into a
+# node that is not one. Three colours copied is a smaller liability than a class
+# dependency between two overlays -- and if they ever disagree, the page and the
+# face are on screen at the same time, so the disagreement is visible rather than
+# theoretical.
+const P_CYAN := Color(0.494, 0.812, 0.882)
+const P_AMBER := Color(1.0, 0.702, 0.290)
+const P_INK := Color(0.016, 0.031, 0.047)
+
+## The key. `dialogue.gd` owns T and the digits, `interact.gd` owns E,
+## `player.gd` owns ESC. J is free, checked against all three.
+const PAGE_KEY := KEY_J
+
+var _page: CanvasLayer = null
+var _page_face = null
+var _page_open := false
+var _page_scroll := 0
+## HOW MANY DRAW CALLS THE LAST FRAME OF THE PAGE ACTUALLY ISSUED. A headless
+## build has no raster to read, so "the page drew" cannot be proved from a
+## picture -- and "the node exists" is not the claim. This is incremented inside
+## `_draw` by every primitive, so a gate can fail on a page that is present,
+## visible, and drawing nothing.
+var _page_ops := 0
+
+
+func _install_page() -> void:
+	# THE SAME EXCLUSIONS `hud.gd` TAKES, and for its reason: `walkable.py` parses
+	# one line out of a headless walk and a Control tree over a null driver can
+	# only subtract from it. `--no-journal-page` is this file's own control.
+	var a := _args()
+	if a.has("walk-test") or a.has("no-hud") or a.has("no-journal-page"):
+		print("journal: NO PAGE in this build (%s)"
+			% ("--walk-test" if a.has("walk-test")
+				else "--no-hud" if a.has("no-hud") else "--no-journal-page"))
+		return
+	_page = CanvasLayer.new()
+	_page.name = "JournalPage"
+	# ABOVE THE HUD AND ABOVE THE CONVERSATION. Both of those are CanvasLayers at
+	# the default layer 0; a full-page log drawn underneath them would have the
+	# reticle and the prompt printed through it.
+	_page.layer = 20
+	_page_face = Page.new()
+	_page_face.j = self
+	_page_face.name = "Face"
+	_page_face.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_page_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_page.add_child(_page_face)
+	add_child(_page)
+	_page.visible = false
+	if a.has("journal-open"):
+		open_page()
+	if a.has("journal-shot"):
+		call_deferred("_page_shot", String(a["journal-shot"]))
+	print("journal: page ready -- press J (%d ledger(s), %d kind(s) to show)"
+		% [standing_blocks.size(), kinds.size()])
+
+
+## A PICTURE OF THE PAGE, because `_page_ops` proves the draw ran and says
+## nothing about whether anybody would want to read it. `docs/AAA-STANDARD.md`
+## scores craft off a frame and this is how a full-screen overlay gets one.
+##
+## IT NAMES THE DRIVER IT ACTUALLY GOT, on every run, per CLAUDE.md's
+## render-fallback rule: a container with no Vulkan ICD silently substitutes
+## OpenGL 3 Compatibility, exits 0 with a PNG, and ten frames were judged through
+## it in session 4e. A page of flat 2D drawing would survive that substitution --
+## which is exactly why the line has to say so rather than be assumed harmless.
+func _page_shot(path: String) -> void:
+	# ROWS BEFORE PIXELS. An empty notebook photographs as an empty notebook, so
+	# a shot run seeds nothing and instead SAYS what was in it -- if the answer is
+	# "nothing", the frame is honest and the reader knows why.
+	open_page()
+	for _i in 8:
+		await RenderingServer.frame_post_draw
+	var img := get_viewport().get_texture().get_image()
+	var err := img.save_png(path)
+	print("JOURNALSHOT %s %dx%d ops=%d facts=%d costs=%d driver=%s adapter=%s "
+		% [path, img.get_width(), img.get_height(), _page_ops, facts.size(),
+			costs.size(), RenderingServer.get_video_adapter_api_version(),
+			RenderingServer.get_video_adapter_name()]
+		+ "err=%d" % err)
+	get_tree().quit(0 if err == OK and _page_ops > 0 else 1)
+
+
+func _unhandled_input(e: InputEvent) -> void:
+	if _page == null:
+		return
+	if not (e is InputEventKey and e.pressed and not e.echo):
+		return
+	if e.keycode == PAGE_KEY:
+		toggle_page()
+		get_viewport().set_input_as_handled()
+		return
+	if not _page_open:
+		return
+	match e.keycode:
+		KEY_ESCAPE:
+			close_page()
+			get_viewport().set_input_as_handled()
+		KEY_DOWN, KEY_PAGEDOWN:
+			_page_scroll += (1 if e.keycode == KEY_DOWN else 10)
+			_redraw_page()
+			get_viewport().set_input_as_handled()
+		KEY_UP, KEY_PAGEUP:
+			_page_scroll = maxi(0, _page_scroll
+				- (1 if e.keycode == KEY_UP else 10))
+			_redraw_page()
+			get_viewport().set_input_as_handled()
+
+
+func open_page() -> void:
+	if _page == null:
+		return
+	_page_open = true
+	_page.visible = true
+	_redraw_page()
+	print("journal: PAGE OPEN -- %d fact(s), %d person(s), %d consequence(s)"
+		% [facts.size(), people.size(), costs.size()])
+
+
+func close_page() -> void:
+	if _page == null:
+		return
+	_page_open = false
+	_page.visible = false
+	print("journal: page closed")
+
+
+func toggle_page() -> void:
+	if _page_open:
+		close_page()
+	else:
+		open_page()
+
+
+func page_is_open() -> bool:
+	return _page_open
+
+
+func page_ops() -> int:
+	return _page_ops
+
+
+func _redraw_page() -> void:
+	if _page_face != null:
+		_page_face.queue_redraw()
+
+
+## WHAT THE PAGE SAYS, AS DATA. The gate asserts on THIS and `_draw` renders it,
+## so a test cannot pass against strings a player never sees -- which is the
+## defect one level up from "a gate that reads a committed artefact".
+##
+## Four columns of one question each, and they are the four the brief named:
+## what you know, who you know, what was done to you, and where you stand.
+func page_columns() -> Array:
+	var know: Array = []
+	var ents := entries()
+	# Newest first: a notebook is read from the end.
+	for i in range(ents.size() - 1, -1, -1):
+		know.append(String(ents[i]))
+	if know.is_empty():
+		know.append("-- nothing learned yet. Facts are minted by things that "
+			+ "happen to you: a name given, a call overheard, a leg walked.")
+
+	var met: Array = []
+	var pk: Array = people.keys()
+	pk.sort()
+	for k in pk:
+		var s: Dictionary = people[k]
+		var nm := String(s.get("name", ""))
+		met.append("%s  %s  %d talk(s)  favour %+.2f%s" % [
+			(nm if nm != "" else "a face you would know again"),
+			String(k),
+			int(s.get("talks", 0)), float(s.get("favour", 0.0)),
+			("  -- " + String(s.get("last_outcome", ""))
+				if String(s.get("last_outcome", "")) != "" else "")])
+	if met.is_empty():
+		met.append("-- nobody. Press T beside somebody to be introduced.")
+
+	var cost := cost_lines()
+	if cost.is_empty():
+		cost.append("-- nothing has been done to you. Yet.")
+
+	var stand: Array = []
+	var sk: Array = standing.keys()
+	sk.sort()
+	for k in sk:
+		var v := float(standing[k])
+		if absf(v) < 0.0005:
+			continue
+		stand.append("%-22s %+7.3f" % [String(k), v])
+	if stand.is_empty():
+		stand.append("-- level with all %d ledgers." % standing.size())
+
+	return [
+		{"head": "WHAT YOU KNOW", "rows": know, "scroll": true},
+		{"head": "WHO YOU KNOW", "rows": met, "scroll": false},
+		{"head": "WHAT IT COST YOU", "rows": cost, "scroll": false},
+		{"head": "WHERE YOU STAND", "rows": stand, "scroll": false},
+	]
+
+
+## The two lines across the top: who you are and when it is.
+func page_header() -> Array:
+	var st := consequence_state()
+	var who := String(st.get("person", ""))
+	if who == "":
+		who = "NOBODY THIS BUILD NAMED"
+	var card := String(st.get("tier_name", ""))
+	var line1 := "%s   %s" % [who.to_upper(),
+		(card.to_upper() if card != "" else "NO CARD")]
+	if String(st.get("customs", "")) != "":
+		line1 += "   CUSTOMS: %s" % String(st.get("customs", "")).to_upper()
+	if int(st.get("convictions", 0)) > 0:
+		line1 += "   %d CONVICTION(S)" % int(st.get("convictions", 0))
+	var line2 := "DAY %d   %05.2f   %.2f H LIVED" % [_day(),
+		(float(_clock.hour()) if _clock != null else -1.0), _lived_h]
+	if _jumps > 0:
+		line2 += "   %d JUMP(S) SKIPPING %.2f H" % [_jumps, _jumped_h]
+	line2 += "   %s" % (_where_now().to_upper() if _where_now() != ""
+		else "IN THE CORRIDOR")
+	return [line1, line2]
+
+
+func page_footer() -> String:
+	var bits := PackedStringArray()
+	bits.append("%d FACT(S)" % facts.size())
+	bits.append("%d MET" % people.size())
+	bits.append("%d ON THE RECORD" % costs.size())
+	bits.append("%d CHECKPOINT(S)" % _checkpoints)
+	if not _persist:
+		bits.append("PERSISTENCE OFF (CONTROL)")
+	if not _refusals.is_empty():
+		bits.append("%d REFUSED" % _refusals.size())
+	return "   ".join(bits)
+
+
+## The full page as flat text, for a log and for a gate.
+func page_text() -> Array:
+	var out: Array = []
+	for h in page_header():
+		out.append(String(h))
+	for c in page_columns():
+		out.append("== %s ==" % String(c["head"]))
+		for r in c["rows"]:
+			out.append("   " + String(r))
+	out.append(page_footer())
+	return out
+
+
+## THE PAGE ITSELF.
+class Page extends Control:
+	var j                                  # the journal that owns this page
+	var _font: Font = ThemeDB.fallback_font
+
+	func _draw() -> void:
+		if j == null or _font == null:
+			return
+		j._page_ops = 0
+		var sz := size
+		var s: float = maxf(sz.y / 720.0, 0.35)
+		# THE WHOLE FRAME GOES DARK, and that is the one place this overlay is
+		# allowed to be heavier than the HUD: a log is a thing you stop to read.
+		# Not opaque -- 0.88 -- because the station carrying on behind the page is
+		# the scope document's own sentence about existing around you.
+		_rect(Rect2(Vector2.ZERO, sz), Color(P_INK, 0.88))
+
+		var m := 46.0 * s
+		var top := 40.0 * s
+
+		# -- the head ---------------------------------------------------------
+		var head: Array = j.page_header()
+		_caps(Vector2(m, top), "PERSONAL LOG", int(roundf(24.0 * s)),
+			Color(P_CYAN, 0.98), 4.0 * s)
+		_bracket(Vector2(m - 14.0 * s, top - 22.0 * s), 18.0 * s, 26.0 * s,
+			Color(P_CYAN, 0.75), s)
+		_line(Vector2(m, top + 12.0 * s), Vector2(sz.x - m, top + 12.0 * s),
+			Color(P_CYAN, 0.40), s)
+		_caps(Vector2(m, top + 34.0 * s), String(head[0]),
+			int(roundf(13.0 * s)), Color(P_AMBER, 0.92), 2.0 * s)
+		_caps(Vector2(m, top + 52.0 * s), String(head[1]),
+			int(roundf(11.0 * s)), Color(P_CYAN, 0.62), 1.6 * s)
+
+		# -- four panels ------------------------------------------------------
+		# Two columns; the left one is the fact list and takes the scroll, the
+		# right one stacks the three short ledgers. The split is 54/46 because the
+		# fact lines carry their own source sentence and are the long ones.
+		var body_y := top + 78.0 * s
+		var body_h := sz.y - body_y - 46.0 * s
+		var gap := 26.0 * s
+		var lw: float = (sz.x - m * 2.0 - gap) * 0.54
+		var rw: float = (sz.x - m * 2.0 - gap) - lw
+		var cols: Array = j.page_columns()
+
+		_panel(Rect2(m, body_y, lw, body_h), String(cols[0]["head"]),
+			cols[0]["rows"], s, int(j._page_scroll), true)
+
+		var rh: float = (body_h - gap * 2.0) / 3.0
+		var ry := body_y
+		for i in [1, 2, 3]:
+			_panel(Rect2(m + lw + gap, ry, rw, rh), String(cols[i]["head"]),
+				cols[i]["rows"], s, 0, false)
+			ry += rh + gap
+
+		# -- the foot ---------------------------------------------------------
+		var fy := sz.y - 26.0 * s
+		_line(Vector2(m, fy - 14.0 * s), Vector2(sz.x - m, fy - 14.0 * s),
+			Color(P_CYAN, 0.30), s)
+		_caps(Vector2(m, fy), String(j.page_footer()), int(roundf(10.0 * s)),
+			Color(P_CYAN, 0.55), 1.4 * s)
+		var hint := "J CLOSE    UP DOWN SCROLL"
+		var hw := _caps_w(hint, int(roundf(10.0 * s)), 1.4 * s)
+		_caps(Vector2(sz.x - m - hw, fy), hint, int(roundf(10.0 * s)),
+			Color(P_AMBER, 0.55), 1.4 * s)
+
+	# -- one titled panel of lines -----------------------------------------
+	func _panel(r: Rect2, head: String, rows: Array, s: float, scroll: int,
+			scrollable: bool) -> void:
+		_line(r.position, Vector2(r.end.x, r.position.y), Color(P_CYAN, 0.55), s)
+		_bracket(r.position, 14.0 * s, 12.0 * s, Color(P_CYAN, 0.75), s)
+		var hpx := int(roundf(12.0 * s))
+		_caps(r.position + Vector2(2.0 * s, -6.0 * s), head, hpx,
+			Color(P_AMBER, 0.90), 2.4 * s)
+		var px := int(roundf(10.0 * s))
+		var lh: float = px * 1.62
+		var y: float = r.position.y + 22.0 * s
+		var room := int(floorf((r.size.y - 24.0 * s) / lh))
+		if room < 1:
+			room = 1
+		var first := 0
+		if scrollable:
+			first = clampi(scroll, 0, maxi(0, rows.size() - room))
+		var shown := 0
+		for i in range(first, rows.size()):
+			if shown >= room:
+				break
+			var raw := String(rows[i])
+			# WRAPPED BY MEASUREMENT, NOT BY A CHARACTER COUNT. A fact line
+			# carries its whole source sentence and the panel is a measured
+			# width, so cutting at "80 characters" would clip on one frame size
+			# and leave a gap on another.
+			var parts := _wrap(raw, r.size.x - 16.0 * s, px, 1.2 * s)
+			for k in parts.size():
+				if shown >= room:
+					break
+				var dim: float = (0.86 if k == 0 else 0.52)
+				var col: Color = (P_AMBER if raw.begins_with("day ") and k == 0
+					else P_CYAN)
+				_caps(Vector2(r.position.x + 8.0 * s, y), String(parts[k]), px,
+					Color(col, dim), 1.2 * s)
+				y += lh
+				shown += 1
+		if scrollable and rows.size() > room:
+			var more := "%d MORE  (%d-%d OF %d)" % [
+				maxi(0, rows.size() - first - shown), first + 1,
+				first + shown, rows.size()]
+			_caps(Vector2(r.position.x + 8.0 * s, r.end.y - 4.0 * s), more,
+				int(roundf(9.0 * s)), Color(P_AMBER, 0.60), 1.2 * s)
+
+	# -- primitives ---------------------------------------------------------
+	func _rect(r: Rect2, c: Color) -> void:
+		draw_rect(r, c, true)
+		j._page_ops += 1
+
+	func _line(a: Vector2, b: Vector2, c: Color, s: float) -> void:
+		draw_line(a, b, c, maxf(1.0, roundf(s)), false)
+		j._page_ops += 1
+
+	func _bracket(at: Vector2, dx: float, dy: float, c: Color,
+			s: float) -> void:
+		_line(at, at + Vector2(dx, 0), c, s)
+		_line(at, at + Vector2(0, dy), c, s)
+
+	## Small capitals with the letters pushed apart -- `hud.gd::_tracked`'s rule,
+	## and the reason is the same: untracked default-font capitals read as a debug
+	## overlay, which is what a page like this must not look like.
+	func _caps(pos: Vector2, text: String, px: int, c: Color,
+			track: float) -> float:
+		var t := text.to_upper()
+		var x := pos.x
+		for i in t.length():
+			var ch := t[i]
+			draw_char(_font, Vector2(x, pos.y), ch, px, c)
+			x += _font.get_char_size(ch.unicode_at(0), px).x + track
+			j._page_ops += 1
+		return x - pos.x
+
+	func _caps_w(text: String, px: int, track: float) -> float:
+		var t := text.to_upper()
+		var w := 0.0
+		for i in t.length():
+			w += _font.get_char_size(t[i].unicode_at(0), px).x + track
+		return maxf(w - track, 0.0)
+
+	func _wrap(text: String, width: float, px: int, track: float) -> Array:
+		var out: Array = []
+		var line := ""
+		for word in text.split(" ", false):
+			var t := (word if line == "" else line + " " + word)
+			if _caps_w(t, px, track) > width and line != "":
+				out.append(line)
+				line = word
+			else:
+				line = t
+		if line != "":
+			out.append(line)
+		if out.is_empty():
+			out.append("")
+		return out
+
+
 ## The one line `main.gd` prints and the one `save.gd::audit` finds this node by.
 func journal_report() -> String:
 	return ("journal: %d facts, %d people met (%d by name), %d witnessed over "
@@ -949,7 +1830,7 @@ func _named_count() -> int:
 func save_state() -> Dictionary:
 	return {"facts": facts, "people": people, "standing": standing,
 			"cursor": _cursor, "witnessed": _witnessed,
-			"lived_h": _lived_h}
+			"lived_h": _lived_h, "costs": costs}
 
 
 func load_state(d: Dictionary) -> void:
@@ -967,11 +1848,19 @@ func load_state(d: Dictionary) -> void:
 	_cursor = float(d.get("cursor", -999.0))
 	_witnessed = int(d.get("witnessed", 0))
 	_lived_h = float(d.get("lived_h", 0.0))
+	# WHAT WAS DONE TO YOU COMES BACK WITH WHAT YOU KNOW. A missing key leaves the
+	# ledger EMPTY rather than untouched, which is the honest reading of a save
+	# written before this existed: that session recorded no consequences, so a
+	# world restored from it has none. Carrying the live rows across a load would
+	# make a reload the one way to keep a consequence a save did not contain.
+	var cs = d.get("costs", [])
+	costs = (cs.duplicate(true) if typeof(cs) == TYPE_ARRAY else [])
 	# ...AND SO ARE THE OBSERVER'S BASELINES, for the same reason one level
 	# out: every other section of the save is being restored in the same
 	# frame, and a restored counter moving is not the world moving. See
 	# `_watch_talk`.
 	_resync = true
+	_cost_resync = true
 	_have_pos = false
 
 
@@ -996,6 +1885,10 @@ func run_gate(host) -> void:
 			await _phase_recall(host)
 		"compress":
 			await _phase_compress(host)
+		"persist":
+			await _phase_persist(host)
+		"continue":
+			await _phase_continue(host)
 		_:
 			print("JOURNAL gate=FAIL unknown --phase=%s" % phase)
 			get_tree().quit(2)
@@ -1329,6 +2222,315 @@ func _expected_ids() -> Array[String]:
 	else:
 		print("JOURNAL: NO LEG IS DERIVABLE ON THIS DECK")
 	return out
+
+
+# ===========================================================================
+#  THE TWO-LAUNCH GATE: does what happened to you survive closing the game
+# ===========================================================================
+#
+# TWO PROCESSES, FOR THE REASON `--phase=learn`/`recall` ALREADY GIVES ONE
+# SCREEN UP: a save and a restore inside one running engine passes on a build
+# whose file never reaches the disk. `--phase=persist` puts a card in a reader
+# and QUITS; `--phase=continue` is a second `godot` that boots from nothing and
+# asks what came back.
+#
+# WHAT IS REAL IN THIS GATE AND WHAT IS SUBSTITUTED, said plainly because a gate
+# that quietly stands in for the thing it tests is worse than none.
+#
+#   REAL: the key. `_press(KEY_E)` goes through the viewport into
+#         `interact.gd::_unhandled_input`, which calls `use()`, which dispatches
+#         `_verb_operate`, which asks `arrival.gd::customs_verdict`, which
+#         computes the verdict from the nine fields on the card the body is
+#         carrying, which routes a refusal into `enforcement.gd::refuse_at` and
+#         writes the record into the economy ledger. Not one step of that chain
+#         is bypassed and not one of those files is touched by this session.
+#
+#   SUBSTITUTED: the WALK. The body is PLACED at the reader. That is not a
+#         convenience -- measured this session on the shipped build,
+#         `arrival.gd --arrival-test --arrival-from=present --arrival-budget=4000`
+#         walked **888.6 m and never got within 174.1 m of the reader**, and its
+#         own verdict line says so: `reader_used=false outcome=NOT-COMPUTED`.
+#         The customs hall's interior is not navigable by the bug-algorithm
+#         steer, which `arrival.gd`'s own comments already predicted and which a
+#         navmesh is the answer to. THAT IS AN OPEN DEFECT AND IT IS NOT THIS
+#         GATE'S TO CLOSE; what this gate must not do is let the walk's failure
+#         hide the persistence question behind it.
+#
+# THE PLACEMENT IS DECLARED TO THE JOURNAL'S OWN WATCHER rather than hidden from
+# it: `_watch_feet` will see a step no leg could take and poison the open leg,
+# which is correct -- a route fact must not be buyable by teleport, and this run
+# does not claim one.
+func _phase_persist(host) -> void:
+	await _settle(30)
+	# THE TWO SLOT NAMES MUST BE ONE STRING. `main.gd::MENU_SLOT` is what
+	# CONTINUE reads and `save.gd::AUTO_SLOT` is what the checkpoint writes; if
+	# they ever drift, every launch below would pass while the front door stayed
+	# dead. Read off the host rather than assumed.
+	var ms = host.get("MENU_SLOT")
+	if ms == null:
+		# A constant this engine build does not expose through `get()` is not a
+		# failure of the thing being tested, and reporting it as one would be a
+		# gate failing on its own instrument. Said out loud instead.
+		print("PERSIST: main.gd::MENU_SLOT is not readable through get() on this "
+			+ "build -- the slot agreement is UNCHECKED (save.gd::AUTO_SLOT=%s)"
+			% Save.AUTO_SLOT)
+	elif String(ms) != Save.AUTO_SLOT:
+		print("PERSIST gate=FAIL main.gd::MENU_SLOT=%s but save.gd::AUTO_SLOT=%s"
+			% [String(ms), Save.AUTO_SLOT])
+		get_tree().quit(2)
+		return
+	# START FROM NOTHING. Without this the gate could pass on a file an earlier
+	# run left behind -- and the `--no-persist` control could pass hardest of all.
+	Save.erase(Save.AUTO_SLOT)
+	print("PERSIST: slot %s cleared -- this launch starts with no memory"
+		% Save.slot_path(Save.AUTO_SLOT))
+
+	var it = _interact()
+	var body = _body()
+	if it == null or body == null:
+		print("PERSIST gate=FAIL interact=%s player=%s"
+			% [str(it != null), str(body != null)])
+		get_tree().quit(2)
+		return
+	var group := String(_args().get("reader", "customs_north__prop_identicard_reader"))
+	var row := _sidecar_row(group)
+	if row.is_empty():
+		print("PERSIST gate=FAIL no sidecar row for %s" % group)
+		get_tree().quit(2)
+		return
+	if body.has_method("drive_externally"):
+		body.drive_externally()
+	# BOTH SIDES, AND THE PROMPT DECIDES WHICH ONE WAS RIGHT. `interact.gd`'s own
+	# `prompt_group()` is the answer -- the same value the E key acts on -- so
+	# this cannot settle on a side that looks right and would not have prompted.
+	var placed := false
+	var side := 0.0
+	for s in [1.0, -1.0]:
+		if not _stand_at_panel(body, row, s):
+			continue
+		await _settle(8)
+		it.refresh()
+		print("PERSIST: side %+.0f -- %.2f m, %s"
+			% [s, it.range_to(group), it.probe(group)])
+		if String(it.prompt_group()) == group:
+			placed = true
+			side = s
+			break
+	print("PERSIST: standing at %s from side %+.0f -- prompt=%s"
+		% [group, side, (it.prompt_group() if it.prompt_group() != "" else "-")])
+	# THE KEY, THROUGH THE VIEWPORT. `interact.gd` binds E in `_unhandled_input`
+	# and calls `use()`; pushing the event runs THAT binding rather than going
+	# round it, which is the half round one of the journal gate was told it had
+	# skipped.
+	it.refresh()
+	var before := costs.size()
+	if _args().has("no-press"):
+		print("PERSIST: KEY NEVER PRESSED (control) -- nothing should happen")
+	else:
+		_press(KEY_E)
+	await _settle(30)
+	# THE CONSEQUENCE IS ALLOWED TO ARRIVE. A refusal calls two officers who then
+	# have to cross the floor; quitting on the press would kill the process
+	# between the cause and the effect -- `arrival.gd::_advance` had to learn the
+	# same thing and its comment is the one this follows.
+	var hold := int(_args().get("persist-hold", "240"))
+	for _i in hold:
+		await get_tree().physics_frame
+
+	var st := consequence_state()
+	print("PERSIST: %s" % JSON.stringify(st))
+	for ln in page_text():
+		print("PERSIST page | " + ln)
+	var snap: Dictionary = Save.read(Save.AUTO_SLOT)
+	var on_disk := not snap.is_empty()
+	var head := Save.headline(snap)
+	var sections: Array = (snap.get("_state", {}) as Dictionary).keys() \
+		if on_disk else []
+	sections.sort()
+	var rows := costs.size()
+	var ok: bool = (placed and rows > before and _checkpoints > 0 and on_disk
+		and head != "" and sections.has("journal") and sections.has("interact"))
+	print(("PERSIST gate=%s placed=%s verdict=%s costs=%d(+%d) checkpoints=%d "
+		+ "slot_written=%s headline=%s sections=%s") % [
+		("PASS" if ok else "FAIL"), str(placed).to_lower(),
+		(String(st.get("customs", "")) if String(st.get("customs", "")) != ""
+			else "-"),
+		rows, rows - before, _checkpoints, str(on_disk).to_lower(),
+		("\"%s\"" % head if head != "" else "-"),
+		("/".join(PackedStringArray(sections)) if not sections.is_empty()
+			else "-")])
+	get_tree().quit(0 if ok else 1)
+
+
+## LAUNCH TWO. Boot from nothing, press CONTINUE, and ask what the station
+## remembers about you.
+##
+## THE READING PROCESS MAY NOT WRITE, and `_phase_recall` above paid a whole run
+## to learn it: with the minter live, a phase that is supposed to only read can
+## mint the very thing it then finds. Minting is off for the whole of this phase,
+## so every row reported below arrived in a FILE.
+func _phase_continue(host) -> void:
+	await _settle(30)
+	_minting = false
+	print("CONTINUE: MINTING OFF -- everything below came out of the slot")
+	var before := costs.size()
+	var snap_on_disk: Dictionary = Save.read(Save.AUTO_SLOT)
+	print("CONTINUE: slot %s -- %s" % [Save.slot_path(Save.AUTO_SLOT),
+		("EMPTY, there is nothing to come back to" if snap_on_disk.is_empty()
+			else Save.describe(snap_on_disk))])
+	if _args().has("no-restore"):
+		print("CONTINUE: RESTORE SKIPPED (control)")
+	else:
+		host.load_from(Save.AUTO_SLOT)
+	await _settle(10)
+
+	var st := consequence_state()
+	for ln in page_text():
+		print("CONTINUE page | " + ln)
+	# WHAT THE LEDGER SAYS, BESIDE WHAT THE SAVE SAYS. There are two persistence
+	# channels in this build and they are not the same: `interact.gd` writes the
+	# record into `station/generated/economy.json` on the frame it happens, and
+	# the save slot carries the rest of the world. Reporting only one would leave
+	# the other free to disagree.
+	var ledger_status := String(st.get("customs", ""))
+	var head := Save.headline(snap_on_disk)
+	var ok: bool = (costs.size() > before and costs.size() > 0 and head != ""
+		and ledger_status != "")
+	print(("CONTINUE gate=%s costs_before=%d costs_after=%d headline=%s "
+		+ "ledger_customs=%s tier=%d(%s) person=%s facts=%d") % [
+		("PASS" if ok else "FAIL"), before, costs.size(),
+		("\"%s\"" % head if head != "" else "-"),
+		(ledger_status if ledger_status != "" else "-"),
+		int(st.get("tier", -1)), String(st.get("tier_name", "-")),
+		String(st.get("person", "-")).replace(" ", "_"), facts.size()])
+	for ln in cost_lines():
+		print("CONTINUE cost | " + ln)
+	get_tree().quit(0 if ok else 1)
+
+
+## One row out of the interactables sidecar the deck was built with. The same
+## document `interact.gd` binds its `Item`s from, so the position this gate
+## walks to cannot disagree with the box the prompt is measured against.
+func _sidecar_row(group: String) -> Dictionary:
+	var root := _repo_root()
+	var boot := root.path_join("station/generated/scene/boot.json")
+	if not FileAccess.file_exists(boot):
+		return {}
+	var bf := FileAccess.open(boot, FileAccess.READ)
+	var bd = JSON.parse_string(bf.get_as_text())
+	bf.close()
+	if typeof(bd) != TYPE_DICTIONARY:
+		return {}
+	var p := String(bd.get("interact", ""))
+	if p == "" or not FileAccess.file_exists(p):
+		return {}
+	var f := FileAccess.open(p, FileAccess.READ)
+	var rows = JSON.parse_string(f.get_as_text())
+	f.close()
+	if typeof(rows) != TYPE_ARRAY:
+		return {}
+	for r in rows:
+		if typeof(r) == TYPE_DICTIONARY and String(r.get("group", "")) == group:
+			return r
+	return {}
+
+
+## Stand a body in front of a wall panel and look at it.
+##
+## THE THREE DIRECTIONS ARE DERIVED FROM THE STATION, not written down. UP is
+## towards the axis (`-r_hat`), which is the same derivation `_scan_partner` and
+## `dialogue.gd::_up_at` make and the one that puts the eye in the ceiling when
+## it is wrong. DOWN to the floor is how far outboard the deck is under the
+## panel, taken from the body's own radius rather than from a constant. BACK is
+## whichever direction, in the plane the body walks on, points into the room the
+## panel belongs to -- read off the sidecar row's own `place` box.
+func _stand_at_panel(body, row: Dictionary, side: float) -> bool:
+	var c = row.get("centre", [])
+	if typeof(c) != TYPE_ARRAY or (c as Array).size() != 3:
+		return false
+	var centre := Vector3(float(c[0]), float(c[1]), float(c[2]))
+	var radial := Vector3(centre.x, centre.y, 0.0)
+	if radial.length() < 1.0:
+		return false
+	var out: Vector3 = radial.normalized()      # "down" on a spun ring
+	var up: Vector3 = -out
+	# THE FLOOR UNDER THE PANEL, at the radius the body was already standing at.
+	# `boot.json`'s spawn is the one point on this deck known to be standable and
+	# the body is on it when this runs, so its own radius is the deck's floor.
+	var here: Vector3 = body.global_position
+	var floor_r: float = Vector3(here.x, here.y, 0.0).length()
+	var foot: Vector3 = out * floor_r + Vector3(0, 0, centre.z)
+	# WHICH SIDE OF THE PANEL. It is 0.065 m thin along Z, so there are exactly
+	# two, and the caller tries both rather than deriving one -- see the loop in
+	# `_phase_persist`. THE FIRST VERSION OF THIS DERIVED IT from the place's own
+	# centroid and got it backwards, and the symptom was the one `player.gd::
+	# drive_externally`'s header already documents to the degree:
+	# `off_axis=160deg/35`, a body standing 1.39 m from a reader it was facing
+	# directly away from. Two tries and a printed answer beats a derivation that
+	# can be silently wrong.
+	var back := Vector3(0, 0, signf(side))
+	var stand: Vector3 = foot + back * 1.80 + up * 0.10
+	body.global_position = stand
+
+	# THE POSE, THROUGH THE BODY'S OWN ONE CONSTRUCTION SITE.
+	# `player.gd::stand_basis` is the project's single right-handed basis
+	# expression -- its own header names `npc.gd::_walker_xform` as what happens
+	# when a second copy gets the sign wrong and mirrors a crowd for six
+	# sessions. Nothing here builds a Basis.
+	var fwd: Vector3 = centre - stand
+	fwd = fwd - up * fwd.dot(up)
+	if fwd.length() < 1e-3:
+		return false
+	fwd = fwd.normalized()
+	if body.has_method("stand_basis"):
+		body.global_transform = Transform3D(body.stand_basis(fwd), stand)
+	# AND THE EYE IS PITCHED AT THE PANEL, which the basis alone cannot do: a
+	# body's basis is flat on the deck and this reader sits 1.2 m off the floor,
+	# so a horizontal eye at 1.70 m looks OVER it. `interact.gd::scan` measures
+	# its 35-degree cone about the CAMERA axis, so the pitch is not cosmetic --
+	# it is the difference between a prompt and no prompt.
+	var cam := body.get_node_or_null("Camera3D") as Camera3D
+	if cam != null:
+		var eye: Vector3 = stand + up * 1.70
+		var to: Vector3 = centre - eye
+		var p: float = atan2(to.dot(up), to.dot(fwd))
+		cam.transform = Transform3D(Basis(Vector3.RIGHT, p),
+			Vector3(0, 1.70, 0))
+	return true
+
+
+## The centre of a named place, off the interact sidecar's own rows. Not a second
+## register: it is the union of the boxes `hud.gd::_places` unions for the same
+## purpose, computed from the same file.
+func _place_centre(place: String) -> Vector3:
+	if place == "":
+		return Vector3.ZERO
+	var root := _repo_root()
+	var boot := root.path_join("station/generated/scene/boot.json")
+	if not FileAccess.file_exists(boot):
+		return Vector3.ZERO
+	var bf := FileAccess.open(boot, FileAccess.READ)
+	var bd = JSON.parse_string(bf.get_as_text())
+	bf.close()
+	var p := String((bd as Dictionary).get("interact", ""))
+	if p == "" or not FileAccess.file_exists(p):
+		return Vector3.ZERO
+	var f := FileAccess.open(p, FileAccess.READ)
+	var rows = JSON.parse_string(f.get_as_text())
+	f.close()
+	if typeof(rows) != TYPE_ARRAY:
+		return Vector3.ZERO
+	var sum := Vector3.ZERO
+	var n := 0
+	for r in rows:
+		if typeof(r) != TYPE_DICTIONARY or String(r.get("place", "")) != place:
+			continue
+		var c = r.get("centre", [])
+		if typeof(c) != TYPE_ARRAY or (c as Array).size() != 3:
+			continue
+		sum += Vector3(float(c[0]), float(c[1]), float(c[2]))
+		n += 1
+	return (sum / float(n) if n > 0 else Vector3.ZERO)
 
 
 ## COMPRESS TIME THROUGH THE RUNNING SIMULATION, and show the world moved.

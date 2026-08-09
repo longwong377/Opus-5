@@ -207,6 +207,14 @@ CORRIDOR_W_M = kit.class_params("residential")["corridor_width_m"]
 RING_W_M = kit.PROVISIONAL["corridor_width_m"]
 ARC_STEP_M = kit.PROVISIONAL["ring_frame_spacing_m"]   # 4.5 -- arc tessellation
 SLOT_GAP_M = 0.6                    # structure between two slots on the ring
+DOOR_LEAF_T_M = kit.PROVISIONAL["door_leaf_t_m"]
+DOOR_SILL_PROUD_M = 0.012           # a threshold plate, not a step -- INV-008
+# The corridor deck's lighting trough, HALF WIDTH, read off the kit's own
+# `deck_panel` rather than restated. `inspect` and not `__defaults__[1]`,
+# because a positional index into a signature is a silent wrong answer the day
+# an argument is inserted; a missing name raises.
+_CH_INSET_M = __import__("inspect").signature(
+    kit.deck_panel).parameters["lit_inset"].default / 2.0
 # The station's housing quantum, `arrival.py:573 UNITS_PER_BLOCK`, which the
 # Shell B derivation paragraph makes normative ("blocks of 60 units"). Read
 # from the annex through `belts()['SHB-01']['units_per_block']` everywhere a
@@ -250,12 +258,25 @@ G = {
     "spine_soffit": "shb_spine_soffit",
     "spine_wall":   "shb_spine_generic_wall",
     "spine_skirt":  "shb_spine_generic_skirt",
-    "spine_light":  "shb_spine_light_soffit_blade",
+    # THE DOUBLE UNDERSCORE IS LOAD-BEARING AND IT IS THE DIFFERENCE BETWEEN A
+    # LIT CORRIDOR AND A BLACK ONE. `materials.resolve` is a substring match, so
+    # `shb_spine_light_soffit_blade` took the right MATERIAL and glowed. But
+    # `export_scene.fixture_lights` -- the project's one authority on which
+    # tagged span is a LAMP -- looks its name up in `FIXTURE_LIGHTING` after
+    # stripping the address, and the strip is `name.rsplit("__", 1)[-1]`. With a
+    # single underscore the tail is the whole name, `fixture_key` returns None,
+    # and every light fitting in 4.6 M m² of housing casts nothing: the first
+    # frame of a Shell B deck came back lit by ambient alone. Written with the
+    # `__` the tail is exactly `light_soffit_blade`, which is `wr_soffit_blade`'s
+    # own measured entry -- omni, colour (1.000, 0.703, 0.440), range 4.0 m,
+    # energy_rel 0.92 -- and Shell B inherits a measured fitting instead of
+    # declaring a new one.
+    "spine_light":  "shb_spine__light_soffit_blade",
     "ring_deck":    "shb_ring_generic_deck",
     "ring_soffit":  "shb_ring_soffit",
     "ring_wall":    "shb_ring_generic_wall",
     "ring_rib":     "shb_ring_generic_rib",
-    "ring_light":   "shb_ring_light_soffit_blade",
+    "ring_light":   "shb_ring__light_soffit_blade",
     "room_deck":    "shb_room_generic_deck",
     "room_soffit":  "shb_room_soffit",
     "room_wall":    "shb_room_generic_wall",
@@ -267,6 +288,35 @@ G = {
     # them, which is the whole reason it is a claim and not a comment.
     "room_fit":     "shb_room_prop_bench",
     "plant_fit":    "shb_plant_prop_workbench",
+    # --- THE ARTICULATION TIER, added in 4w against the first engine frame ---
+    #
+    # Every tail here is one `materials.py` already binds and one the corridor
+    # a player crosses in from already uses, so this is the same station at less
+    # detail rather than a second vocabulary. What the frame showed, in order of
+    # what it cost to fix: sixty doorless holes, a black overhead, and a floor
+    # with nothing on it.
+    # `doorleaf` AND NOT `door_leaf`, AND THE GATE IS WHY. `interior.tscn`
+    # binds the fragment `door_leaf` -- so `check_material_coverage` was happy
+    # -- but `materials.resolve` does not: its canonical fragments for a leaf
+    # are `doorleaf`, `dress_leaf` and `prop_*_door`, all of which land on
+    # `door_leaf_painted`. Two coverage questions, two answers, and claim 7 is
+    # the one that reads the library rather than the scene file. It caught this
+    # on the first run after the leaves were added.
+    #
+    # `door.gd` is unaffected: it collects animated leaves with
+    # `n.begins_with("doorleaf_")` and this name does not begin with it. Shell
+    # B's leaves are static -- a door that opens is a later pass, and saying so
+    # beats a name that looks wired and is not.
+    "unit_leaf":    "shb_unit_doorleaf",
+    # Emissive, not a lamp. `light_indicator_red` and `light_deck_channel` are
+    # both recorded emissive-only in `export_scene`'s own note -- absent from
+    # FIXTURE_LIGHTING on purpose -- so they glow and cast nothing. Sixty cast
+    # sources per block would be 5,760 lights on one deck.
+    "unit_indicate": "shb_unit_light_indicator_red",
+    "unit_babcom":  "shb_unit_qtr_babcom",
+    "spine_rib":    "shb_spine_generic_rib",
+    "spine_channel": "shb_spine_light_deck_channel",
+    "unit_sill":    "shb_unit_qtr_deck_joint",
 }
 
 
@@ -1152,8 +1202,56 @@ def _box(v, t, g, name, lo, hi):
     return v, t, g
 
 
+# THE WINDING OF EVERY PLATE IN THIS MODULE WAS A FUNCTION OF THE ORDER ITS
+# CALLER HAPPENED TO PASS THE CORNERS IN, AND THE WHOLE RESIDENTIAL FABRIC WAS
+# INSIDE OUT. Session 4w, found by the first engine frame this module ever had.
+#
+# The three primitives below each emitted a fixed vertex order and let the
+# normal fall out of it, so `_slab(..., up=True)` produced a **downward** normal
+# whenever `x1 > x0` and `z1 > z0` -- which is every floor in the file. Measured
+# on one block:
+#
+#   shb_spine_generic_deck   2 tri, 2 facing DOWN      the corridor floor
+#   shb_spine_soffit         2 tri, 2 facing UP        the corridor ceiling
+#   shb_unit_qtr_deck      240 tri, 128 up / 112 down  the units, BOTH WAYS
+#
+# The units split because `_slab(x_in, x_out, ...)` runs `x_out < x_in` on the
+# -x side of the spine and `x_out > x_in` on the +x side, so one side of every
+# block was correct and the other was not. The frame is unmistakable: the deck
+# and the soffit are missing and the background -- black -- shows through in
+# their place, which is the exact failure CLAUDE.md records ("A hole in geometry
+# shows the background through it, and the background is black").
+#
+# WHY NO GATE CAUGHT IT, which is the transferable half. `_selftest`'s
+# containment claim casts rays and asks whether any escapes; `collision.cast`
+# intersects a triangle from EITHER side, so an inside-out floor stops every ray
+# exactly as a correct one does and the claim passed with 0 escapes. A ray test
+# cannot see winding. `--selftest`'s claim 13 asks the question a ray cannot:
+# from a station inside the block, is every surface the eye can actually see
+# facing back at it.
+#
+# THE FIX IS TO THE RULE AND NOT TO THE CALLS. Reversing the two calls that were
+# obviously wrong would have left the argument-order dependence in place for the
+# next caller -- CLAUDE.md, session 4h: *"A fix applied to an instance and not to
+# the rule is a fix that will be needed again."* Each primitive now derives the
+# sign its vertex order would produce and reverses it when that disagrees with
+# the facing it was asked for, so the output depends on the geometry and the
+# `up`/`face` argument and on nothing else.
+def _wind(t, k, want_positive):
+    """Append a quad's two triangles, wound to the sign the caller asked for.
+
+    `k` is the index of the first of four corners appended in loop order.
+    `want_positive` is True when the natural order (k, k+1, k+2) already gives
+    the wanted normal.
+    """
+    if want_positive:
+        t += [(k, k + 1, k + 2), (k, k + 2, k + 3)]
+    else:
+        t += [(k, k + 2, k + 1), (k, k + 3, k + 2)]
+
+
 def _slab(v, t, g, name, x0, x1, y, z0, z1, up=True, step_m=ARC_STEP_M):
-    """A horizontal plate, SUBDIVIDED ACROSS x.
+    """A horizontal plate, SUBDIVIDED ACROSS x. `up=True` faces +Y.
 
     x becomes an arc under `deck._place_local` (`a = a0 + x/r`), so one quad
     spanning 70 m of x at r = 200 m is a chord that sags 1.5 m below the floor
@@ -1161,16 +1259,16 @@ def _slab(v, t, g, name, x0, x1, y, z0, z1, up=True, step_m=ARC_STEP_M):
     puts the worst sag at 6 mm, which is under `collision.MAX_SAG_M`.
     """
     n = max(1, int(math.ceil(abs(x1 - x0) / step_m)))
+    # (k, k+1, k+2) gives ny = -(x1-x0)(z1-z0); reverse when that is not the
+    # side the caller asked for.
+    natural_up = (x1 - x0) * (z1 - z0) < 0.0
     t0 = len(t)
     for i in range(n):
         a = x0 + (x1 - x0) * i / n
         b = x0 + (x1 - x0) * (i + 1) / n
         k = len(v)
         v += [(a, y, z0), (b, y, z0), (b, y, z1), (a, y, z1)]
-        if up:
-            t += [(k, k + 1, k + 2), (k, k + 2, k + 3)]
-        else:
-            t += [(k, k + 2, k + 1), (k, k + 3, k + 2)]
+        _wind(t, k, natural_up == bool(up))
     g.append((name, t0, len(t)))
     return v, t, g
 
@@ -1180,10 +1278,8 @@ def _panel(v, t, g, name, x, y0, y1, z0, z1, face=1.0):
     k = len(v)
     t0 = len(t)
     v += [(x, y0, z0), (x, y1, z0), (x, y1, z1), (x, y0, z1)]
-    if face > 0:
-        t += [(k, k + 1, k + 2), (k, k + 2, k + 3)]
-    else:
-        t += [(k, k + 2, k + 1), (k, k + 3, k + 2)]
+    # (k, k+1, k+2) gives nx = +(y1-y0)(z1-z0).
+    _wind(t, k, ((y1 - y0) * (z1 - z0) > 0.0) == (face > 0))
     g.append((name, t0, len(t)))
     return v, t, g
 
@@ -1191,16 +1287,15 @@ def _panel(v, t, g, name, x, y0, y1, z0, z1, face=1.0):
 def _end(v, t, g, name, z, x0, x1, y0, y1, face=1.0, step_m=ARC_STEP_M):
     """A vertical plate in the x-y plane at constant z, subdivided across x."""
     n = max(1, int(math.ceil(abs(x1 - x0) / step_m)))
+    # (k, k+1, k+2) gives nz = +(x1-x0)(y1-y0).
+    natural = ((x1 - x0) * (y1 - y0) > 0.0)
     t0 = len(t)
     for i in range(n):
         a = x0 + (x1 - x0) * i / n
         b = x0 + (x1 - x0) * (i + 1) / n
         k = len(v)
         v += [(a, y0, z), (b, y0, z), (b, y1, z), (a, y1, z)]
-        if face > 0:
-            t += [(k, k + 1, k + 2), (k, k + 2, k + 3)]
-        else:
-            t += [(k, k + 2, k + 1), (k, k + 3, k + 2)]
+        _wind(t, k, natural == (face > 0))
     g.append((name, t0, len(t)))
     return v, t, g
 
@@ -1239,7 +1334,12 @@ def block(area_m2, n_units, seed, lod=1, plan=None):
     spine_h = min(prof["ceil_y"], ch)
 
     # --- the spine: deck, soffit, skirt, light -----------------------------
-    _slab(v, t, g, G["spine_deck"], -cw2, cw2, 0.0, -ln, 0.0)
+    # TWO PLATES WITH THE CHANNEL'S WIDTH BETWEEN THEM, not one. The lighting
+    # channel below is recessed 30 mm, and a floor laid straight across it
+    # would be a floor over the top of it -- the channel would be built, cost
+    # its triangles, and be invisible from the corridor it lights.
+    _slab(v, t, g, G["spine_deck"], -cw2, -_CH_INSET_M, 0.0, -ln, 0.0)
+    _slab(v, t, g, G["spine_deck"], _CH_INSET_M, cw2, 0.0, -ln, 0.0)
     _slab(v, t, g, G["spine_soffit"], -cw2, cw2, spine_h, -ln, 0.0, up=False)
     # THE SKIRT IS A BOX, NOT A PLATE, AND THAT IS A MEASUREMENT DECISION.
     # As a zero-thickness horizontal plate at y = 0.08 it was invisible to
@@ -1253,8 +1353,63 @@ def block(area_m2, n_units, seed, lod=1, plan=None):
         _box(v, t, g, G["spine_skirt"],
              (min(s * cw2, s * (cw2 - 0.06)), 0.0, -ln),
              (max(s * cw2, s * (cw2 - 0.06)), 0.14, 0.0))
-    _slab(v, t, g, G["spine_light"], -0.16, 0.16, spine_h - 0.05, -ln, 0.0,
-          up=False)
+    # ONE BLADE PER BAY, NOT ONE 96 m STRIP, and it is a lighting decision
+    # rather than a modelling one. `fixture_lights` cuts a tagged span into
+    # connected BODIES and gives each body one fitting's energy; a body longer
+    # than its own range is SAMPLED and the samples SHARE that one energy. As a
+    # single 96.69 m slab the spine was one body, so the whole block was lit by
+    # one soffit blade's worth of light spread over ninety-six metres. A
+    # residential corridor has a RUN of fittings, and cut at the door pitch each
+    # blade is its own lamp at its own full energy -- which is also what gives
+    # the corridor a rhythm down its length instead of one flat streak.
+    lamp = max(2, int(round(ln / max(2.6, ARC_STEP_M * 0.6))))
+    for i in range(lamp):
+        za = -ln + ln * (i + 0.20) / lamp
+        zb = -ln + ln * (i + 0.80) / lamp
+        _slab(v, t, g, G["spine_light"], -0.16, 0.16, spine_h - 0.05, za, zb,
+              up=False)
+        # A CROSS RIB IN THE GAP BETWEEN TWO LAMPS. The first lit frame's
+        # weakest surface was the overhead: a flat black band the whole 96.69 m
+        # of the spine with a lamp punched through it every 3 m and no relief
+        # of any kind, so the ceiling read as a void rather than as structure.
+        # Three quads and not a `_box` -- the rib is against the soffit and its
+        # top is a face nothing in this station can ever see, so building it
+        # would be the coincident-face waste session 3x measured in
+        # `portal_frame` (8,832 triangles nobody could see).
+        zr = -ln + ln * (i + 1.0) / lamp
+        if i + 1 < lamp:
+            _slab(v, t, g, G["spine_rib"], -cw2, cw2, spine_h - 0.11,
+                  zr - 0.11, zr + 0.11, up=False)
+            for zz, fc in ((zr - 0.11, -1.0), (zr + 0.11, 1.0)):
+                _end(v, t, g, G["spine_rib"], zz, -cw2, cw2, spine_h - 0.11,
+                     spine_h, face=fc)
+    # THE DECK CHANNEL, and it is the corridor's signature rather than a
+    # decoration. `interior_kit`'s authored section carries a 66 mm lighting
+    # channel down its centreline -- CLAUDE.md records it by name, as the thing
+    # a collision shell must smooth over -- so a Shell B corridor that does not
+    # have one is not the same corridor at less detail, it is a different
+    # corridor. Recessed rather than laid on, so a foot never meets a lip, and
+    # emissive-only so the whole run costs no light.
+    # A LENS IN A TROUGH, NOT A LIT TROUGH, and that is `interior_kit`'s own
+    # finding rather than a choice made here. Its `deck_panel` note records
+    # what the flat version looked like -- *"The strip came out as a painted
+    # white line down the floor"* -- and the cure it landed on is a lens at
+    # 62% of the trough width with a dark rebate either side, which reads as
+    # recessed at the ~8 degrees a standing eye sees it from. The first lit
+    # Shell B frame reproduced the painted-white-line failure exactly, with a
+    # full-width emissive at 132 mm. Both numbers are READ from the kit.
+    tr, lens, ch_d = _CH_INSET_M, _CH_INSET_M * 0.62, 0.054
+    _slab(v, t, g, G["spine_deck"], -tr, tr, -ch_d, -ln + 0.3, -0.3)
+    for s in (-1, 1):
+        _panel(v, t, g, G["spine_deck"], s * tr, -ch_d, 0.0,
+               -ln + 0.3, -0.3, face=-s)
+    for zz, fc in ((-ln + 0.3, 1.0), (-0.3, -1.0)):
+        _end(v, t, g, G["spine_deck"], zz, -tr, tr, -ch_d, 0.0, face=fc)
+    _slab(v, t, g, G["spine_channel"], -lens, lens, -ch_d + 0.024,
+          -ln + 0.3, -0.3)
+    for s in (-1, 1):
+        _panel(v, t, g, G["spine_channel"], s * lens, -ch_d, -ch_d + 0.024,
+               -ln + 0.3, -0.3, face=-s)
 
     # --- the block's outer walls and the two ends ---------------------------
     for s in (-1, 1):
@@ -1287,9 +1442,28 @@ def block(area_m2, n_units, seed, lod=1, plan=None):
             _panel(v, t, g, G["unit_pier"], x_in, 0.0, ch, zp, z0, face=-side)
             _panel(v, t, g, G["unit_head"], x_in, DOOR_H_M, ch, z0, z1,
                    face=-side)
-            if i == count - 1:
-                _panel(v, t, g, G["unit_pier"], x_in, 0.0, ch, z1,
-                       -run + (i + 1) * pitch, face=-side)
+            # THE PIER AFTER THE DOOR, ON EVERY BAY AND NOT ONLY THE LAST.
+            #
+            # THE LARGEST HOLE IN SHELL B AND IT WAS FOUND BY ONE RAY. Claim
+            # 13's last surviving back face was a door leaf seen from behind
+            # from the corridor centreline, which is impossible through a wall
+            # -- so there was no wall. Measured on one block: the spine face
+            # carried **23.94 m of full-height wall over a 94.87 m run**, 25%,
+            # in 32 segments with 31 gaps of 2.31 m. A doorway is 1.50 m of
+            # that, so **0.81 m of every bay was simply absent** -- an
+            # unframed, full-height second opening beside every door, sixty a
+            # block, 223,080 across the station.
+            #
+            # The cause is this `if`. A door sits in the MIDDLE of its bay, so
+            # a bay needs a pier before it AND after it; only the last bay got
+            # the second one. Nothing could catch it: `_containment` sees the
+            # unit's own back wall through the gap and reports no escape, and
+            # a whole-block triangle count goes UP when a wall is missing
+            # because the unit behind it is built either way.
+            zb = -run + (i + 1) * pitch
+            if zb - z1 > 1e-6:
+                _panel(v, t, g, G["unit_pier"], x_in, 0.0, ch, z1, zb,
+                       face=-side)
             # The reveal a player looks straight into. Two jambs and a soffit;
             # session 3x's finding is that the doorway is where a player looks
             # closest, and it is the one place Shell B spends triangles.
@@ -1299,6 +1473,85 @@ def block(area_m2, n_units, seed, lod=1, plan=None):
                      step_m=WALL_T_M)
             _slab(v, t, g, G["unit_jamb"], x_in, x_in + side * WALL_T_M,
                   DOOR_H_M, z0, z1, up=False, step_m=WALL_T_M)
+            # --- THE DOOR, AND IT IS THE FRAME'S LOUDEST FINDING -----------
+            #
+            # Before this the spine was sixty rectangular HOLES: the reveal was
+            # built and nothing was ever in it, so a residential corridor read
+            # as a storage rack and every unit's interior was on show from the
+            # corridor. Two plates back to back rather than a box, because a
+            # leaf is 45 mm of composite and a `_box` here is 12 triangles x 60
+            # doors x 3,718 blocks.
+            #
+            # ONE IN NINE STANDS OPEN, by the door's own seed and not by index.
+            # A corridor of sixty identical shut doors is the repetition
+            # AAA-STANDARD's CRAFT 5 names ("nothing in frame repeats in a way
+            # the eye can index"), and an open door is also the only thing that
+            # lets a unit's own light reach the corridor.
+            # AND IT IS BI-PARTING BECAUSE THE STATION'S DOORS ARE.
+            # `interior_kit.PROVISIONAL["door_mechanism"]` is `bi_parting` and
+            # `door_leaf_t_m` is 0.1 -- INV-008's selected reading, switchable
+            # in one edit. A single slab leaf would have been this module
+            # inventing a mechanism the kit has already chosen, and the centre
+            # joint is also the one line that stops sixty doors reading as
+            # sixty blank panels.
+            shut = _u("leaf", seed, side, i) > 1.0 / 9.0
+            if shut:
+                # THE TWO LEAVES OVERLAP AT THE MEETING STILE; THEY DO NOT
+                # LEAVE A SLOT. Built with a 24 mm gap between them the pair
+                # was two plates with a hole between, and claim 13 found it:
+                # one ray of 1,022 went through the gap and hit the far leaf's
+                # BACK face. Stepping one leaf 22 mm proud of the other is what
+                # a bi-parting door actually does, reads as a joint from the
+                # corridor, and closes the slot for no triangles.
+                xl = x_in + side * (DOOR_LEAF_T_M * 0.85)
+                stp = 0.022
+                for half, (lz0, lz1) in enumerate(((z0 + 0.02, zc),
+                                                   (zc, z1 - 0.02))):
+                    xa = xl + side * stp * half
+                    _panel(v, t, g, G["unit_leaf"], xa, 0.02, DOOR_H_M - 0.02,
+                           lz0, lz1, face=-side)
+                    _panel(v, t, g, G["unit_leaf"], xa + side * DOOR_LEAF_T_M,
+                           0.02, DOOR_H_M - 0.02, lz0, lz1, face=side)
+                # AND THE STEP IS RETURNED, which is the difference between a
+                # meeting stile and a 22 mm slot through the door. Claim 13
+                # found the slot: exactly one ray of 1,022 crossed `zc` between
+                # the two leaves' planes and hit the far leaf's BACK face --
+                # the same class of defect as the inside-out floors, at a
+                # fortieth of the scale, and it would have been a visible
+                # sliver of black down the middle of every shut door on the
+                # station. Two quads per door, and the gate goes clean.
+                # The two returns face OPPOSITE ways and that is not a
+                # symmetry to tidy up: the corridor-side step is seen from the
+                # deeper leaf's side (+z) and the unit-side step from the
+                # shallower one's (-z). `step_m=1.0` so a 22 mm span is one
+                # quad -- `0.022 / 0.022` is not reliably 1.0 in binary and
+                # `ceil` of 1.0000000000000002 is two.
+                for xa, fc in ((xl, 1.0),
+                               (xl + side * DOOR_LEAF_T_M, -1.0)):
+                    _end(v, t, g, G["unit_leaf"], zc, xa, xa + side * stp,
+                         0.02, DOOR_H_M - 0.02, face=fc, step_m=1.0)
+            # The call plate beside it: the one element that says a PERSON
+            # lives behind this door. Emissive, on the spine face, at the hand
+            # height `interior_kit` gives its own door controls.
+            zi = z1 + 0.18 if z1 + 0.34 < 0.0 else z0 - 0.34
+            _panel(v, t, g, G["unit_indicate"], x_in - side * 0.012,
+                   1.18, 1.42, zi, zi + 0.16, face=-side)
+            if lod >= 2 or i % 4 == 0:
+                _panel(v, t, g, G["unit_babcom"], x_in - side * 0.012,
+                       1.02, 1.50, zi - 0.30, zi - 0.04, face=-side)
+            if lod >= 2:
+                # THE THIRD TIER THE AUTHOR PREDICTED AND DID NOT BUILD.
+                # `docs/decisions-shell-b.md` §7: *"the answer is a third
+                # detail tier between Shell A and this -- `--lod 2` ... the
+                # hooks are there; the tier is not."* This is it, and it is
+                # deliberately made of the things that read only from inside
+                # a few metres -- the sill plate at every threshold and a call
+                # panel at every door rather than every fourth -- so the
+                # shipped default stays lod 1 and a cell the player is
+                # actually standing in can be asked for lod 2. The cost of
+                # each tier is measured by `--deck --lod`.
+                _slab(v, t, g, G["unit_sill"], x_in, x_in - side * 0.34,
+                      DOOR_SILL_PROUD_M, z0 - 0.03, z1 + 0.03)
             if lod >= 1:
                 # The unit itself: floor, soffit, party wall, and the far face
                 # of the spine wall so the room is closed.
@@ -1310,14 +1563,23 @@ def block(area_m2, n_units, seed, lod=1, plan=None):
                        0.0, ch, zp, z0, face=side)
                 _panel(v, t, g, G["unit_head"], x_in + side * WALL_T_M,
                        DOOR_H_M, ch, z0, z1, face=side)
-                if i == count - 1:
+                if zb - z1 > 1e-6:
                     _panel(v, t, g, G["unit_pier"], x_in + side * WALL_T_M,
-                           0.0, ch, z1, -run + (i + 1) * pitch, face=side)
+                           0.0, ch, z1, zb, face=side)
                 if i:
+                    # THE TWO FACES OF ONE PARTY WALL, AND THEY WERE SWAPPED.
+                    # The wall occupies [zp, zp + WALL_T_M]; the plate at `zp`
+                    # is the face unit i-1 sees and looks back down -z, the one
+                    # at `zp + WALL_T_M` is unit i's and looks up +z. Written
+                    # the other way round both plates showed their back face to
+                    # the room they belong to -- invisible before the primitive
+                    # fix above, because `_end`'s winding also flipped with the
+                    # sign of `x_out - x_in` and the two errors cancelled on the
+                    # -x side of every block. Claim 13 counts them.
                     _end(v, t, g, G["unit_party"], zp, x_in, x_out, 0.0, ch,
-                         face=1.0)
+                         face=-1.0)
                     _end(v, t, g, G["unit_party"], zp + WALL_T_M, x_in, x_out,
-                         0.0, ch, face=-1.0)
+                         0.0, ch, face=1.0)
         if lod < 1:
             # Sealed: one plate standing in for every unit on this side.
             _slab(v, t, g, G["unit_deck"], x_in, x_out, 0.0, -run, 0.0)
@@ -1867,11 +2129,23 @@ def build_deck(schema, profile, sector, ring, deck, lod=1, cells=None,
             a_m = ci * cell_m
             if a_m >= reach - 1e-6:
                 break
-            deg = math.degrees(min(cell_m, reach - a_m) / r)
+            arc_m = min(cell_m, reach - a_m)
+            deg = math.degrees(arc_m / r)
             a0 = ci * cellplan["cell_deg"]
-            v, t, g = ring_run(r, a0, deg, place=place)
+            v, t, g = ring_run(r, a0, deg, place=place,
+                               doors=_band_doors(arcs, a_m, arc_m))
             if place:
-                v = DK._place_local(v, r, a0, z - RING_W_M / 2.0)
+                # +RING_W_M/2, AND THE SIGN IS THE WHOLE BUG. A slot is built
+                # with its way in at local +z and its body running back to -z,
+                # so its entrance plane is `z_m` and the corridor that serves it
+                # belongs on the far side of that plane. Written `-`, the ring
+                # corridor was laid 2.6 m INSIDE every block on the station:
+                # measured on red/1/5, the corridor occupied z 6,521.69–6,524.29
+                # and the block it served occupied 6,427.60–6,524.29. `deck_slots`
+                # had reserved the gap correctly all along -- `band_z` does
+                # `at += RING_W_M` after each band -- and the corridor was placed
+                # into the block instead of into the gap.
+                v = DK._place_local(v, r, a0, z + RING_W_M / 2.0)
             _append(V, T, Gs, v, t, g, "z%d_ring%d_%d" % (int(z), band, ci))
 
     meta = dict(plan)
@@ -1884,7 +2158,31 @@ def build_deck(schema, profile, sector, ring, deck, lod=1, cells=None,
     return V, T, Gs, meta
 
 
-def ring_run(r, start_deg, degrees, place=True):
+def slot_door(s):
+    """The opening one slot needs in the ring wall: (width, height).
+
+    A block's way in is the whole spine -- `block()` leaves the corridor's own
+    width unwalled at +z -- and a program room's is one door leaf. Read off the
+    same constants the two builders use rather than restated, so a change to
+    either moves the aperture with it.
+    """
+    if s["kind"] == "block":
+        return CORRIDOR_W_M, min(C.corridor_profile()["ceil_y"], Q.UNIT_H_M)
+    return DOOR_W_M, DOOR_H_M
+
+
+def _band_doors(arcs, a_m, arc_m):
+    """Slot apertures that land on one cell's arc, in metres from its start."""
+    out = []
+    for s in arcs:
+        w, dh = slot_door(s)
+        c = s["arc_m"] - a_m
+        if c + w / 2.0 > 0.0 and c - w / 2.0 < arc_m:
+            out.append((c, w, dh))
+    return out
+
+
+def ring_run(r, start_deg, degrees, place=True, doors=()):
     """One cell's worth of Shell B ring corridor, in the local frame.
 
     NOT `interior.ring_arc`, and the reason is the whole argument for this
@@ -1895,6 +2193,14 @@ def ring_run(r, start_deg, degrees, place=True):
     `interior_kit.PROVISIONAL` and `collision.corridor_profile` so a body
     crossing from a Shell A corridor into a Shell B one feels no step — with a
     rib every 4.5 m and nothing else.
+
+    `doors` is `(centre_m_along_this_arc, width_m, height_m)` per slot whose way
+    in lands on it, and it is the reason a Shell B address means anything. THE
+    WALL USED TO BE CONTINUOUS: both side walls ran the whole arc with no
+    aperture, so every block and every program room on the station opened onto
+    the back of the ring corridor's own wall, and the belt that houses 250,000
+    people had no door in it anywhere. The first engine frame is what found it —
+    the eye stood 1.6 m inside a block and a wall was 1.0 m in front of it.
     """
     prof = C.corridor_profile()
     h = prof["ceil_y"]
@@ -1903,31 +2209,49 @@ def ring_run(r, start_deg, degrees, place=True):
     v, t, g = [], [], []
     _slab(v, t, g, G["ring_deck"], 0.0, ln, 0.0, -hw, hw)
     _slab(v, t, g, G["ring_soffit"], 0.0, ln, h, -hw, hw, up=False)
-    # The two side walls run ALONG the arc, so they are neither `_panel` (one
-    # quad at constant x, which here would be a 4.5 cm sliver) nor `_end`. They
-    # are emitted directly, subdivided on the same 4.5 m step as the floor, for
-    # the sag reason in `_slab`'s docstring.
-    n = max(1, int(math.ceil(ln / ARC_STEP_M)))
-    for s in (-1, 1):
-        t0 = len(t)
-        for i in range(n):
-            a, b = ln * i / n, ln * (i + 1) / n
-            k = len(v)
-            v += [(a, 0.0, s * hw), (b, 0.0, s * hw),
-                  (b, h, s * hw), (a, h, s * hw)]
-            if s < 0:
-                t += [(k, k + 1, k + 2), (k, k + 2, k + 3)]
-            else:
-                t += [(k, k + 2, k + 1), (k, k + 3, k + 2)]
-        g.append((G["ring_wall"], t0, len(t)))
+    # The two side walls run ALONG the arc, so an `_end` plate -- constant z,
+    # subdivided across x -- is exactly their shape, and using it rather than a
+    # third inline winding rule is why the primitive fix above reached them.
+    # The -hw wall faces the slots and carries their apertures; the +hw wall is
+    # the back of the band and is solid.
+    _end(v, t, g, G["ring_wall"], hw, 0.0, ln, 0.0, h, face=-1.0)
+    cuts = sorted((max(0.0, c - w / 2.0), min(ln, c + w / 2.0), dh)
+                  for c, w, dh in doors
+                  if c + w / 2.0 > 0.0 and c - w / 2.0 < ln)
+    at = 0.0
+    for c0, c1, dh in cuts:
+        if c0 > at:
+            _end(v, t, g, G["ring_wall"], -hw, at, c0, 0.0, h, face=1.0)
+        # Header only over the opening, exactly `collision.room_shell`'s rule.
+        if h > dh:
+            _end(v, t, g, G["ring_wall"], -hw, c0, c1, dh, h, face=1.0)
+        # The reveal a player walks through: two jambs and a soffit, at the
+        # wall's own thickness. Session 3x -- the doorway is the place a player
+        # looks closest, and it is the one place Shell B spends triangles.
+        for xx, fc in ((c0, -1.0), (c1, 1.0)):
+            _panel(v, t, g, G["room_head"], xx, 0.0, dh, -hw, -hw + WALL_T_M,
+                   face=fc)
+        _slab(v, t, g, G["room_head"], c0, c1, dh, -hw, -hw + WALL_T_M,
+              up=False)
+        at = c1
+    if at < ln:
+        _end(v, t, g, G["ring_wall"], -hw, at, ln, 0.0, h, face=1.0)
     nrib = max(1, int(ln / ARC_STEP_M))
     for i in range(nrib):
         a = ln * (i + 0.5) / nrib
+        # A rib that lands in a doorway is a rib across a doorway.
+        if any(c0 - 0.12 < a < c1 + 0.12 for c0, c1, _dh in cuts):
+            continue
         for s in (-1, 1):
             _box(v, t, g, G["ring_rib"],
                  (a - 0.11, 0.0, s * hw - (0.16 if s > 0 else 0.0)),
                  (a + 0.11, h, s * hw + (0.0 if s > 0 else 0.16)))
-    _slab(v, t, g, G["ring_light"], 0.0, ln, h - 0.05, -0.14, 0.14, up=False)
+    # Per bay, for `block()`'s reason: one span the length of the arc is one
+    # fitting's energy spread over the whole cell.
+    lamp = max(1, int(round(ln / ARC_STEP_M)))
+    for i in range(lamp):
+        _slab(v, t, g, G["ring_light"], ln * (i + 0.15) / lamp,
+              ln * (i + 0.85) / lamp, h - 0.05, -0.14, 0.14, up=False)
     return v, t, g
 
 
@@ -2073,7 +2397,11 @@ def deck_collision(schema, profile, sector, ring, deck, cells=None):
         arcs = [s for s in plan["slots"] if s["band"] == band]
         if not arcs:
             continue
-        z = arcs[0]["z_m"] - RING_W_M / 2.0
+        # +RING_W_M/2 -- the same sign error as the render mesh, and the same
+        # fix. See `build_deck`. The two had to move together: a collision
+        # shell 2.6 m out of register with the geometry it stands in for is the
+        # tram-through-a-spoke defect, one deck down.
+        z = arcs[0]["z_m"] + RING_W_M / 2.0
         reach = plan["band_arc_m"].get(band, 0.0)
         cell_m = 2 * math.pi * r * (cellplan["cell_deg"] / 360.0)
         for ci in range(cellplan["cells"]):
@@ -2084,8 +2412,9 @@ def deck_collision(schema, profile, sector, ring, deck, cells=None):
                 break
             arc_m = min(cell_m, reach - a_m)
             a0 = math.degrees((a_m + arc_m / 2.0) / r)
-            v, t = C.room_shell(meta, a0, arc_m / 2.0, RING_W_M / 2.0,
-                                prof["ceil_y"] - prof["floor_y"], z)
+            v, t = ring_shell(meta, a0, arc_m / 2.0,
+                              prof["ceil_y"] - prof["floor_y"], z,
+                              _band_doors(arcs, a_m, arc_m), a_m, r)
             t0 = len(T)
             base = len(V)
             V.extend(v)
@@ -2094,6 +2423,79 @@ def deck_collision(schema, profile, sector, ring, deck, cells=None):
     return V, T, {"built": True, "groups": groups, "triangles": len(T),
                   "profile": prof,
                   "shell_frac": None}
+
+
+def ring_shell(meta, angle_deg, hw_m, ceil_m, z_m, doors, a_m, r):
+    """The ring corridor's walkable shell, with a hole where every door is.
+
+    WHY THIS IS NOT `collision.room_shell`, stated rather than left to be
+    rediscovered. That function cuts its doorway in the end wall at the HIGHER
+    z, because its own comment fixes the convention: *"The far one -- toward the
+    corridor, at higher z -- is broken by the doorway"*. Every Shell A room sits
+    at lower z than the corridor that serves it, so that is right for all of
+    them. A Shell B ring corridor is the corridor, and the wall that needs the
+    hole is its LOW-z one -- the side its blocks are on. There is no argument
+    for that, so the shell is emitted here.
+
+    Everything it can share, it shares: `collision._quad` decides the winding,
+    the header-only span over an opening is `room_shell`'s rule copied in one
+    line, and the floor and ceiling radii come from the same `meta`. The
+    honest fix is a `door_side` parameter on `room_shell`, which is a change to
+    a file this module does not own; it is in this session's return.
+    """
+    rad = meta["floor_r_m"]
+    ceil_r = rad - ceil_m
+    da = hw_m / r
+    mid = math.radians(angle_deg)
+    a0, a1 = mid - da, mid + da
+    z0, z1 = z_m - RING_W_M / 2.0, z_m + RING_W_M / 2.0
+    n = max(2, int(math.ceil(2 * da / max(
+        2.0 * math.acos(max(-1.0, 1.0 - C.MAX_SAG_M / max(rad, 1e-9))), 1e-9))))
+    verts, tris = [], []
+
+    def at(radius, k):
+        a = a0 + (a1 - a0) * k / n
+        return radius * math.cos(a), radius * math.sin(a)
+
+    for k in range(n):
+        m = a0 + (a1 - a0) * (k + 0.5) / n
+        up = (-math.cos(m), -math.sin(m), 0.0)
+        down = (math.cos(m), math.sin(m), 0.0)
+        for radius, want in ((rad, up), (ceil_r, down)):
+            p0, p1 = at(radius, k), at(radius, k + 1)
+            C._quad(verts, tris,
+                    [(p0[0], p0[1], z0), (p1[0], p1[1], z0),
+                     (p1[0], p1[1], z1), (p0[0], p0[1], z1)], want)
+    # The high-z wall is solid; the low-z wall carries the apertures.
+    C._quad(verts, tris,
+            [(rad * math.cos(a0), rad * math.sin(a0), z1),
+             (rad * math.cos(a1), rad * math.sin(a1), z1),
+             (ceil_r * math.cos(a1), ceil_r * math.sin(a1), z1),
+             (ceil_r * math.cos(a0), ceil_r * math.sin(a0), z1)],
+            (0.0, 0.0, -1.0))
+    cuts = sorted(((a_m + c - w / 2.0) / r, (a_m + c + w / 2.0) / r, dh)
+                  for c, w, dh in doors)
+    spans, walk = [], a0
+    for c0, c1, dh in cuts:
+        c0, c1 = max(a0, c0), min(a1, c1)
+        if c1 <= c0:
+            continue
+        if c0 > walk:
+            spans.append((walk, c0, rad))
+        spans.append((c0, c1, rad - dh))       # header only over the opening
+        walk = c1
+    if walk < a1:
+        spans.append((walk, a1, rad))
+    for b0, b1, lo in spans:
+        if b1 - b0 < 1e-9 or lo <= ceil_r + 1e-9:
+            continue
+        C._quad(verts, tris,
+                [(lo * math.cos(b0), lo * math.sin(b0), z0),
+                 (lo * math.cos(b1), lo * math.sin(b1), z0),
+                 (ceil_r * math.cos(b1), ceil_r * math.sin(b1), z0),
+                 (ceil_r * math.cos(b0), ceil_r * math.sin(b0), z0)],
+                (0.0, 0.0, 1.0))
+    return verts, tris
 
 
 # --------------------------------------------------------------------------
@@ -2250,7 +2652,7 @@ def _slot_cell(s, cellplan):
     return int(s["angle_deg"] // cellplan["cell_deg"]) % cellplan["cells"]
 
 
-def scene_camera(frame, plan, prof, slot, cam, look_m):
+def scene_camera(frame, plan, prof, slot, cam, look_m, back_m=1.6):
     """Where the eye stands on a Shell B deck, and what it looks at.
 
     NOTHING HERE IS A WORLD COORDINATE TYPED IN BY HAND, for `deck_camera`'s
@@ -2275,20 +2677,27 @@ def scene_camera(frame, plan, prof, slot, cam, look_m):
 
     if frame == "ring":
         # In the ring corridor, on its centreline, looking along the arc.
-        zc = z0 - RING_W_M / 2.0
+        zc = z0 + RING_W_M / 2.0
         eye = world(a0, zc, eye_r)
         aim = world(a0 + look_m / floor_r, zc, eye_r)
     elif frame == "spine":
         # Inside a block, at the end the ring corridor arrives at, looking the
         # length of the spine past every door.
-        eye = world(a0, z0 - 1.6, eye_r)
-        aim = world(a0, z0 - 1.6 - look_m, eye_r)
+        eye = world(a0, z0 - back_m, eye_r)
+        aim = world(a0, z0 - back_m - look_m, eye_r)
     elif frame == "door":
         # THE RUBRIC'S HALF DISTANCE. A spine is `look_m` metres long to the
         # eye; this stands `look_m / 2` from one unit's doorway and looks at
         # the reveal, which session 3x names as the place a player looks
         # closest.
-        d = slot["plan"].get("doors") or [(1, z0 - 6.0)]
+        d = slot.get("plan", {}).get("doors")
+        if not d:
+            raise SystemExit(
+                "--frame door needs the slot's built plan. `block()` writes "
+                "`doors` into the plan dict it is handed, so the slot must be "
+                "the one `build_deck` built and not a second `deck_slots` "
+                "call's copy -- a fallback here silently framed a camera 6 km "
+                "off the deck and rendered black.")
         side, zd = d[len(d) // 2]
         # Offset across the spine, away from the door being looked at, so the
         # shot is oblique rather than square on -- a square-on quad tells you
@@ -2304,7 +2713,7 @@ def scene_camera(frame, plan, prof, slot, cam, look_m):
 
 
 def scene(schema, profile, sector, ring, deck, frame="spine", slot_i=0,
-          lod=1, cells=None, look_m=14.0, out_png="", fov=None,
+          lod=1, cells=None, look_m=14.0, back_m=1.6, out_png="", fov=None,
           fixture_energy=3.0, soft_fill=None, ambient=None, quiet=False):
     """Write `station/generated/scene/shellb/scene.json` for one Shell B frame.
 
@@ -2336,6 +2745,13 @@ def scene(schema, profile, sector, ring, deck, frame="spine", slot_i=0,
     if not meta.get("built"):
         raise SystemExit("%s/%d/%d did not build" % (sector, ring, deck))
     prof = block_profile()
+    # THE SLOT THE BUILD ACTUALLY BUILT, not the one the plan above named.
+    # `build_deck` calls `deck_slots` again and gets a fresh dict, and it is
+    # that copy `block()` writes its door list into. Re-finding it by bearing
+    # is one line; using the stale copy put the door camera 6,128 m off the
+    # deck and rendered a black frame that looked like a lighting fault.
+    slot = next((s for s in meta["slot_table"]
+                 if abs(s["angle_deg"] - slot["angle_deg"]) < 1e-9), slot)
 
     stem = "shb_%s_%d_%d" % (sector, ring, deck)
     obj = os.path.join(out_dir, stem + ".obj")
@@ -2346,7 +2762,7 @@ def scene(schema, profile, sector, ring, deck, frame="spine", slot_i=0,
         raise ValueError("%s: glb has %d triangles, source has %d"
                          % (stem, n, len(T)))
 
-    eye, aim, up = scene_camera(frame, plan, prof, slot, cam, look_m)
+    eye, aim, up = scene_camera(frame, plan, prof, slot, cam, look_m, back_m)
 
     # THE LIGHTS ARE THE FITTINGS, and `fixture_lights` decides which tagged
     # span is a lamp by looking its name up in `FIXTURE_LIGHTING`. Nothing is
@@ -2355,21 +2771,27 @@ def scene(schema, profile, sector, ring, deck, frame="spine", slot_i=0,
         V, T, Gs, fixture_energy, ES.INTERIOR_LIGHT_RANGE_M,
         shadow_n=ES.INTERIOR_SHADOW_LIGHTS, eye=eye, down=ES.radial_aim)
     floor_r = plan["radius_m"] - prof["floor_y"]
-    # The ring corridor's own arc, restricted to the cells that were built --
-    # a key over 1,263 m of band a shot cannot see is 700 lights of nothing.
+    # The ring corridor's own key, PER BUILT CELL and not over one arc from the
+    # lowest cell index to the highest. Cells wrap -- a shot centred on cell 0
+    # builds {17, 0, 1} -- and `min`/`max` over that set spans the whole ring,
+    # which is 702 lights for a frame that can see forty metres.
     cell_m = 2 * math.pi * plan["radius_m"] * (cellplan["cell_deg"] / 360.0)
     reach = plan["band_arc_m"].get(slot["band"], 0.0)
-    a_lo = min(cells) * cellplan["cell_deg"]
-    a_hi = min(reach, (max(cells) + 1) * cell_m) / max(plan["radius_m"], 1e-9)
-    fill_meta = {"floor_r_m": floor_r,
-                 "ceil_r_m": floor_r - (prof["ceil_y"] - prof["floor_y"]),
-                 "half_w_m": RING_W_M / 2.0,
-                 "start_deg": a_lo,
-                 "arc_deg": max(0.0, math.degrees(a_hi) - a_lo),
-                 "z_m": slot["z_m"] - RING_W_M / 2.0}
     fill_e = ES.SOFT_FILL_ENERGY if soft_fill is None else soft_fill
-    fill = (ES.soft_fill_ring(fill_meta, fill_e)
-            if fill_e > 0.0 and fill_meta["arc_deg"] > 0.0 else [])
+    fill = []
+    for ci_ in sorted(cells):
+        a_m = ci_ * cell_m
+        if a_m >= reach - 1e-6 or fill_e <= 0.0:
+            continue
+        arc_deg = math.degrees(min(cell_m, reach - a_m)
+                               / max(plan["radius_m"], 1e-9))
+        fill += ES.soft_fill_ring(
+            {"floor_r_m": floor_r,
+             "ceil_r_m": floor_r - (prof["ceil_y"] - prof["floor_y"]),
+             "half_w_m": RING_W_M / 2.0,
+             "start_deg": ci_ * cellplan["cell_deg"],
+             "arc_deg": arc_deg,
+             "z_m": slot["z_m"] + RING_W_M / 2.0}, fill_e)
     lights = lights + fill
 
     out = {
@@ -2461,7 +2883,7 @@ def geometry_hash(V, T):
 # THE GATE
 # --------------------------------------------------------------------------
 def _selftest(out=print, legacy=False, quick=False):
-    """Nine claims, each able to fail, and each shown failing by a control.
+    """Thirteen claims, each able to fail, and each shown failing by a control.
 
     `--legacy` is the control set, and it is not a mode: it turns off the five
     variety rules and the derived area budget and is expected to FAIL. A gate
@@ -2495,7 +2917,7 @@ def _selftest(out=print, legacy=False, quick=False):
     except Exception as e:                                       # noqa: BLE001
         claim("the annex parses", False, "%s: %s" % (type(e).__name__, e))
         out("")
-        out("%d of 12 claims fail" % len(fails))
+        out("%d of 13 claims fail" % len(fails))
         return len(fails)
 
     # 2. every belt's program parsed, and nothing was silently dropped.
@@ -2690,8 +3112,27 @@ def _selftest(out=print, legacy=False, quick=False):
              "" if not thin else "; %d gap(s) under the bar: %s"
              % (len(thin), thin[:3])))
 
+    # 13. every surface a body in a block can SEE faces back at it.
+    #
+    # THE CLAIM THIS MODULE SHIPPED WITHOUT, AND IT COST THE WHOLE RESIDENTIAL
+    # FABRIC. `_slab`, `_panel` and `_end` derived their winding from the order
+    # the caller passed the corners in, so `up=True` produced a DOWNWARD normal
+    # and every corridor floor and ceiling in Shell B was inside out. The first
+    # engine frame ever taken of a Shell B deck shows it exactly: the deck and
+    # the soffit are absent and the background -- black -- is where they should
+    # be, in a bowtie converging on the vanishing point.
+    #
+    # CLAIM 9 PASSED THROUGHOUT, ON THE SAME LATTICE, and that is the reason
+    # this is a separate claim rather than a stronger version of that one.
+    # `collision._ray_tri` has no back-face test, so an inside-out plate stops a
+    # ray exactly as a correct one does: containment read 0 escapes of 1,760 on
+    # a block you could see through the floor of. A ray test cannot see winding;
+    # only the sign of `n · d` at the nearest hit can.
+    ok, note = _facing(lattice=16)
+    claim("every visible surface faces the eye", ok, note)
+
     out("")
-    out("%d of 12 claims fail" % len(fails))
+    out("%d of 13 claims fail" % len(fails))
     _LEGACY = False
     return len(fails)
 
@@ -2741,6 +3182,112 @@ def _containment(area_m2=16.0, n_units=60, lattice=16, holed=False):
                   tuple(round(x, 2) for x in out[0][1]))))
 
 
+def _facing(area_m2=16.0, n_units=60, lattice=20, flip=""):
+    """From inside a block, is every surface the eye can SEE facing back at it.
+
+    THE QUESTION A RAY CAST CANNOT ASK, and the reason this claim exists.
+    `_containment` above fires the same lattice and asks whether any ray
+    escapes; `collision._ray_tri` is Möller-Trumbore with no back-face test, so
+    it intersects a triangle from either side and an inside-out floor stops a
+    ray exactly as a correct one does. Containment read **0 escapes of 1,760**
+    on a block whose deck, soffit, light blade and half of whose unit floors
+    were all wound the wrong way -- every one of them a surface the background
+    shows through in an engine frame.
+
+    So this walks the same lattice and, for the NEAREST hit on each ray, takes
+    that triangle's own normal and asks for `n · d < 0`. A surface you can see
+    the back of is a hole, whatever a distance test says.
+
+    `flip` is the negative control and it names a group: its triangles are
+    reversed and the claim must fail. Reversing one plate is exactly the defect
+    this was written for, so the control is the bug rather than a proxy for it.
+    """
+    v, t, g, p = block(area_m2, n_units, seed_of("facing"), lod=1)
+    if flip:
+        for name, lo, hi in g:
+            if name == flip:
+                for k in range(lo, hi):
+                    a, b, c = t[k]
+                    t[k] = (a, c, b)
+    owner = [""] * len(t)
+    for name, lo, hi in g:
+        for k in range(lo, hi):
+            owner[k] = name
+    idx = C.grid_index(v, t, cell_m=6.0)
+    run = p.get("unit_run_m", p["length_m"])
+    d_unit = p["unit_d_m"]
+    stations = [(0.0, 1.5, -run * f) for f in (0.13, 0.37, 0.61, 0.87)]
+    # THE UNIT STATIONS COME OFF THE BUILT DOORS, NOT OFF A FRACTION OF THE
+    # RUN. `-run * 0.3` is a point in space and nothing makes it a point inside
+    # a room: under `--legacy` the unit pitch is exactly `run / 30`, so that
+    # fraction landed EXACTLY on a party wall, the station stood inside 160 mm
+    # of solid, and every ray from it saw a back face. The claim failed for the
+    # one reason it is not about -- 208 hits, all `unit_party` -- which is the
+    # defect `deck.py --degeneracy`'s sample note already records one file
+    # over. A door's own `zc` is inside its own unit by construction.
+    doors = p.get("doors") or ()
+    for k in (len(doors) // 5, len(doors) // 2, (4 * len(doors)) // 5):
+        if k < len(doors):
+            side, zc = doors[k]
+            stations.append((side * (CORRIDOR_W_M / 2.0 + d_unit / 2.0),
+                             1.2, zc))
+    if not doors:
+        stations += [(s * (CORRIDOR_W_M / 2.0 + d_unit / 2.0), 1.2, -run * f)
+                     for s in (-1, 1) for f in (0.31, 0.68)]
+    bad, tried = {}, 0
+    for o in stations:
+        for i in range(lattice):
+            for j in range(lattice // 2):
+                th = 2 * math.pi * i / lattice
+                ph = math.pi * (j + 0.5) / (lattice // 2)
+                d = (math.sin(ph) * math.cos(th), math.cos(ph),
+                     math.sin(ph) * math.sin(th))
+                hit = _nearest(o, d, v, t, idx)
+                if hit is None:
+                    continue                     # containment's business
+                tried += 1
+                k = hit
+                a, b, c = (v[t[k][0]], v[t[k][1]], v[t[k][2]])
+                e1 = [b[m] - a[m] for m in range(3)]
+                e2 = [c[m] - a[m] for m in range(3)]
+                nx = (e1[1] * e2[2] - e1[2] * e2[1],
+                      e1[2] * e2[0] - e1[0] * e2[2],
+                      e1[0] * e2[1] - e1[1] * e2[0])
+                if sum(nx[m] * d[m] for m in range(3)) > 0.0:
+                    bad[owner[k]] = bad.get(owner[k], 0) + 1
+    n_bad = sum(bad.values())
+    return (not bad,
+            "%d visible surfaces from %d stations, %d show their back face"
+            "%s" % (tried, len(stations), n_bad,
+                    "" if not bad else ": %s"
+                    % ", ".join("%s x%d" % (k, n) for k, n in
+                                sorted(bad.items(), key=lambda x: -x[1])[:4])))
+
+
+def _nearest(o, d, verts, tris, index, max_t=400.0):
+    """`collision.cast_short`, returning WHICH triangle rather than how far."""
+    cell_m, idx = index
+    inv = 1.0 / cell_m
+    end = [o[k] + d[k] * max_t for k in range(3)]
+    lo = [int(math.floor(min(o[k], end[k]) * inv)) for k in range(3)]
+    hi = [int(math.floor(max(o[k], end[k]) * inv)) for k in range(3)]
+    seen, best, who = set(), None, None
+    for ix in range(lo[0], hi[0] + 1):
+        for iy in range(lo[1], hi[1] + 1):
+            for iz in range(lo[2], hi[2] + 1):
+                for n in idx.get((ix, iy, iz), ()):
+                    if n in seen:
+                        continue
+                    seen.add(n)
+                    tri = tris[n]
+                    h = C._ray_tri(o, d, verts[tri[0]], verts[tri[1]],
+                                   verts[tri[2]])
+                    if h is not None and h <= max_t and \
+                            (best is None or h < best):
+                        best, who = h, n
+    return who
+
+
 def _slice_z(v, t, z0, z1):
     """The sub-mesh whose triangles are entirely inside a z band."""
     keep = [tri for tri in t
@@ -2785,6 +3332,8 @@ def _cli(argv=None):
                     help="which block of the deck the frame is taken in")
     ap.add_argument("--look-m", type=float, default=14.0,
                     help="how far ahead the eye looks, in metres")
+    ap.add_argument("--back-m", type=float, default=1.6,
+                    help="how far inside the block's entrance the eye stands")
     ap.add_argument("--fov", type=float, default=None)
     ap.add_argument("--fixture-energy", type=float, default=3.0)
     ap.add_argument("--soft-fill", type=float, default=None,
@@ -2808,7 +3357,7 @@ def _cli(argv=None):
         scene(schema, profile, sec, int(ring), int(dk), frame=a.frame,
               slot_i=a.slot, lod=a.lod,
               cells=None if a.cell is None else [a.cell],
-              look_m=a.look_m, out_png=a.out, fov=a.fov,
+              look_m=a.look_m, back_m=a.back_m, out_png=a.out, fov=a.fov,
               fixture_energy=a.fixture_energy, soft_fill=a.soft_fill,
               ambient=a.ambient)
         return 0
