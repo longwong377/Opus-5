@@ -1,4 +1,4 @@
-[gd_scene load_steps=227 format=3]
+[gd_scene load_steps=233 format=3]
 
 ; A room, from the inside.
 ;
@@ -260,6 +260,12 @@
 [ext_resource type="Material" path="res://materials/truss_lamp.tres" id="m_truss_lamp"]
 [ext_resource type="Material" path="res://materials/truss_steel.tres" id="m_truss_steel"]
 [ext_resource type="Material" path="res://materials/kit_lamp_housing.tres" id="m_kit_lamp_housing"]
+[ext_resource type="Material" path="res://materials/sign_field_hazard.tres" id="m_sign_field_hazard"]
+[ext_resource type="Material" path="res://materials/sign_field_level.tres" id="m_sign_field_level"]
+[ext_resource type="Material" path="res://materials/sign_roundel_field.tres" id="m_sign_roundel_field"]
+[ext_resource type="Material" path="res://materials/sign_roundel_ink.tres" id="m_sign_roundel_ink"]
+[ext_resource type="Material" path="res://materials/sign_text_level.tres" id="m_sign_text_level"]
+[ext_resource type="Material" path="res://materials/sign_wordmark.tres" id="m_sign_wordmark"]
 
 [sub_resource type="Environment" id="Env"]
 ; Flat colour, not a sky. Near-black rather than pure black for the reason the
@@ -944,10 +950,16 @@ material_rules = {
 "reveal": ExtResource("m_kit_reveal"),
 "sign_face": ExtResource("m_signage_panel"),
 "sign_field": ExtResource("m_sign_lit_field"),
+"sign_field_hazard": ExtResource("m_sign_field_hazard"),
+"sign_field_level": ExtResource("m_sign_field_level"),
 "sign_frame": ExtResource("m_sign_mount_dark"),
 "sign_post": ExtResource("m_sign_mount_dark"),
+"sign_roundel_field": ExtResource("m_sign_roundel_field"),
+"sign_roundel_ink": ExtResource("m_sign_roundel_ink"),
 "sign_text": ExtResource("m_sign_text_lit"),
 "sign_text_head": ExtResource("m_sign_text_lit"),
+"sign_text_level": ExtResource("m_sign_text_level"),
+"sign_wordmark": ExtResource("m_sign_wordmark"),
 "signage_neon": ExtResource("m_emissive_signage"),
 "signage_panel": ExtResource("m_signage_panel"),
 "skirt": ExtResource("m_kit_skirt"),
