@@ -445,13 +445,22 @@ POSED_ON_FURNITURE = ("sit", "sleep")
 # the deck. A robe that touched the deck would plough it.
 #
 # WHY THE OBVIOUS RULE IS THE WRONG ONE, and this is the part worth keeping.
-# "Skip a body whose rig has no `foot` part" selects these 16 -- and it also
-# selects every GAIM, who have `suit_leg` instead of `leg` and no `foot` at all
-# because they are a sealed environment suit. Measured: a blanket no-foot skip
-# stops gating 150 of 1,260 bodies, 90 of them Gaim who stand on their suit legs
-# at min_y exactly 0.00000 and for whom the strict 2 mm bar is right. An
-# exclusion that stops asking the question of 90 bodies in order to excuse 60 is
-# how a gate stops being able to fail.
+# "Skip a body whose rig has no `foot` part" does select these 16 -- and it
+# selects 504 more with them. Measured over the three baked rungs, 1,260 gated
+# bodies:
+#
+#   lod 2   5 tokens of 42 have no `foot`: gaim, gaim1, gaim2, minbari1, minbari2
+#   lod 4   the same 5
+#   lod 8   ALL 42 -- `foot` is an extremity and the whole rung culls it
+#
+# So a no-foot skip stops gating 520 of 1,260 bodies: the ENTIRE coarsest rung,
+# every species, plus every Gaim at the two finer ones. The Gaim have `suit_leg`
+# and no foot because they are a sealed environment suit, and they stand at
+# min_y exactly 0.00000 -- the strict 2 mm bar is right for them. And the lod 8
+# rung is the one whose bodies were 79 mm in the air when this check was written.
+# An exclusion that stops asking the question of 504 correct bodies in order to
+# excuse 16 is how a gate stops being able to fail; it would have re-admitted
+# the exact defect three paragraphs up.
 #
 # So nothing is excluded. A body that stands on a HEM is measured against the
 # clearance that hem was BUILT with, imported from the module that builds it
