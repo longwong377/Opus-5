@@ -394,11 +394,23 @@ def main(argv=None):
                    "collision_tris": len(ct),
                    "interactables": side["interact"],
                    "actors": side["actors"], "crowd": side["crowd"],
-                   "collision_joins": len(cmeta["joins"]),
+                   # AND THE SAME MISTAKE TWICE MORE IN THE SAME BLOCK.
+                   # `st["clusters"]` above was fixed on its own line last
+                   # session and these two were left, so Shell B decks went
+                   # on raising KeyError -- here on `cmeta["joins"]`, which
+                   # `shell_b.deck_collision` does not emit because a
+                   # residential belt has no cluster joins to make. That is
+                   # this project's own costliest lesson arriving inside one
+                   # dict literal: a fix applied to an instance and not to
+                   # the rule is a fix that will be needed again. Every
+                   # subscript in this row now tolerates a shell that does
+                   # not carry the key, and the print below does too.
+                   "collision_joins": len(cmeta.get("joins", ())),
                    "collision_mb": round(cgb / 1e6, 2),
                    "obj_mb": round(ob / 1e6, 2), "glb_mb": round(gb / 1e6, 2),
                    "seconds": round(time.time() - t0, 1), "ok": True}
-            print(f"  [{n}/{len(order)}] {stem}: {len(st['clusters'])} cluster(s), "
+            print(f"  [{n}/{len(order)}] {stem}: "
+                  f"{len(st.get('clusters', ()))} cluster(s), "
                   f"{st.get('rooms', 0)} rooms, {len(T):,} tri, "
                   f"{len(joins)} join(s) {row['join_m']:.0f} m, "
                   f"{row['glb_mb']:.1f} MB + {len(ct):,} collision tri "

@@ -943,6 +943,18 @@ PLACES = (
 # It degrades loudly and never fatally: if the reconciliation cannot run, the
 # register keeps the old addresses and says so, because a station that cannot
 # be addressed at all is worse than one addressed wrongly.
+#
+# AND THE AUTHORED ROWS ARE KEPT, BECAUSE A CONTROL THAT CANNOT REACH THE BEFORE
+# IS NOT A CONTROL. `geography.py --landmarks --legacy` advertises "the register
+# as authored" and had no way to get it: by the time any module can say
+# `directory.PLACES`, this block has already run and replaced it. So the flag
+# printed the RECONCILED register under a legacy heading -- 24 of 24 where the
+# real before is 12 of 24 -- and an auditor checking that claim with the tool it
+# names would have concluded the change did nothing. It took stubbing the import
+# out of `sys.modules` to recover the honest number.
+#
+# One name, bound before the reassignment, ends that. It costs a tuple.
+PLACES_AUTHORED = PLACES
 try:
     import geography as _geo                                    # noqa: E402
     _gs, _gp = _geo.load()

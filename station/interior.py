@@ -3396,6 +3396,35 @@ if __name__ == "__main__":
                   "must fail.\n")
         _ok, _fail = deck_ladder_gate(_s, _p)
         sys.exit(1 if _fail else 0)
+    if "--cell-manifest" in sys.argv:
+        # THE ONE ARTEFACT THE ENGINE READS THAT NOTHING IN THE BUILD REBUILT.
+        #
+        # `cell_manifest.json` is tracked, shipped, and read on the player's
+        # path -- `walk.gd` takes the deck's spin from it and `stream.gd` takes
+        # its residency band from it. Its only caller anywhere was a `python3 -c`
+        # one-liner inside a `continue-on-error: true` step of validate.yml, so
+        # the world build never touched it and the file on disk described
+        # whatever the station looked like the last time somebody remembered.
+        #
+        # An audit measured the drift: 164 of 252 deck rows differ from a fresh
+        # derivation, 15 decks missing outright, and `bake_station --shell-audit`
+        # puts 82 of 119 decks' residency bands away from their own floor, worst
+        # 292.56 m. It is also the direct cause of `bake: no deck_table row for
+        # red ring_index=2 deck_index=18` -- eleven decks that failed to bake in
+        # the last Windows build because the manifest predated them.
+        #
+        # This is a gitignored-input problem wearing a tracked-file disguise, and
+        # this project's own rule covers it: A GATE THAT READS A COMMITTED
+        # ARTEFACT MUST BE ABLE TO REBUILD IT. So must a build. `build_world.py`
+        # now runs this first, before anything reads the table.
+        _s, _p = load()
+        _out = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "generated", "cell_manifest.json")
+        _m = write_cell_manifest(_out, _s, _p)
+        print("cell_manifest: %d decks, %d cells -> %s"
+              % (_m.get("decks", 0), _m.get("cells", 0),
+                 os.path.relpath(_out, ROOT) if "ROOT" in dir() else _out))
+        sys.exit(0)
     if "--hull-fit" in sys.argv:
         _s, _p = load()
         # THE CONTROL. `--legacy` resolves every place against the sector's

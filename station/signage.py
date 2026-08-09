@@ -1937,9 +1937,24 @@ def _selftest():
     # THE CORROBORATION, AND IT IS THE POINT OF DERIVING THE NUMBER RATHER THAN
     # WRITING ONE DOWN. Nothing about Grey was tuned. The ladder comes out of
     # the hull profile, `interior.DECK_PITCH_M` and the sector's own outermost
-    # ring radius, and Grey's occupied levels contain **17**. If a change to the
-    # hull, the pitch or the numbering pushed the show's most famous address off
-    # this station, this line goes red and says so.
+    # ring radius, and Grey comes out DEEP ENOUGH TO HAVE a seventeenth level.
+    # If a change to the hull, the pitch or the numbering made the show's most
+    # famous address impossible on this station, this line goes red and says so.
+    #
+    # THE STRONGER SENTENCE THAT USED TO BE HERE WAS FALSE AND IS RECORDED AS
+    # FALSE. It read "Grey's occupied levels contain **17**", and the commit
+    # message that shipped it said the same. Run against the tree it was written
+    # on, `level_number` derives GREY = [3,4,6,7,8,9,10,11,13,14,20,21,36,37]:
+    # 17 is not in the set, and the assertion twelve lines below -- written in
+    # the same commit, and honest about it -- checks `max(grey) >= 17` instead.
+    # An audit found the prose and the code disagreeing and it was right to.
+    #
+    # It is left here as a correction rather than deleted, because the failure
+    # mode is worth more than the fact: a claim gets written at the moment it
+    # feels true, the code gets weakened an hour later for a good reason, and
+    # the sentence survives to be cited by a future context as evidence. The
+    # code is the record. Prose beside it that overstates the code is a lie with
+    # a long half-life.
     grey = sorted({level_number(p) for p in _dr.PLACES if p["sector"] == "grey"})
     # ASSERTED AS "REACHES 17", NOT "CONTAINS 17", and the weakening is a
     # correction rather than a retreat. What `Grey 17` establishes at authority

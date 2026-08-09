@@ -42,6 +42,27 @@ MIN_SHIPPABLE_CELLS = 400
 
 # (label, argv-after-the-interpreter, note-or-None)
 STEPS: list[tuple[str, list[str], str | None]] = [
+    (
+        "the deck table every later step reads",
+        ["station/interior.py", "--cell-manifest"],
+        # FIRST, BECAUSE EVERYTHING AFTER IT READS THE FILE IT WRITES.
+        # `cell_manifest.json` is tracked and shipped, the engine reads it on the
+        # player's path, and until now NOTHING IN THIS BUILD REGENERATED IT --
+        # its only caller in the repository was a one-liner inside a
+        # `continue-on-error: true` step of validate.yml. So the table on disk
+        # described whatever the station looked like the last time a human
+        # remembered to run it.
+        #
+        # Measured against a fresh derivation on the tree that shipped it: 164 of
+        # 252 deck rows differ and 15 decks are missing entirely. `red 2/18` is
+        # one of the fifteen, which is precisely why the last Windows build
+        # printed `bake: no deck_table row for red ring_index=2 deck_index=18`
+        # and lost eleven decks at step 3.
+        #
+        # It costs seconds and it is pure Python, so there is no argument for
+        # leaving it out other than nobody having noticed.
+        "everything downstream reads deck_table -- see the comment in this file",
+    ),
     ("export the ring decks and columns", ["tools/export_station.py"], None),
     ("export the habitat drum", ["tools/export_drum.py"], None),
     ("bake every deck into streaming cells", ["tools/bake_station.py"], None),
@@ -104,6 +125,19 @@ GATES: list[list[str]] = [
     # gate that proves the fix was written in the same session and NOTHING RAN
     # IT -- the identical defect one level up. This is that caller.
     ["station/journal.py", "--persist-gate"],
+    # DOES EACH DECK'S STREAMING BAND CONTAIN ITS OWN FLOOR? The band comes from
+    # `cell_manifest.json`'s deck_table and the floor comes from the mesh, so the
+    # two can drift apart without either being wrong on its own -- and when they
+    # do, a body walks onto a deck whose cells are never resident and falls
+    # through the world. Session 4s closed this at 15 decks / worst 68.40 m and
+    # then a later commit moved the station under it: an audit re-ran the same
+    # gate on HEAD and got 82 of 119 decks, worst 292.56 m, exit 1.
+    #
+    # It was never in this list, which is why nobody saw it go. The gate existed,
+    # passed when written, and had no caller -- the shape this project keeps
+    # producing. With `--cell-manifest` now running as step 1 the drift should be
+    # zero; this is what proves it rather than assuming it.
+    ["tools/bake_station.py", "--shell-audit"],
 ]
 
 

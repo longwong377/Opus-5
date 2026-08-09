@@ -1167,11 +1167,25 @@ class Gate:
         return ok
 
     def report(self):
+        # THE DETAIL IS THE FAILURE EXPLANATION AND WAS PRINTED ON PASSES TOO.
+        # Every one of the nine call sites below writes `detail` as the reason
+        # the row is red -- "it does not", "directory.RECONCILED is False", the
+        # list of drifting sectors -- so a green run printed
+        #
+        #     [PASS] W3  directory.py imports geography
+        #            it does not.
+        #
+        # A gate whose own report contradicts its verdict is worse than a silent
+        # one: a reader skimming for problems finds sentences that say there is
+        # one, and a reader who learns to ignore them stops reading the real
+        # failures too. An audit found this and it is the cheapest thing in this
+        # file to get wrong twice, so the rule is stated rather than implied: on
+        # a PASS there is nothing to explain.
         print("\n%s" % self.label)
         print("-" * len(self.label))
         for name, ok, detail in self.rows:
             print("  [%s] %s" % ("PASS" if ok else "FAIL", name))
-            if detail:
+            if detail and not ok:
                 for line in detail.rstrip().split("\n"):
                     print("        %s" % line)
         print("  %d passed, %d FAILED" % (self.n_ok, self.n_bad))
@@ -1578,7 +1592,16 @@ def main(argv=None):
     if a.landmarks:
         import directory as dr
         if a.legacy:
-            landmark_table(schema, profile, [dict(q) for q in dr.PLACES],
+            # THE AUTHORED ROWS, NOT `dr.PLACES`. `directory.py` reconciles its
+            # register AT IMPORT, so by the time this line runs `dr.PLACES` is
+            # the after and this control was printing it under a "before"
+            # heading -- 24 of 24 where the honest before is 12 of 24.
+            # `PLACES_AUTHORED` is bound before that reassignment; the
+            # `getattr` fallback keeps this flag working against a checkout
+            # from before it existed rather than crashing on one.
+            landmark_table(schema, profile,
+                           [dict(q) for q in
+                            getattr(dr, "PLACES_AUTHORED", dr.PLACES)],
                            {s: LEGACY_EXTENTS[s] for s in ORDER_AFT_TO_FORE},
                            "LANDMARKS -- LEGACY (pre-4t bands, register as authored)")
         elif a.proposed:
