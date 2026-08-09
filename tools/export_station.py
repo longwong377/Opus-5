@@ -186,9 +186,22 @@ def _sidecars(stem, V, T, G, st):
     # spans -- that tie-break is what stops "operate the console" pointing at
     # `cc_console_leg`.
     def _tail(nm):
+        # THE CLUSTER TOKEN MAY CARRY A SUFFIX, AND THIS DEMANDED BARE DIGITS.
+        # Shell A emits `z7120__doorleaf_...`; Shell B emits
+        # `z6524_bloc0__shb_unit_...`, because a residential deck has many
+        # blocks at one z and they must be distinguishable. `"6524_bloc0"
+        # .isdigit()` is False, so nothing was stripped and every interactable
+        # in 4.6 million square metres of housing kept a mangled name that
+        # `interact.resolve` cannot match.
+        #
+        # Found by the agent that rendered Shell B, in a file it did not own,
+        # and reported rather than worked around -- which is the only reason it
+        # was not discovered later as "the housing has no interactables".
         parts = nm.split("__")
-        return "__".join(parts[1:]) if parts[0][:1] == "z" and \
-            parts[0][1:].isdigit() and len(parts) > 1 else nm
+        if len(parts) < 2 or parts[0][:1] != "z":
+            return nm
+        digits = parts[0][1:].split("_", 1)[0]
+        return "__".join(parts[1:]) if digits.isdigit() and digits else nm
 
     G2 = [(_tail(nm), a, b) for nm, a, b in G]
     rows = W.interact_rows(V, T, G2)
