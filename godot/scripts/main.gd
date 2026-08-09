@@ -1923,10 +1923,37 @@ func _boot_manifest(args: Dictionary) -> Dictionary:
 	var out := b.duplicate()
 	out["_source"] = path
 	# EVERY PATH IN THE MANIFEST IS REBASED ONTO THIS INSTALL. See `_rebase`.
-	for k in ["glb", "collision", "interact", "actors", "crowd", "dialogue",
-			"occluder", "cells_path"]:
-		if out.has(k):
-			out[k] = _rebase(String(out[k]))
+	#
+	# BY THE SHAPE OF THE VALUE, NOT BY A LIST OF KEYS, AND THAT CHANGE IS THE
+	# FOURTEENTH INSTANCE OF THIS PROJECT'S SIGNATURE DEFECT. The old form was a
+	# hand-kept list of eight key names. `crowd_glbs` was added to `boot.py`'s
+	# manifest afterwards and NOT to the list, so the three crowd libraries --
+	# built by `tools/bake_crowd.py`, 112 shared meshes, named correctly in
+	# `boot.json`, handed to `walk.gd` by `_configure_walk` -- arrived as
+	# relative paths, `FileAccess.file_exists` rejected all three, and the
+	# shipped build printed `walk: could not load any crowd library` eight times
+	# a launch while standing in a station of 250,000 people with nobody in it.
+	# Every part worked. The list of keys was the part that did not, and a list
+	# of keys is exactly the kind of thing no gate can fail on.
+	#
+	# So the rule is now about the VALUE: anything carrying `station/generated/`
+	# is a path into the generated tree and gets rebased, whoever put it there
+	# and whenever they added it. A comma-joined list of paths -- which is what
+	# `crowd_glbs` is -- is rebased element by element, because splitting on the
+	# separator `boot.py` already uses is cheaper than a second manifest format.
+	for k in out.keys():
+		if typeof(out[k]) != TYPE_STRING:
+			continue
+		var v := String(out[k])
+		if not v.contains("station/generated/"):
+			continue
+		if v.contains(","):
+			var parts: Array = []
+			for one in v.split(","):
+				parts.append(_rebase(String(one).strip_edges()))
+			out[k] = ",".join(parts)
+		else:
+			out[k] = _rebase(v)
 	# The sidecars the build block does not name are named by the mesh, which is
 	# how `station/walkable.py` and `arrival.gd` both find them.
 	var stem := String(out["glb"]).get_basename()

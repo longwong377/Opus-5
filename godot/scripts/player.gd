@@ -660,13 +660,38 @@ func drive_externally() -> void:
 	set_physics_process(false)
 
 
+## ESC WAS A ONE-WAY DOOR, AND NOTHING IN THE PROJECT COULD SHUT IT AGAIN.
+##
+## The old body released the mouse on ESC and there was exactly ONE assignment of
+## `MOUSE_MODE_CAPTURED` in the whole repository -- `_ready`, above, which runs
+## once. So a player who pressed ESC looking for a pause menu got a cursor, no
+## menu, and a head that never turned again for the rest of the session. The only
+## recovery was to quit. Grep proves the shape of it rather than my memory of it:
+## `mouse_mode` appears four times in `godot/scripts/`, and only `_ready` and
+## `main_menu.gd` ever capture.
+##
+## TWO WAYS BACK, because a player who has lost the camera will try both. ESC
+## toggles -- press it again and the mouse is recaptured -- and any mouse button
+## pressed while the cursor is free recaptures too, which is the convention every
+## first-person build on Windows uses and the one a hand reaches for without
+## being told. No other script in this project reads `InputEventMouseButton`
+## (checked, not assumed), so claiming the click costs nothing today; when an
+## interaction verb wants it, it will be handled before this and never reach
+## `_unhandled_input`, which is precisely what that method is for.
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		_yaw -= event.relative.x * look_sensitivity
 		_pitch = clamp(_pitch - event.relative.y * look_sensitivity,
 			-1.4, 1.4)
 	elif event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			print("player: mouse released -- ESC or click to look again")
+		else:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	elif event is InputEventMouseButton and event.pressed \
+			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
 ## One step of walking. Split out from `_physics_process` so the headless test in

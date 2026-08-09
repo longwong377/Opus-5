@@ -211,10 +211,80 @@ def _obj_floor_tris(path):
     return tris
 
 
-def spawn_from_shell(col_obj, floor_r_hint=None):
+# How far apart two interactables have to be before they stop counting as the
+# same place, in metres. The spawn target is the interactable with the most
+# neighbours inside this radius -- "stand where the most things you can use are
+# within reach". 25 m is a room, not a deck: `arrival_concourse` is 24 m across
+# and the corridor between two named places on this deck is 130 m, so the radius
+# separates them without being tuned to either.
+CONTENT_R_M = 25.0
+
+
+def content_target(stem, deck_dir=None):
+    """The point on this deck with the most usable things around it, or None.
+
+    THE SPAWN USED TO BE THE MIDDLE OF THE ARC, WHICH IS A RULE THAT KNOWS
+    NOTHING ABOUT THE GAME. `spawn_from_shell` targeted the circular mean of the
+    floor triangles' angles and the midpoint of their z -- a purely geometric
+    answer, correct for "where is the middle of this corridor" and wrong for
+    "where should a person wake up". A player-reality audit measured what that
+    produced on the shipped deck: all 65 interactables, 363 cast and 16 doors
+    between **130 and 450 m away**, and walking forward from the spawn walks you
+    AWAY from them. The first two minutes of the game were an empty corridor,
+    and a person who quits in those two minutes never sees any of the station.
+
+    So the target is derived from the CONTENT instead: the interactable with the
+    most other interactables within `CONTENT_R_M`, which is the densest place a
+    player can do something. Ties break on the lowest group name so the answer
+    is reproducible rather than dependent on file order.
+
+    IT IS A TARGET AND NOT THE ANSWER, exactly like `floor_r_hint` above. What
+    comes back from `spawn_from_shell` is still the real floor triangle nearest
+    this point, measured off the collision shell -- so a content target that
+    lands inside a wall, over a stairwell or off the built arc still produces a
+    spawn a body can stand on. That is the property the arc-midpoint rule had
+    and it is not being given up to gain this one.
+
+    Returns None when the deck has no interact sidecar or it is empty, and the
+    caller keeps the arc midpoint. A deck with nothing to do on it has no better
+    answer than its own middle.
+    """
+    p = sidecar(stem, "_interact.json", deck_dir)
+    if not p:
+        return None
+    try:
+        with open(p, encoding="utf-8") as f:
+            items = json.load(f)
+    except (OSError, ValueError):
+        return None
+    pts = [(i["centre"], i.get("group", "")) for i in items
+           if isinstance(i.get("centre"), list) and len(i["centre"]) == 3]
+    if not pts:
+        return None
+    r2 = CONTENT_R_M * CONTENT_R_M
+
+    def neighbours(c):
+        return sum(1 for o, _ in pts
+                   if (o[0] - c[0]) ** 2 + (o[1] - c[1]) ** 2
+                   + (o[2] - c[2]) ** 2 <= r2)
+
+    c0 = min(pts, key=lambda cg: (-neighbours(cg[0]), cg[1]))[0]
+    # The centroid of that cluster rather than the one prop, so the body lands
+    # among the things instead of with its face against the first one.
+    near = [c for c, _ in pts
+            if (c[0] - c0[0]) ** 2 + (c[1] - c0[1]) ** 2
+            + (c[2] - c0[2]) ** 2 <= r2]
+    return [sum(c[i] for c in near) / len(near) for i in range(3)]
+
+
+def spawn_from_shell(col_obj, floor_r_hint=None, target=None):
     """Where a body can stand, read off the collision shell.
 
     Returns (spawn, detail). Raises if the shell carries no floor group.
+
+    `target` STEERS WHICH floor triangle, and defaults to the arc midpoint. See
+    `content_target` for why the default was wrong for a game and right for a
+    corridor. The answer is a real floor triangle either way.
 
     `floor_r_hint` OVERRIDES THE MAX-RADIUS RULE, AND THE DRUM IS WHY.
 
@@ -265,6 +335,16 @@ def spawn_from_shell(col_obj, floor_r_hint=None):
     mid_a = math.atan2(sum(math.sin(a) for a in angs) / len(angs),
                        sum(math.cos(a) for a in angs) / len(angs))
     mid_z = (min(c[2] for c in mids) + max(c[2] for c in mids)) / 2.0
+    if target is not None:
+        # THE CONTENT'S ANGLE AND Z, NOT ITS RADIUS. A prop's centre is a metre
+        # or two off the deck and often set into a wall; taking its radius would
+        # ask for a floor triangle at head height and get whichever one happened
+        # to be closest to that miss. The floor is a surface of revolution about
+        # +Z, so (angle, z) locates a point on it completely and the radius is
+        # not ours to choose -- which is the same reason `cost` below is written
+        # in arc length and z rather than in Euclidean distance.
+        mid_a = math.atan2(target[1], target[0])
+        mid_z = target[2]
 
     def cost(c):
         da = abs((math.atan2(c[1], c[0]) - mid_a + math.pi)
@@ -859,7 +939,8 @@ def deck_row_for(stem):
     return {}
 
 
-def build(stem=None, hour=None, deck_dir=None, single_deck=False):
+def build(stem=None, hour=None, deck_dir=None, single_deck=False,
+          legacy_spawn=False):
     """The boot manifest for one deck, derived from what is on disk."""
     dd = deck_dir or preferred_deck_dir()
     have = decks(dd)
@@ -880,8 +961,11 @@ def build(stem=None, hour=None, deck_dir=None, single_deck=False):
     # tallest feature is not its ground can still derive a spawn. Ring decks
     # pass None and keep the max-radius rule they have always used.
     _row = deck_row_for(stem)
+    _tgt = None if legacy_spawn else content_target(stem, dd)
     spawn, detail = spawn_from_shell(
-        col_obj, _row.get("floor_r_m") if _row and _row.get("cells") == 0 else None)
+        col_obj, _row.get("floor_r_m") if _row and _row.get("cells") == 0 else None,
+        target=_tgt)
+    detail["target"] = "content" if _tgt else "arc midpoint"
     # WHICH PLACE THE SPAWN IS IN is read off the cast standing in it -- the
     # actors carry their own place key and their own position, so the nearest
     # one names the spot without a second table of room bounds. It is a LABEL
@@ -1575,6 +1659,14 @@ def main():
     ap.add_argument("--deck-dir", default=None,
                     help="directory to boot from (default: scene/deck). "
                          "Use scene/station for the streamed build")
+    # THE CONTROL FOR THE CONTENT SPAWN. `content_target`'s whole claim is that
+    # the old rule dropped the player 130 m from everything, and a claim like
+    # that is worth nothing without the command that reproduces the before. This
+    # flag restores the arc midpoint exactly, so the two spawns can be printed
+    # side by side and the distance-to-content compared.
+    ap.add_argument("--legacy-spawn", action="store_true",
+                    help="CONTROL: spawn at the geometric middle of the built "
+                         "arc, ignoring where the interactables are")
     a = ap.parse_args()
     if a.gate:
         return gate()
@@ -1590,12 +1682,12 @@ def main():
                   "ran. This is NOT a pass and the line above says so")
             return 0
         return rc
-    man = build(a.deck, a.hour, a.deck_dir, a.single_deck)
+    man = build(a.deck, a.hour, a.deck_dir, a.single_deck, a.legacy_spawn)
     if a.bake and not (man["cells_count"] > 1 and man["cells_fresh"]
                        and man["cells_start"] >= 0):
         ok, why = bake_cells(man["deck"], a.deck_dir)
         print("boot: bake %s -- %s" % ("ok" if ok else "FAILED", why))
-        man = build(a.deck, a.hour, a.deck_dir, a.single_deck)
+        man = build(a.deck, a.hour, a.deck_dir, a.single_deck, a.legacy_spawn)
     d = man["spawn_derivation"]
     print("boot: %s -- spawn %.3f,%.3f,%.3f in %s, %d rooms; standing on 1 of "
           "%d floor triangles (of %d in the shell) at r=%.3f, %.0f deg"
@@ -1603,6 +1695,23 @@ def main():
              man["spawn_at"] or "?", len(man["rooms"]),
              d["floor_triangles"], d["shell_triangles"], d["floor_r_m"],
              d["arc_deg"]))
+    # HOW FAR THE PLAYER IS FROM ANYTHING TO DO, and it is printed on every run
+    # rather than kept for the gate. This is the number the content spawn exists
+    # to move: the audit that found the defect measured 130-450 m and nothing in
+    # this file said so, because nothing in this file had ever asked. Run with
+    # `--legacy-spawn` to see the old answer on the same deck.
+    _ip = sidecar(man["deck"], "_interact.json", a.deck_dir)
+    if _ip:
+        with open(_ip, encoding="utf-8") as f:
+            _items = [i for i in json.load(f) if isinstance(i.get("centre"), list)]
+        if _items:
+            _ds = sorted((math.dist(man["spawn"], i["centre"]), i) for i in _items)
+            _n10 = sum(1 for dd_, _ in _ds if dd_ <= 10.0)
+            print("boot: nearest usable thing is %.1f m away (%s, %s); %d of %d "
+                  "within 10 m; target = %s"
+                  % (_ds[0][0], _ds[0][1].get("label", "?"),
+                     _ds[0][1].get("place", "?"), _n10, len(_items),
+                     d.get("target", "?")))
     # WHICH BUILD A PLAYER WILL GET, in one line, every run. A manifest that
     # names no cell set boots the monolith, and the failure this whole section
     # exists to end was silent precisely because nothing said so.

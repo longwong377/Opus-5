@@ -27,6 +27,41 @@ config/features=PackedStringArray("4.4", "Double Precision", "Forward Plus")
 window/size/viewport_width=1920
 window/size/viewport_height=1080
 
+; W/A/S/D DID NOTHING, AND THAT IS THE FIRST THING A PERSON TRIES.
+;
+; This file had NO [input] section at all, so `player.gd` polled `ui_up` /
+; `ui_down` / `ui_left` / `ui_right` and got Godot's built-in defaults -- the
+; ARROW KEYS. An audit drove real key events through the input path and
+; measured it: `ARROW-UP 3 s -> moved 12.46 m`, `W 3 s -> moved 0.00 m`.
+; Nothing in the game says which to use, and a first-person build where W does
+; nothing reads as broken within five seconds.
+;
+; The arrow keys are KEPT, not replaced -- they work, people use them, and
+; every gate and walk-test in this repository drives `ui_*`. These entries
+; extend the same four actions rather than introducing a second scheme, so
+; `player.gd` needs no change and cannot drift from them.
+[input]
+ui_up={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":87,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+ui_down={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":83,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+ui_left={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":65,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+ui_right={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":68,"key_label":0,"unicode":0,"location":0,"echo":false,"script":null)
+]
+}
+
 [rendering]
 renderer/rendering_method="forward_plus"
 ; OCCLUSION CULLING. Godot ignores every OccluderInstance3D in the scene unless
