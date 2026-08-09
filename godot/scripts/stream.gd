@@ -7,6 +7,10 @@ extends Node3D
 ## containment rule -- widening it past a body's own radius would start
 ## admitting the neighbouring decks the rule exists to exclude.
 const AABB_SLOP_M := 0.25
+## Returned by `residency_distance` for a cell whose deck the player is not on.
+## Finite rather than INF so anything ranking cells by it still ranks them, and
+## far larger than the station so no residency or free radius can admit it.
+const OFF_DECK_M := 1e9
 ## CELL RESIDENCY -- the thing that makes the station bigger than one file.
 ##
 ## WHAT THIS EXISTS TO END. `walk.gd` takes ONE `--glb` and loads it whole, so
@@ -1261,7 +1265,51 @@ func configure(manifest_path: String, dress: Node, fixture_energy: float,
 			("  -- DISABLED (negative control)" if disabled else ""),
 			("" if lag_frames == 0 else
 				"  -- LAGGED %d frames (stress control)" % lag_frames)])
+	_report_residency_rule()
 	return true
+
+
+## WHICH RESIDENCY RULE THIS MANIFEST GOT, printed on every run.
+##
+## `residency_distance` derives nothing: it reads `arc.band` and `res_aabb` off
+## each cell, so a manifest merged before session 4u, or with --legacy-radial,
+## silently degrades to the radius-blind rule that kept 20 decks resident. This
+## project's own rule about tools that can substitute a lesser mode -- "must say
+## which one it used, in its output, on every run" -- applies to a runtime that
+## can be handed a lesser input. The counts are printed rather than the verdict,
+## so the line is a measurement and not a claim.
+func _report_residency_rule() -> void:
+	var banded := 0
+	var disc := 0
+	var percell := 0
+	var rmin := INF
+	var rmax := 0.0
+	for c: Dictionary in cells:
+		var arc = c.get("arc", null)
+		if typeof(arc) == TYPE_DICTIONARY and typeof(arc.get("band", null)) == TYPE_ARRAY:
+			banded += 1
+		if bool(c.get("res_aabb", false)):
+			disc += 1
+		var r := float(c.get("res_radius_m", 0.0))
+		if r > 0.0:
+			percell += 1
+			rmin = minf(rmin, r)
+			rmax = maxf(rmax, r)
+	if banded == 0 and percell == 0:
+		push_warning("stream: RADIUS-BLIND MANIFEST -- no cell carries a radial "
+			+ "band or its own residency radius, so every deck at the same "
+			+ "angle and z is co-resident (measured: 3,737,289 tri in 59 cells "
+			+ "from 20 decks, 20.76x the budget). Re-run "
+			+ "`python3 tools/merge_cells.py`.")
+		print("stream: residency rule RADIUS-BLIND (pre-4u manifest or "
+			+ "--legacy-radial) -- one global radius %.1f m for all %d cells"
+			% [radius_m, cells.size()])
+		return
+	print("stream: residency rule DECK BAND -- %d of %d cells banded, %d discs "
+		% [banded, cells.size(), disc]
+		+ "on the AABB rule, %d with their own radius (%.1f..%.1f m); the "
+		% [percell, rmin if percell > 0 else 0.0, rmax]
+		+ "global %.1f m is a bound only" % radius_m)
 
 
 ## A PRECONDITION, BECAUSE `index` IS AN IDENTITY AND NOTHING ELSE CHECKS IT.
@@ -1377,12 +1425,89 @@ func cell_by_id(id: String) -> Dictionary:
 	return _by_id(id)
 
 
+## WHAT `update()` ASKS, AND IT IS NOT THE SAME QUESTION AS `distance_to`.
+##
+## `distance_to` is the BINNING rule: `bake()::_split` puts a triangle in a cell
+## by `atan2(y, x)` and z and NEVER by radius, so everything that asks "which
+## cell is this point in" -- `cell_at`, `walk.gd::_rows_in_cell`, `_nearest_cell`
+## -- has to keep asking it exactly that way or it stops agreeing with the bake.
+## RESIDENCY is a different question and it was being asked with the binning
+## rule, which is why up to 20 concentric decks were resident at once.
+##
+## TWO THINGS MAKE IT A QUESTION ABOUT ONE DECK, AND NEITHER IS DERIVED HERE.
+## Both are read off the cell as `tools/merge_cells.py` wrote them, because a
+## threshold re-derived on each side of a mirror is a threshold that can drift
+## on one side only:
+##
+##   `res_aabb` -- THIS CELL IS A DISC, NOT A CORRIDOR. The drum's 85 cells
+##   carry `arc = [0, 360)`, so `da` is 0 at every angle on the station and the
+##   arc branch below reduces to the z overhang: that is how a Grey corridor
+##   171 m away radially and outside the drum entirely held the whole Garden
+##   resident. The arc branch exists because "an arc cell's world AABB is a
+##   145 m box whose nearest corner is nothing a player can walk to"; for a disc
+##   the box IS the volume, so the reason does not apply and the AABB rule is
+##   both correct and radius-aware. It also leaves the drum with no band, which
+##   matters: the drum's ground has 7 m of relief and a body climbing a
+##   settlement podium would leave any 3.6 m band and free the ground under its
+##   own feet.
+##
+##   `arc.band` -- THE RADII AT WHICH A BODY IS ON THIS CELL'S DECK. Floor at
+##   `arc.r_m`, inward by the gap to the next deck of the same ring (3.600 m
+##   everywhere on this station, measured), widened by the cell's own recorded
+##   spawn so a gallery 6 m above its deck floor is inside its own band. Outside
+##   it there is a FLOOR SLAB in the way, and a floor slab is opaque: the
+##   residency radius is `sight_line_m`, the chord past which the ring's own
+##   curvature occludes, which is a statement about a body standing in a
+##   corridor looking along it. So this is a predicate and not a distance -- and
+##   that distinction is the whole fix, because the decks of this station are
+##   3.600 m apart and a radial DISTANCE term inside a 98.9 m radius is worth
+##   0.10% (measured, `tools/merge_cells.py --budget --legacy-radial`).
+##
+##     worst co-resident set, over every cell's own recorded spawn
+##       radius-blind, one global radius   3,737,289 tri   20.76x   59 cells
+##       band and per-cell residency         751,123        4.17x   10 cells
+##
+## A MANIFEST THAT CARRIES NEITHER STILL WORKS AND SAYS SO. `configure()` counts
+## both and prints the count; with none it degrades to exactly `distance_to`,
+## which is the pre-4u behaviour, and the banner says RADIUS-BLIND rather than
+## letting a stale manifest look like a regression in the content.
+func residency_distance(c: Dictionary, p: Vector3) -> float:
+	if bool(c.get("res_aabb", false)):
+		return _aabb_distance(c, p)
+	var arc = c.get("arc", null)
+	if typeof(arc) == TYPE_DICTIONARY:
+		var band = arc.get("band", null)
+		if typeof(band) == TYPE_ARRAY and band.size() >= 2:
+			var r := Vector2(p.x, p.y).length()
+			if r < float(band[0]) - AABB_SLOP_M or r > float(band[1]) + AABB_SLOP_M:
+				return OFF_DECK_M
+	return distance_to(c, p)
+
+
+func _aabb_distance(c: Dictionary, p: Vector3) -> float:
+	var ab: Dictionary = c["aabb"]
+	var box := AABB(Vector3(ab["pos"][0], ab["pos"][1], ab["pos"][2]),
+		Vector3(ab["size"][0], ab["size"][1], ab["size"][2]))
+	if box.has_point(p):
+		return 0.0
+	var q := Vector3(clampf(p.x, box.position.x, box.end.x),
+		clampf(p.y, box.position.y, box.end.y),
+		clampf(p.z, box.position.z, box.end.z))
+	return p.distance_to(q)
+
+
 ## Distance from a world point to a cell, ALONG THE CORRIDOR. Zero inside.
 ##
 ## An arc cell's world AABB is a 145 m box whose nearest corner is nothing a
 ## player can walk to; the number that decides residency is how far they would
 ## have to WALK, which for a ring is arc length and for anything else is the
 ## AABB. Both forms are in the manifest and this picks whichever the cell has.
+##
+## THIS IS THE BINNING RULE AND IT IS DELIBERATELY RADIUS-BLIND -- see
+## `residency_distance` above, which is what `update()` calls. Everything that
+## asks "which cell is this point in" calls THIS one, because `bake()::_split`
+## bins by angle and z and an identity test that disagreed with the bake would
+## lose content rather than triangles.
 func distance_to(c: Dictionary, p: Vector3) -> float:
 	if c.has("arc"):
 		var arc: Dictionary = c["arc"]
@@ -1401,15 +1526,7 @@ func distance_to(c: Dictionary, p: Vector3) -> float:
 		var along := deg_to_rad(da) * float(arc["r_m"])
 		var dz := maxf(0.0, maxf(float(arc["z0"]) - p.z, p.z - float(arc["z1"])))
 		return sqrt(along * along + dz * dz)
-	var ab: Dictionary = c["aabb"]
-	var box := AABB(Vector3(ab["pos"][0], ab["pos"][1], ab["pos"][2]),
-		Vector3(ab["size"][0], ab["size"][1], ab["size"][2]))
-	if box.has_point(p):
-		return 0.0
-	var q := Vector3(clampf(p.x, box.position.x, box.end.x),
-		clampf(p.y, box.position.y, box.end.y),
-		clampf(p.z, box.position.z, box.end.z))
-	return p.distance_to(q)
+	return _aabb_distance(c, p)
 
 
 ## The cell the player is inside, or -1.
@@ -1548,15 +1665,32 @@ func prime(index: int) -> int:
 
 
 ## One frame of residency. Call from `_physics_process` with the body's position.
+##
+## THE TWO RADII ARE PER CELL, AND THE GLOBALS ARE THE FALLBACK. `radius_m` is
+## the widest deck's sight line over the whole station -- 98.9 m, Grey -- and
+## applying it to `blue_0_0` kept 33 m more corridor resident than that deck's
+## own derivation asks for, in both directions, on every deck but one. Each cell
+## carries its own deck's `res_radius_m` and `res_free_m` (`merge_cells`), so
+## `blue_0_0` is back on the 66.1 m / 73.8 m pair the header of this file
+## derives for it and the drum is on the 33 m band `tools/bake_drum.py` derived
+## and recorded as being overridden by the merge.
+##
+## AND THE TWO READINGS CAN NO LONGER DISAGREE. A per-CELL radius is the right
+## number only if the cell is on the player's own deck -- otherwise "whose sight
+## line is this" has two answers -- and `residency_distance`'s band is exactly
+## the guarantee that it is. The compromise the merge used to have to make is
+## gone rather than papered over.
 func update(p: Vector3) -> void:
 	_frames += 1
 	_poll()
 	var want := {}
 	var d := {}
+	var fm := {}                       # each cell's own free radius, by id
 	for c in cells:
 		var id := String(c["id"])
-		d[id] = distance_to(c, p)
-		if d[id] <= radius_m:
+		d[id] = residency_distance(c, p)
+		fm[id] = float(c.get("res_free_m", free_m))
+		if d[id] <= float(c.get("res_radius_m", radius_m)):
 			want[id] = true
 
 	# -- FREE. Never the cell the player is in, never one the player is entering,
@@ -1569,7 +1703,7 @@ func update(p: Vector3) -> void:
 	var here := cell_at(p)
 	var entering := _entering(p)
 	for id in _resident.keys():
-		if want.has(id) or d[id] <= free_m:
+		if want.has(id) or d[id] <= float(fm.get(id, free_m)):
 			continue
 		var c := _by_id(id)
 		if int(c["index"]) == here or int(c["index"]) == entering:
@@ -1583,7 +1717,7 @@ func update(p: Vector3) -> void:
 	# one frame is how a streamer produces the hitch it exists to remove.
 	if not disabled and _ready_q.size() > 0:
 		var id: String = _ready_q.pop_front()
-		if want.has(id) or d.get(id, 1e30) <= free_m:
+		if want.has(id) or d.get(id, OFF_DECK_M) <= float(fm.get(id, free_m)):
 			_activate(id, p)
 		else:
 			# The player turned round while this was in flight. It finished
@@ -1784,12 +1918,32 @@ func _free_cell(id: String) -> void:
 
 
 func report() -> String:
+	# `radius_m`/`free_m` are the manifest's GLOBAL pair and since session 4u
+	# they are an upper bound rather than the number any cell uses -- on the
+	# shipped manifest they read 98.9/164.5 while every cell of the spawn deck
+	# uses 66.1/73.8. The pair is kept because the axial gate and everything
+	# that has ever parsed this line expect it; `band_cells` and
+	# `res_radius_span` are ADDED beside them, so the line says which rule
+	# actually ran without any existing key changing meaning.
+	var banded := 0
+	var rlo := INF
+	var rhi := 0.0
+	for c: Dictionary in cells:
+		var arc = c.get("arc", null)
+		if typeof(arc) == TYPE_DICTIONARY and typeof(arc.get("band", null)) == TYPE_ARRAY:
+			banded += 1
+		var r := float(c.get("res_radius_m", 0.0))
+		if r > 0.0:
+			rlo = minf(rlo, r)
+			rhi = maxf(rhi, r)
 	return ("cells=%d resident_max=%d resident_tris_max=%d budget_tris=%d "
-		+ "radius_m=%.1f free_m=%.1f loads=%d frees=%d double_loads=%d "
+		+ "radius_m=%.1f free_m=%.1f band_cells=%d res_radius_span=%.1f..%.1f "
+		+ "loads=%d frees=%d double_loads=%d "
 		+ "abandoned=%d over_budget_frames=%d max_activate_ms=%.1f "
 		+ "lag_frames=%d wired=%d unwired=%d") % [
 		cells.size(), peak_resident, peak_tris, resident_tris_budget,
-		radius_m, free_m, loads, frees, double_loads, abandoned,
+		radius_m, free_m, banded, (0.0 if is_inf(rlo) else rlo), rhi,
+		loads, frees, double_loads, abandoned,
 		over_budget_frames, max_activate_ms, lag_frames, wired, unwired]
 
 

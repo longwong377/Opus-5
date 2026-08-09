@@ -199,18 +199,133 @@ TWO THINGS FOLLOW AND THE SECOND IS THE SURPRISE.
 `--budget` is the gate. It is deliberately NOT part of `--selftest`: that
 asserts the manifest is LOADABLE and has to stay able to pass on a build whose
 budget is honestly red, which this one is.
+
+===========================================================================
+AND THE PARAGRAPH ABOVE WAS WRONG ABOUT WHY: A RADIAL *DISTANCE* BUYS 0.10%,
+A RADIAL *BAND* BUYS 80% (session 4u)
+===========================================================================
+
+THE PREDICTION IN THIS FILE WAS RIGHT AND ITS CONCLUSION WAS WRONG. Two
+sections up it says a radial term "would now buy almost nothing ... 0.13%", and
+re-measured today that is exactly true: `sqrt(along^2 + dz^2 + dr^2)` takes the
+worst co-resident set from 3,737,289 to 3,733,466 tri, which is **0.10%**. The
+reason is arithmetic and it is the whole finding: **the decks of this station
+are 3.600 m apart in radius** -- measured, every ring, 57 of 59 consecutive
+gaps -- and a residency radius of 98.9 m does not notice 3.6 m. Nineteen Grey
+decks stacked over 61 m of radius all sit inside one residency sphere however
+the metric is written, as long as the metric is a DISTANCE.
+
+**A DECK FLOOR IS OPAQUE, AND THAT IS A PREDICATE RATHER THAN A DISTANCE.** The
+residency radius is `sight_line_m`, which `station/interior.py` derives as the
+chord past which the ring's OWN CURVATURE occludes -- a statement about what a
+body standing IN A CORRIDOR can see along it. A cell on the deck above is not
+0.3 m away through a floor slab; it is not visible at all, at any arc distance,
+because there is a floor in between. So the right question is not "how far is
+that cell" but "is that cell on the deck I am standing on", and the answer is
+a band test on radius:
+
+    worst co-resident set, measured at every cell's own recorded spawn
+
+      shipped (radius-blind, one global radius)   3,737,289 tri   20.76x   59 cells
+      + radial distance term (the 4t proposal)    3,733,466       20.74x   57
+      + per-deck residency radius alone           3,733,466       20.74x   57
+      + DECK BAND alone                             827,521        4.60x   21
+      + DECK BAND and per-deck radius               751,123        4.17x   10
+
+      over the 868 standing positions            shipped        band
+        median resident                            667,452     232,316
+        mean cells resident                           20.7         6.9
+        positions over the 180,000 budget            92.4%       66.5%
+        positions over 1,041 mesh groups             32.6%        0.1%
+        median mesh groups resident                    729         240
+
+THE BAND IS DERIVED, NOT PICKED, AND IT IS WIDENED BY THE CELL'S OWN EVIDENCE.
+A cell's `arc.r_m` is its deck's FLOOR radius, so the deck occupies inward from
+there to the next deck's floor: `headroom` is that gap, taken per (sector,
+ring) from the manifest's own floor radii and defaulted to their median for a
+ring with one deck. Then the band is widened by the cell's own recorded spawn,
+because `bake()` derives a spawn from that cell's own collision floor ("a spawn
+is a CLAIM") -- which is how a mezzanine says so: eleven ring cells have a
+spawn 5.2 to 14.9 m inboard of their deck floor, and their band opens to hold
+it.
+
+CHECKED AGAINST EVERY BODY THIS STATION PLACES, because a band that excludes a
+place a player can stand is a fall through the world and no triangle count
+would show it. Over the 1,458 crowd placements on ring decks in
+`station/generated/scene/station/*_crowd.json`, **0 sit outside their own
+cell's band**; over the 862 cells with a spawn, **0 fail to contain their own
+spawn** (`--selftest` asserts exactly that, and it is not vacuous: it fails on
+a band built without the spawn widening). The 36 placements that DO sit
+outboard of their deck floor -- by up to 2.36 m -- are all in `green_1_0`,
+which is exempt:
+
+**A FULL-CIRCLE CELL IS NOT A CORRIDOR AND TAKES THE AABB BRANCH.** The drum's
+85 cells carry `arc = [0, 360)`, so `da` is 0 for every angle on the station
+and the arc branch reduces to "the z overhang" -- which is precisely how a Grey
+corridor 171 m away radially held the whole Garden resident. The arc branch
+exists because "an arc cell's world AABB is a 145 m box whose nearest corner is
+nothing a player can walk to"; for a disc the box IS the volume, so the reason
+does not apply and the AABB branch is both correct and radius-aware. It also
+means the drum keeps no band at all, which matters because the drum's ground
+has RELIEF -- a 7 m settlement podium -- and a body climbing it would leave any
+3.6 m band and free the ground under its own feet.
+
+RESIDENCY IS PER CELL NOW, AND THE GLOBAL MAX IS DEMOTED TO A BOUND. Each cell
+carries `res_radius_m` and `res_free_m` from its own deck's manifest, so
+`blue_0_0` is back on the 66.1 m sight line and 73.8 m free radius that
+`stream.gd`'s own header derives for it instead of Grey's 98.9/164.5, and
+`green_1_0` gets the 33.0 m band `tools/bake_drum.py` derived for it and
+recorded as overridden ("the MERGED manifest's radius ... governs in the
+packaged build whatever this row says"). With the band in place these two
+readings can no longer disagree: a wanted cell is on the player's own deck, so
+"the cell's deck" and "the player's deck" are the same deck and there is
+nothing left to compromise. The top-level `residency` block keeps the max --
+`configure()` refuses a manifest whose radius is not positive, and the max is
+the true upper bound on the want set -- and its prose now says so.
+
+    one deck's row is not positive (`column_green`, radius 0.0). That cell
+    falls back to the global bound and the fallback is COUNTED AND PRINTED,
+    because a silent 0.0 would make a cell that can never be resident.
+
+`--legacy-radial` is the control: it merges with no bands and no per-cell
+radii, and the numbers above come back. `--budget --legacy-radial` measures an
+existing manifest as if it had neither, which is the same control without
+rewriting the artefact.
 """
 
 import argparse
+import collections
 import glob
 import json
 import math
 import os
+import re
+import statistics
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CELLS = os.path.join(ROOT, "station", "generated", "scene", "station", "cells")
 OUT = os.path.join(CELLS, "station_cells.json")
+
+## An arc this wide is a disc, not a corridor: `da` is 0 at every angle on the
+## station, so the arc branch measures nothing but the z overhang. Mirrored in
+## `stream.gd::residency_distance`.
+FULL_CIRCLE_DEG = 359.9
+## Slop on the radial band, for the same reason `stream.gd::AABB_SLOP_M` exists
+## and with the same value: a body standing on the floor is AT the band's
+## outboard edge and float noise can put it a millimetre outside. It is slop for
+## FLOAT NOISE and not a knob -- the band's real width comes from the deck gap
+## and the cell's own spawn.
+BAND_SLOP_M = 0.25
+## A deck a body stands in cannot be thinner than this. Not a tuning value: a
+## derived headroom below it means the floor radii this is derived from are not
+## one-per-deck any more, and a band thinner than a body is a fall through the
+## world. `deck_headroom` refuses rather than emitting one.
+MIN_HEADROOM_M = 2.0
+## Returned instead of a distance for a cell whose deck the player is not on.
+## Finite rather than `inf` so anything ranking cells by it still ranks them,
+## and large enough that no residency or free radius can admit it.
+OFF_DECK_M = 1e9
 
 
 def per_deck(cells_dir=CELLS):
@@ -240,6 +355,141 @@ def duplicate_indices(cells):
     return {i: ids for i, ids in seen.items() if len(ids) > 1}
 
 
+def deck_headroom(cells):
+    """-> ({deck: metres inward from its floor it occupies}, n measured).
+
+    MEASURED FROM THE MANIFEST'S OWN FLOOR RADII, never written down. A cell's
+    `arc.r_m` is the radius of the deck's floor; the deck's own volume runs
+    INWARD from there (on a spun ring "up" is toward the axis) to whatever is
+    above it, which is the floor of the next deck in the same sector and ring.
+    So the headroom of a deck is the gap to its inboard neighbour -- 3.600 m on
+    every ring of this station, 57 of the 59 gaps that exist, the other two
+    being 7.2 and 14.4 where a deck index is missing and the volume genuinely
+    belongs to the deck below it.
+
+    A ring with one deck (the drum, `red_0`, `yellow_3`) has no neighbour to
+    measure against and takes the median of every gap that could be measured.
+
+    IT REFUSES RATHER THAN RETURNING A THIN BAND. A headroom under
+    `MIN_HEADROOM_M` would mean two "decks" 30 cm apart, which is not a deck
+    ladder but a broken set of floor radii -- and the failure it would cause is
+    silent and catastrophic, a body standing on a floor whose own cell is not
+    resident. `station/spec_registry.py`'s rule: refuse to emit around an
+    ambiguity rather than emit the convenient reading of it.
+    """
+    floor = {}
+    for c in cells:
+        arc = c.get("arc")
+        if not arc:
+            continue
+        floor.setdefault(str(c.get("deck", "")), set()).add(round(float(arc["r_m"]), 3))
+    split = {}
+    for deck, rs in floor.items():
+        if len(rs) > 1:
+            raise SystemExit("merge_cells: deck %r has %d different floor radii "
+                             "(%s) -- the radial band is derived per deck and "
+                             "cannot be" % (deck, len(rs), sorted(rs)))
+        m = re.match(r"([a-z]+)_(\d+)_(\d+)$", deck)
+        split.setdefault((m.group(1), m.group(2)) if m else (deck, ""),
+                         []).append((next(iter(rs)), deck))
+    out, measured = {}, []
+    for _ring, rows in split.items():
+        rows.sort(key=lambda t: -t[0])
+        for i, (r, deck) in enumerate(rows):
+            if i + 1 < len(rows):
+                out[deck] = r - rows[i + 1][0]
+                measured.append(out[deck])
+    if not measured:
+        raise SystemExit("merge_cells: no ring has two decks -- the deck "
+                         "headroom cannot be measured from this manifest")
+    med = statistics.median(measured)
+    thin = sorted((g, d) for d, g in out.items() if g < MIN_HEADROOM_M)
+    if thin or med < MIN_HEADROOM_M:
+        raise SystemExit("merge_cells: derived deck headroom below %.1f m (%s, "
+                         "median %.3f) -- floor radii are not one per deck and "
+                         "a band this thin is a fall through the world"
+                         % (MIN_HEADROOM_M, thin[:3], med))
+    n_measured = len(out)
+    for deck in floor:
+        out.setdefault(deck, med)
+    return out, n_measured
+
+
+def is_full_circle(c):
+    """A cell whose arc spans the whole ring: a disc, not a corridor."""
+    arc = c.get("arc")
+    return bool(arc) and (float(arc["a1_deg"]) - float(arc["a0_deg"])
+                          >= FULL_CIRCLE_DEG)
+
+
+def radial_band(c, headroom):
+    """-> (r_lo, r_hi) the radii at which a body is ON this cell's deck.
+
+    The deck slab first -- floor at `arc.r_m`, headroom inward -- and then
+    WIDENED BY THE CELL'S OWN SPAWN, which is the only evidence in the manifest
+    about where this particular cell's floors actually are. `bake()` derives a
+    spawn by ray casting that cell's own collision ("a spawn is a CLAIM -- see
+    walk.gd"), so a cell holding a gallery 6 m above its deck floor says so,
+    and its band opens to hold a body standing there plus the same headroom
+    above it. ELEVEN ring cells on this station need it -- measured, by
+    rebuilding without it and running `--selftest`, which then reports eleven
+    cells that do not contain their own spawn. Without it they would free the
+    floor under a player who climbed to them.
+
+    -> None for a cell with no arc (the six transit columns, whose AABB already
+    spans radius) and for a full-circle cell (the drum).
+    """
+    if not c.get("arc") or is_full_circle(c):
+        return None
+    r_m = float(c["arc"]["r_m"])
+    h = float(headroom.get(str(c.get("deck", "")), 0.0))
+    lo, hi = r_m - h, r_m
+    sp = c.get("spawn") or []
+    if len(sp) >= 2:
+        rs = math.hypot(float(sp[0]), float(sp[1]))
+        lo, hi = min(lo, rs - h), max(hi, rs)
+    return lo, hi
+
+
+def residency_distance(c, p, legacy=False):
+    """`stream.gd::residency_distance`, in Python. What `update()` asks.
+
+    THE SECOND MIRROR OF A RUNTIME FUNCTION, taken for the reason the first one
+    below states: the only other way to ask what the streamer would hold
+    resident is to launch the engine. It is `distance_to` plus the two rules
+    that make residency a question about ONE DECK -- the full-circle exemption
+    and the radial band -- and it is deliberately a separate function rather
+    than a flag on `distance_to`, because `distance_to` is the BINNING rule
+    (`bake()::_split` bins a triangle by angle and z and never by radius) and
+    everything that asks "which cell is this point in" has to keep asking it
+    that way.
+
+    NEITHER RULE IS DERIVED HERE OR IN THE ENGINE -- both are read off the cell,
+    as `merge()` wrote them: `res_aabb` for a cell that is a disc rather than a
+    corridor, `arc.band` for the radii at which a body is on that cell's deck.
+    A threshold re-derived on each side of the mirror is a threshold that can
+    drift on one side only.
+
+    `legacy` is the control: measure this manifest as if it carried neither.
+    """
+    if bool(c.get("res_aabb")) and not legacy:
+        return _aabb_distance(c, p)
+    band = None if legacy else (c.get("arc") or {}).get("band")
+    if band:
+        r = math.hypot(p[0], p[1])
+        if r < float(band[0]) - BAND_SLOP_M or r > float(band[1]) + BAND_SLOP_M:
+            return OFF_DECK_M
+    return distance_to(c, p)
+
+
+def _aabb_distance(c, p):
+    ab = c["aabb"]
+    lo = ab["pos"]
+    hi = [lo[i] + ab["size"][i] for i in range(3)]
+    q = [min(max(p[i], lo[i]), hi[i]) for i in range(3)]
+    return math.dist(p, q)
+
+
 def distance_to(c, p):
     """`stream.gd::distance_to`, in Python. Zero inside.
 
@@ -267,14 +517,29 @@ def distance_to(c, p):
         along = math.radians(da) * float(arc["r_m"])
         dz = max(0.0, float(arc["z0"]) - p[2], p[2] - float(arc["z1"]))
         return math.hypot(along, dz)
-    ab = c["aabb"]
-    lo = ab["pos"]
-    hi = [lo[i] + ab["size"][i] for i in range(3)]
-    q = [min(max(p[i], lo[i]), hi[i]) for i in range(3)]
-    return math.dist(p, q)
+    return _aabb_distance(c, p)
 
 
-def worst_resident(cells, radius):
+def cell_radii(cells, fallback, legacy=False):
+    """-> [(want_radius, free_radius)] per cell, in the array's own order.
+
+    Per cell, from what the merge wrote into it. `fallback` is the top-level
+    maximum, which is what a cell gets when its own deck's row is not positive
+    -- and `merge()` counts those and prints the count, because a cell with a
+    residency radius of 0.0 can never be resident and would go missing in
+    silence.
+    """
+    if legacy:
+        return [(fallback[0], fallback[1]) for _c in cells]
+    out = []
+    for c in cells:
+        r = float(c.get("res_radius_m", 0.0) or 0.0)
+        f = float(c.get("res_free_m", 0.0) or 0.0)
+        out.append((r if r > 0.0 else fallback[0], f if f > 0.0 else fallback[1]))
+    return out
+
+
+def worst_resident(cells, radius, legacy=False, free=False, free_radius=None):
     """The heaviest set of cells that can be resident AT ONCE. -> (tris, id, n).
 
     THE PROXY THIS REPLACES WAS THE HEAVIEST THREE CELLS, AND IT IS NOT AN
@@ -292,14 +557,23 @@ def worst_resident(cells, radius):
     BOUND on the true worst case -- a player standing between two spawns could
     be worse -- and that is said here rather than left to be assumed, because a
     bound quoted in the wrong direction is how a red number reads as green.
+
+    AND IT ASKS EACH CELL ITS OWN RADIUS, because since session 4u each carries
+    one. `radius` is the top-level maximum and is now only the fallback for a
+    cell whose own deck row is not positive. `free=True` measures the FREE ball
+    instead -- the set the streamer will still be HOLDING after the player has
+    walked past, which is the honest ceiling and is bigger than the want set.
     """
     pts = [(c["spawn"], c) for c in cells if c.get("spawn")]
     tris = [int(c.get("tris", 0) or 0) for c in cells]
+    fb = (radius, float(free_radius if free_radius else radius * 2.0))
+    rads = [(rr[1] if free else rr[0])
+            for rr in cell_radii(cells, fb, legacy)]
     worst, at, n_at = 0, "", 0
     for p, home in pts:
         s = n = 0
-        for c, t in zip(cells, tris):
-            if distance_to(c, p) <= radius:
+        for c, t, rr in zip(cells, tris, rads):
+            if residency_distance(c, p, legacy) <= rr:
                 s += t
                 n += 1
         if s > worst:
@@ -315,12 +589,13 @@ def over_budget(cells, cell_tris):
     return sorted(out, reverse=True)
 
 
-def merge(cells_dir=CELLS, out_path=OUT, renumber=True):
+def merge(cells_dir=CELLS, out_path=OUT, renumber=True, radial=True):
     sets = per_deck(cells_dir)
     if not sets:
         raise SystemExit("merge_cells: no *_cells.json in %s" % cells_dir)
 
     cells, ids, by_deck = [], set(), {}
+    sets_by_stem = {s: m.get("residency", {}) for s, m in sets}
     for stem, man in sets:
         rows = man.get("cells", [])
         by_deck[stem] = len(rows)
@@ -334,6 +609,11 @@ def merge(cells_dir=CELLS, out_path=OUT, renumber=True):
             if cid in ids:
                 raise SystemExit("merge_cells: duplicate cell id %r" % cid)
             ids.add(cid)
+            # WHICH DECK IT CAME FROM, unconditionally: the radial band and the
+            # per-cell residency radius are both properties of the deck, so this
+            # is no longer only provenance for a reader. `--legacy-index` still
+            # leaves `index` alone, which is what that control is about.
+            c["deck"] = stem
             # AND SO MUST INDICES, FOR THE SAME REASON ONE LEVEL DOWN. The id is
             # what the streamer keys residency on; the INDEX is what `cell_at`
             # returns and `cell_by_index`/`prime` look back up, so a repeated
@@ -341,7 +621,6 @@ def merge(cells_dir=CELLS, out_path=OUT, renumber=True):
             # whole fix: position in the merged array, which is unique because
             # the array is what the engine scans.
             if renumber:
-                c["deck"] = stem
                 c["index_in_deck"] = int(c.get("index", -1))
                 c["index"] = len(cells)
             cells.append(c)
@@ -369,10 +648,69 @@ def merge(cells_dir=CELLS, out_path=OUT, renumber=True):
         return float(man.get("residency", {}).get(key, default))
 
     radius = max(_f(m, "radius_m") for _s, m in sets)
-    free = max(_f(m, "free_radius_m", radius * 2.0) for _s, m in sets)
+    free_max = max(_f(m, "free_radius_m", _f(m, "radius_m") * 2.0)
+                   for _s, m in sets)
+
+    # ------------------------------------------------------------------
+    # THE RADIAL BAND AND THE PER-CELL RESIDENCY (session 4u). See the
+    # module docstring: this is what takes the worst co-resident set from
+    # 20.76x the budget to 4.17x, and a radial DISTANCE term is worth 0.10%.
+    # ------------------------------------------------------------------
+    band_n = full_n = fallback_n = 0
+    headroom, measured_n = deck_headroom(cells) if radial else ({}, 0)
+    for c in cells:
+        c.pop("res_radius_m", None)
+        c.pop("res_free_m", None)
+        c.pop("res_aabb", None)
+        if c.get("arc"):
+            c["arc"].pop("band", None)
+        if not radial:
+            continue
+        b = radial_band(c, headroom)
+        if b:
+            c["arc"]["band"] = [round(b[0], 4), round(b[1], 4)]
+            band_n += 1
+        elif is_full_circle(c):
+            # A DISC, NOT A CORRIDOR: the arc branch would measure only the z
+            # overhang for it. Written into the cell rather than re-derived on
+            # each side of the mirror.
+            c["res_aabb"] = True
+            full_n += 1
+        row = dict(sets_by_stem.get(str(c.get("deck", "")), {}))
+        r = float(row.get("radius_m", 0.0) or 0.0)
+        f = float(row.get("free_radius_m", 0.0) or 0.0)
+        if r <= 0.0 or f <= 0.0:
+            fallback_n += 1
+            r, f = radius, free_max
+        c["res_radius_m"] = r
+        c["res_free_m"] = f
+    if radial:
+        print("merge_cells: radial band on %d of %d cells (deck headroom "
+              "%.3f m median, MEASURED on %d of %d decks and defaulted to that "
+              "median on the rest), %d full-circle cell(s) exempt and on the "
+              "AABB rule, %d cell(s) fell back to the global radius because "
+              "their own deck row is not positive"
+              % (band_n, len(cells), statistics.median(sorted(headroom.values())),
+                 measured_n, len(headroom), full_n, fallback_n))
+    else:
+        print("merge_cells: --legacy-radial -- NO radial band and NO per-cell "
+              "residency. Every deck at the same angle and z is co-resident, "
+              "which is the state measured at 20.76x the resident budget; see "
+              "the module docstring.")
+    free = free_max
     cell_len = max(_f(m, "cell_length_m") for _s, m in sets)
     widest = max(sets, key=lambda sm: _f(sm[1], "radius_m"))[0]
-    base = sets[0][1].get("residency", {})
+    longest = max(sets, key=lambda sm: _f(sm[1], "cell_length_m"))[0]
+    # THE PROSE IS REGENERATED, NOT INHERITED. `base` is deck 0's residency
+    # block and it carries deck 0's SENTENCES beside the merge's numbers: the
+    # shipped manifest said "cell_length_m (73.8 m) ... hysteresis 7.7 m" next
+    # to a free radius of 164.5 and a cell length of 164.5, because `free_from`
+    # came from `blue_0_0` and the figures came from `max()`. A string copied
+    # out of one input and printed beside a number computed from all of them is
+    # a lie with a citation on it. Everything derived is written here.
+    base = {k: v for k, v in sets[0][1].get("residency", {}).items()
+            if k not in ("radius_from", "free_from", "shipped_radius_m",
+                         "shipped_radius_note")}
 
     # THE CORRIDOR BLOCK, WHICH IS NOT DECORATION. `walk.gd::_configure` reads
     # `plan["corridor"]` for the steering lookahead -- `sqrt(r * w)`, the chord
@@ -440,9 +778,42 @@ def merge(cells_dir=CELLS, out_path=OUT, renumber=True):
             "radius_m": radius,
             "free_radius_m": free,
             "cell_length_m": cell_len,
-            "radius_from": ("the widest of %d decks (%s) -- see "
-                            "tools/merge_cells.py on why max and not min"
-                            % (len(sets), widest)),
+            "radius_from":
+                (("AN UPPER BOUND, not the radius any cell uses: the widest of "
+                  "%d decks (%s, %.1f m). Since session 4u every cell carries "
+                  "its own deck's sight line as res_radius_m -- 66.1 m on "
+                  "blue_0_0, 33.0 m on the drum -- and update() reads that. "
+                  "This value is kept because configure() refuses a manifest "
+                  "whose radius is not positive and because it bounds the want "
+                  "set." % (len(sets), widest, radius))
+                 if radial else
+                 ("the widest of %d decks (%s) -- --legacy-radial, so this ONE "
+                  "value governs every deck, which is the state measured at "
+                  "20.76x the resident budget" % (len(sets), widest))),
+            "free_from":
+                (("AN UPPER BOUND: the widest of %d decks (%s, %.1f m = its own "
+                  "cell length). Each cell carries its own deck's free radius "
+                  "as res_free_m -- 73.8 m on blue_0_0, 7.7 m of hysteresis "
+                  "against its 66.1 m sight line, which is 0.96 s at the "
+                  "shipped 8.0 m/s sprint." % (len(sets), longest, free))
+                 if radial else
+                 ("the widest of %d decks (%s) -- --legacy-radial"
+                  % (len(sets), longest))),
+            "cell_length_from":
+                ("the longest cell on any deck (%s). Per deck it is in that "
+                 "deck's own manifest; nothing in the engine reads this one."
+                 % longest),
+            "band_from":
+                ("arc.band = the radii at which a body is ON that cell's deck: "
+                 "floor at arc.r_m, inward by the gap to the next deck in the "
+                 "same ring, widened by the cell's own recorded spawn. %d of "
+                 "%d cells carry one; %d full-circle cells are exempt and use "
+                 "the AABB rule. residency_distance() returns %g m for a cell "
+                 "outside it, because a deck floor is opaque."
+                 % (band_n, len(cells), full_n, OFF_DECK_M)
+                 if radial else
+                 "NONE -- --legacy-radial. Residency is radius-blind: every "
+                 "deck at the same angle and z is co-resident."),
         },
         # Provenance, so a reader of this file can tell it is derived and from
         # what. Nothing in the engine reads these.
@@ -478,7 +849,7 @@ def report(man):
         print("    %-16s %3d cells" % (stem, k))
 
 
-def budget_report(man, out=print):
+def budget_report(man, out=print, legacy=False):
     """THE WORST CASE THIS MANIFEST CAN PRODUCE, measured rather than proxied.
 
     Printed on every merge, because `main()` calls `report()` and `report()`
@@ -486,19 +857,50 @@ def budget_report(man, out=print):
     having. `--budget` runs it alone and exits nonzero, so it can also be a
     gate; it is NOT part of `--selftest`, which asserts loadability and must
     stay able to pass on a build whose budget is honestly red.
+
+    IT SAYS WHICH RULE IT MEASURED WITH, on every run, because since session 4u
+    there are two and a manifest merged by an older copy of this tool carries
+    neither band nor per-cell radius -- it would report the old number and look
+    like a regression in the content. `legacy=True` measures a banded manifest
+    as if it had none, which is the control.
     """
     r = man["residency"]
     cells = man["cells"]
     cell_tris = int(r.get("cell_tris", 60000))
     res_tris = int(r.get("resident_tris", 180000))
     radius = float(r.get("radius_m", 0.0))
-    worst, at, n_at = worst_resident(cells, radius)
+    free_r = float(r.get("free_radius_m", radius * 2.0))
+    banded = sum(1 for c in cells if (c.get("arc") or {}).get("band"))
+    percell = sum(1 for c in cells if float(c.get("res_radius_m", 0.0) or 0.0) > 0.0)
+    if legacy:
+        out("  RULE: --legacy-radial -- radius-blind, one global radius %.1f m "
+            "(this manifest carries %d band(s) and %d per-cell radius(es); "
+            "they are being IGNORED, which is the control)"
+            % (radius, banded, percell))
+    elif banded == 0 and percell == 0:
+        out("  RULE: radius-blind, one global radius %.1f m. THIS MANIFEST "
+            "CARRIES NO RADIAL BAND -- it was merged before session 4u or with "
+            "--legacy-radial. Re-run `python3 tools/merge_cells.py`." % radius)
+    else:
+        out("  RULE: deck band on %d of %d cells, per-cell residency on %d "
+            "(global %.1f m is the bound only)"
+            % (banded, len(cells), percell, radius))
+    worst, at, n_at = worst_resident(cells, radius, legacy, free_radius=free_r)
+    hold, hat, hn = worst_resident(cells, radius, legacy, free=True,
+                                   free_radius=free_r)
     over = over_budget(cells, cell_tris)
     out("  budget %s tri resident, %s per cell" % (res_tris, cell_tris))
     out("  WORST CO-RESIDENT SET: %s tri in %d cells, standing at %s "
         "-- %.2fx the %s allowance%s"
         % ("{:,}".format(worst), n_at, at or "?", worst / max(res_tris, 1),
            "{:,}".format(res_tris), "" if worst <= res_tris else "   OVER"))
+    # THE WANT SET IS NOT THE HELD SET, and only the want set was ever printed.
+    # `update()` frees a cell at `free_radius_m`, not at `radius_m`, so what the
+    # streamer is HOLDING after a player has walked past is the free ball. It is
+    # the honest ceiling and it is bigger; it is printed beside the gate number
+    # rather than instead of it, because the gate is about what must be loaded.
+    out("  ... still HELD at the free radius: %s tri in %d cells at %s (%.2fx)"
+        % ("{:,}".format(hold), hn, hat or "?", hold / max(res_tris, 1)))
     out("  %d of %d cells exceed %s tri on their own%s"
         % (len(over), len(cells), "{:,}".format(cell_tris),
            ":" if over else " -- none"))
@@ -597,9 +999,29 @@ def selftest(cells_dir=CELLS, manifest=None):
                    % (sum(len(v) for v in dup.values()), len(rows),
                       len({int(c.get("index", -1)) for c in rows}),
                       worst[0], len(worst[1]), ", ".join(worst[1][:3])))
-    print("merged manifest: %d cells, radius %.1f m, %d distinct index value(s)"
+    # A CELL MUST CONTAIN ITS OWN SPAWN UNDER THE RULE RESIDENCY USES, and this
+    # is the assertion the radial band has to survive. A band that excludes a
+    # place the build itself says a body can stand is a floor freed under the
+    # player's feet, and no triangle count anywhere would show it -- the
+    # co-resident number would only look BETTER. It is not vacuous: rebuilt with
+    # the spawn widening removed from `radial_band`, it fails on 9 cells
+    # (blue_0_0_c17z03, grey_0_20_c09z00 and seven more whose floor is a gallery
+    # 5.2 to 14.9 m above their deck's).
+    homeless = [str(c.get("id", "")) for c in rows
+                if c.get("spawn") and residency_distance(c, c["spawn"]) > 0.0]
+    if homeless:
+        bad.append("%d cell(s) do not contain their OWN recorded spawn under "
+                   "residency_distance -- the radial band excludes a place the "
+                   "bake says a body stands (%s). A player there would have the "
+                   "floor freed under them."
+                   % (len(homeless), ", ".join(homeless[:4])))
+    banded = sum(1 for c in rows if (c.get("arc") or {}).get("band"))
+    percell = sum(1 for c in rows if float(c.get("res_radius_m", 0.0) or 0.0) > 0.0)
+    print("merged manifest: %d cells, radius %.1f m (bound), %d distinct index "
+          "value(s), %d radial band(s), %d per-cell residency radius(es)%s"
           % (len(rows), float(res.get("radius_m", 0.0)),
-             len({int(c.get("index", -1)) for c in rows})))
+             len({int(c.get("index", -1)) for c in rows}), banded, percell,
+             "" if banded else "  -- RADIUS-BLIND (pre-4u or --legacy-radial)"))
     if bad:
         for b in bad:
             print("  BAD: %s" % b)
@@ -623,6 +1045,13 @@ def main():
                     help="THE CONTROL: concatenate the per-deck numbering "
                          "without renumbering, as this tool did before session "
                          "4t. --selftest then FAILS on the manifest it wrote.")
+    ap.add_argument("--legacy-radial", action="store_true",
+                    help="THE OTHER CONTROL: no radial band and no per-cell "
+                         "residency, as this tool did before session 4u. With "
+                         "--budget it measures an existing manifest as if it "
+                         "had neither, without rewriting it; on a merge it "
+                         "writes a manifest the engine then streams "
+                         "radius-blind.")
     a = ap.parse_args()
     if a.budget:
         p = a.out
@@ -632,13 +1061,14 @@ def main():
             return 1
         with open(p, encoding="utf-8") as f:
             man = json.load(f)
-        b = budget_report(man)
+        b = budget_report(man, legacy=a.legacy_radial)
         bad = (b["worst_resident"] > b["resident_tris"]) or b["over_cell"]
         print("\n  CELL BUDGET %s" % ("RED" if bad else "GREEN"))
         return 1 if bad else 0
     if a.selftest:
         return selftest(a.cells, a.out if a.out != OUT else None)
-    man = merge(a.cells, a.out, renumber=not a.legacy_index)
+    man = merge(a.cells, a.out, renumber=not a.legacy_index,
+                radial=not a.legacy_radial)
     report(man)
     print("\n  wrote %s" % os.path.relpath(a.out, ROOT))
     return selftest(a.cells, a.out)
