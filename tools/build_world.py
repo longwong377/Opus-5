@@ -72,10 +72,37 @@ GATES: list[list[str]] = [
 ]
 
 
-def run(argv: list[str]) -> int:
+LOGDIR = ROOT / "logs"
+
+
+def run(argv: list[str], logname: str | None = None) -> int:
     """Run one step with THIS interpreter, so a machine with both python2 and
-    python3, or a venv, cannot end up running a different one than the caller."""
-    return subprocess.call([sys.executable, *argv], cwd=str(ROOT))
+    python3, or a venv, cannot end up running a different one than the caller.
+
+    Output is TEED to `logs/<logname>.log` rather than left on the console,
+    because the console is the thing that fails you when it matters. The first
+    CI run of this driver failed in step 1 and printed the reason 43 minutes
+    before the run ended -- past what GitHub's log API will hand back, which
+    caps at a few thousand trailing lines. A step's own log file survives as an
+    artefact, and on failure the tail of it is reprinted at the END of the
+    console output, where it is reachable."""
+    if logname is None:
+        return subprocess.call([sys.executable, *argv], cwd=str(ROOT))
+    LOGDIR.mkdir(exist_ok=True)
+    path = LOGDIR / f"{logname}.log"
+    with open(path, "w", encoding="utf-8", errors="replace") as fh:
+        rc = subprocess.call([sys.executable, *argv], cwd=str(ROOT),
+                             stdout=fh, stderr=subprocess.STDOUT)
+    if rc != 0:
+        print(f"    --- last 40 lines of {path.relative_to(ROOT)} ---")
+        try:
+            tail = path.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
+            for line in tail:
+                print(f"    | {line}")
+        except OSError as e:
+            print(f"    (could not read the log: {e})")
+        print("    --- end ---")
+    return rc
 
 
 def world_on_disk() -> int | None:
@@ -93,6 +120,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="report what is on disk and exit without building")
     ap.add_argument("--skip-gates", action="store_true",
                     help="build only; do not run the eight verification gates")
+    ap.add_argument("--keep-going", action="store_true",
+                    help="run every step even after one fails (the old behaviour; "
+                         "it buries the first error under everything after it)")
     args = ap.parse_args(argv)
 
     print(f"python  {sys.version.split()[0]}  ({sys.executable})")
@@ -114,16 +144,23 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n=== {i}/{len(STEPS)}  {label}")
         if note:
             print(f"    ({note})")
-        rc = run(cmd)
+        rc = run(cmd, logname=f"{i:02d}-{cmd[0].split('/')[-1].removesuffix('.py')}")
         if rc != 0:
             print(f"    FAILED rc={rc}")
             failed.append(label)
+            # FAIL FAST BY DEFAULT. Steps 3 onward consume step 1's output, so
+            # after an early failure every later step fails for a reason that is
+            # not its own -- eight failures reported, one of them real.
+            if not args.keep_going:
+                print("\n    stopping here; the failure above is the real one.")
+                print("    (--keep-going runs the rest anyway)")
+                break
 
     if not args.skip_gates:
         print(f"\n=== gates")
         for cmd in GATES:
             name = " ".join(cmd)
-            rc = run(cmd)
+            rc = run(cmd, logname="gate-" + cmd[0].split("/")[-1].removesuffix(".py"))
             print(f"    {'PASS' if rc == 0 else f'FAIL rc={rc}'}  {name}")
             if rc != 0:
                 failed.append(name)

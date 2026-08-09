@@ -44,6 +44,15 @@ permissions:
 
 env:
   GODOT_VERSION: "4.4-stable"
+  # WINDOWS DEFAULTS TO cp1252 AND THIS REPOSITORY IS FULL OF EM-DASHES.
+  # Any open() without an explicit encoding= uses the locale codec, so a source
+  # or data file with a non-ASCII character raises UnicodeDecodeError on Windows
+  # and nowhere else. PYTHONUTF8 forces UTF-8 mode and removes the whole class.
+  PYTHONUTF8: "1"
+  # And the first run's log was unreadable because the driver's own prints were
+  # block-buffered while its children wrote straight through, so the summary
+  # appeared BEFORE the output it summarised. Unbuffered restores the order.
+  PYTHONUNBUFFERED: "1"
 
 jobs:
   build:
@@ -94,6 +103,19 @@ jobs:
       # Linux gate in this repository could ever have told us.
       - name: build the world
         run: python tools/build_world.py ${{ inputs.skip_gates && '--skip-gates' || '' }}
+
+      # EVEN WHEN THE BUILD FAILS -- especially then. The first run died in step
+      # 1 and printed the reason 43 minutes before the end, past what GitHub's
+      # log API will return, which caps at a few thousand trailing lines. The
+      # per-step logs are the only way to see it.
+      - name: keep the per-step logs whatever happened
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: logs/
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: the world is actually there
         run: python tools/build_world.py --check

@@ -63,3 +63,4 @@ scratchpad/push_mirror.log
 # Derived, like station/generated/, and for the same reason.
 dist/
 .engine/
+logs/
