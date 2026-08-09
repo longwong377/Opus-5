@@ -332,6 +332,12 @@ def rings_fitting_at(schema, profile, sector, z_m, skin_m=None):
             continue
         q = dict(r)
         if q["r_outer"] > lim:
+            # THE UNCUT OUTER RADIUS RIDES ALONG, because `decks_in_ring`
+            # anchors its ladder there and re-deriving it costs 5.3 ms a call
+            # -- measured, and it DOUBLED every z-aware stack lookup on the
+            # station when it was a second `_ring_radii_uncut()` one function
+            # down. The value is already in hand here; carry it.
+            q["r_outer_uncut"] = r["r_outer"]
             q["r_outer"] = lim
             q["r_mid"] = (q["r_inner"] + lim) / 2.0
             q["clamped"] = True
@@ -415,6 +421,14 @@ DECK_PITCH_M = 3.6        # floor-to-floor, provisional -- INV-010
 # sets it.
 LEGACY_DECK_CLAMP = False
 
+# THE SECOND NEGATIVE CONTROL, and it is a branch rather than a copied function
+# on purpose: a control that restates the old body is a second description of
+# the ladder and would drift from the thing it controls. True anchors each
+# stack at `r_outer` AS THE HULL LEAVES IT AT THIS z -- what this module
+# shipped, and what put Shell A's and Shell B's grey ring 0 ladders 1.250 m out
+# of phase. `--ladder --legacy` sets it with `LEGACY_DECK_CLAMP`.
+LEGACY_DECK_LADDER = False
+
 
 def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M,
                   z_m=None):
@@ -471,10 +485,10 @@ def decks_in_ring(schema, profile, sector, ring_index, pitch=DECK_PITCH_M,
     # unclamped ring is already its own canonical self and the uncut list is
     # not consulted -- which keeps the z-blind path (every whole-station sweep)
     # at exactly the cost it had.
-    if ring.get("clamped") and not ring.get("outward"):
-        anchor = next((c["r_outer"] for c in _ring_radii_uncut(schema, profile,
-                                                               sector)
-                       if c["id"] == ring["id"]), ring["r_outer"])
+    if LEGACY_DECK_LADDER:
+        anchor = ring["r_inner"] if ring.get("outward") else ring["r_outer"]
+    elif ring.get("clamped") and not ring.get("outward"):
+        anchor = ring.get("r_outer_uncut", ring["r_outer"])
     else:
         anchor = ring["r_inner"] if ring.get("outward") else ring["r_outer"]
     eps = 1e-9
@@ -1938,6 +1952,167 @@ def free_rungs(schema, profile, sector, ring, z_m=None):
     return [d["rung"] for d in decks if d["rung"] not in taken]
 
 
+def _merge_min_headroom():
+    """`tools/merge_cells.MIN_HEADROOM_M`, READ from the tool that refuses.
+
+    The bar is not restated here. `station/shell_b.py` reads it the same way and
+    for the same reason: a constant copied into a gate can disagree with the
+    tool it is standing in for, and then the gate passes a build the tool
+    rejects -- which is exactly the state this function was written to end.
+    """
+    import importlib.util                                    # noqa: PLC0415
+    p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                     "tools", "merge_cells.py")
+    try:
+        sp = importlib.util.spec_from_file_location("_mc_headroom_it", p)
+        m = importlib.util.module_from_spec(sp)
+        sp.loader.exec_module(m)
+        return float(m.MIN_HEADROOM_M), "read from tools/merge_cells.py"
+    except Exception as e:                                   # noqa: BLE001
+        return 2.0, "STATED 2.0 -- tools/merge_cells.py would not load (%s)" % e
+
+
+def deck_ladder_gate(schema, profile, verbose=True):
+    """Can `tools/merge_cells.py` derive a residency band over this station?
+
+    THE QUESTION NO GATE HERE ASKED, and the one that stopped a completed
+    Windows build at step 6. `merge_cells::deck_headroom` groups every baked
+    deck by (sector, ring), sorts by floor radius and takes the gap to the next
+    deck inward; under `MIN_HEADROOM_M` it REFUSES to emit, because a band that
+    thin is a body standing on a floor whose own cell is not resident. Every
+    other gate in this repository measures ONE deck against a standard, and two
+    decks at one radius pass all of them.
+
+    So this asks the pairwise question, over the union of both shells --
+    `routes.clusters()` for Shell A, `shell_b.station_plan()` for Shell B, Shell
+    A winning a shared address exactly as `tools/export_station.py::work_list`
+    resolves it with `decks.setdefault`.
+
+    Two claims, and the first is the one this module can guarantee:
+
+      1. ONE LADDER PER RING. Rung j of a ring is one radius at every z. This
+         is a property of `decks_in_ring` alone and holds by construction;
+         `LEGACY_DECK_LADDER` is the control and breaks it.
+      2. NO TWO DECKS CLOSER THAN THE MERGE ALLOWS. This is a property of the
+         ADDRESS ALLOCATION and this module cannot guarantee it: Grey ring 0
+         stacks 23 rungs, the register claims 19 of them and `shell_b`'s belts
+         take every deck of the ring, so 27 addresses want 23 rungs. Claim 1
+         turns what were 1.250 m phase gaps into exact 0.000 m collisions,
+         which is the honest form of the same fact -- two shells claiming one
+         rung. `free_rungs()` is what the second shell should be reading.
+    """
+    ok = fail = 0
+
+    def check(name, cond, note=""):
+        nonlocal ok, fail
+        if cond:
+            ok += 1
+        else:
+            fail += 1
+        if verbose:
+            print("  %-46s %s%s" % (name, "PASS" if cond else "FAIL",
+                                    "  " + note if note else ""))
+        return cond
+
+    import directory as _dr                                  # noqa: PLC0415
+    import routes as _rt                                     # noqa: PLC0415
+    import shell_b as _shb                                   # noqa: PLC0415
+    import deck as _dk                                       # noqa: PLC0415
+
+    # ---- claim 1: rung j of a ring is one radius, at every z -------------
+    probes, off = {}, []
+    for q in _dr.PLACES:
+        if q.get("z_m") is None or q.get("sector") is None:
+            continue
+        probes.setdefault(q["sector"], set()).add(
+            narrowest_z(profile, q["z_m"], (q.get("footprint") or (0, 0))[1]))
+    plan = _shb.station_plan(schema, profile)                # forces the settle
+    for (_i, sec), (z, _d) in _shb._SECTOR_Z.items():
+        probes.setdefault(sec, set()).add(z)
+    # NO FORMULA IS RESTATED HERE. The invariant is asked of the OUTPUT --
+    # every (ring id, rung) seen at any z must carry exactly one radius -- so
+    # the gate cannot agree with a wrong ladder by copying its arithmetic.
+    n_probe = 0
+    for sec, zs in sorted(probes.items()):
+        seen = {}
+        for z in [None] + sorted(zs):
+            for i, r in enumerate(ring_radii(schema, profile, sec, z_m=z)):
+                for d in decks_in_ring(schema, profile, sec, i, z_m=z):
+                    n_probe += 1
+                    k = (r["id"], d["rung"])
+                    if k in seen and abs(seen[k][0] - d["floor_r_m"]) > 5e-3:
+                        off.append((sec, r["id"], d["rung"], seen[k][0],
+                                    seen[k][1], d["floor_r_m"], z))
+                    seen.setdefault(k, (d["floor_r_m"], z))
+    check("rung j of a ring is one radius at every z",
+          not off, "%d decks probed over %d (sector, z) stations, %d off the "
+                   "canonical ladder%s"
+                   % (n_probe, sum(len(v) for v in probes.values()), len(off),
+                      "  e.g. " + str(off[0]) if off else ""))
+
+    # ---- claim 2: the merge's own pairwise question ----------------------
+    bar, bar_from = _merge_min_headroom()
+    rows = {}
+    for k in sorted({c[:3] for c in _rt.clusters()}):
+        sec, ring, dk = k
+        if (sec, ring) in _dk.NOT_RING_DECKS:
+            continue
+        decks = decks_in_ring(schema, profile, sec, ring)
+        if not decks:
+            continue
+        di = _dk.deck_index(schema, profile, sec, ring, dk)
+        rows["%s_%d_%d" % k] = (decks[min(di, len(decks) - 1)]["floor_r_m"], "A")
+    for b in plan:
+        k = "%s_%d_%d" % (b["sector"], b["ring"], b["deck"])
+        rows.setdefault(k, (round(float(b["radius_m"]), 3), "B"))
+    by = {}
+    for k, (r, who) in rows.items():
+        by.setdefault((k.split("_")[0], k.split("_")[1]), []).append((r, k, who))
+    thin = []
+    for _ring, lst in sorted(by.items()):
+        lst.sort(key=lambda t: -t[0])
+        for i in range(len(lst) - 1):
+            g = lst[i][0] - lst[i + 1][0]
+            if g < bar:
+                thin.append((round(g, 3), lst[i][1], lst[i][2],
+                             lst[i + 1][1], lst[i + 1][2]))
+    check("no two decks of a ring within %.1f m (%s)" % (bar, bar_from),
+          not thin, "%d decks over %d rings, %d gap(s) too thin%s"
+                    % (len(rows), len(by), len(thin),
+                       "  " + ", ".join("%s/%s %.3f m" % (t[1], t[3], t[0])
+                                        for t in thin[:6]) if thin else ""))
+
+    # ---- the arithmetic behind claim 2, reported whether or not it fails --
+    if verbose:
+        print("\n  RUNGS PER RING -- what the register claims, what is left, "
+              "and what shell_b takes:")
+        want = {}
+        for b in plan:
+            if "%s_%d_%d" % (b["sector"], b["ring"], b["deck"]) in rows and \
+                    rows["%s_%d_%d" % (b["sector"], b["ring"],
+                                       b["deck"])][1] == "A":
+                continue
+            want[(b["sector"], b["ring"])] = want.get((b["sector"],
+                                                       b["ring"]), 0) + 1
+        for (sec, ring) in sorted(set(list(want)) | {
+                (k.split("_")[0], int(k.split("_")[1])) for k in rows}):
+            n = len(decks_in_ring(schema, profile, sec, ring))
+            if not n:
+                continue
+            claimed = claimed_rungs(schema, profile, sec, ring)
+            free = free_rungs(schema, profile, sec, ring)
+            b_n = want.get((sec, ring), 0)
+            print("    %-6s ring%d  %2d rung(s):  register claims %2d, %2d "
+                  "free, shell_b takes %2d  %s"
+                  % (sec, ring, n, len(claimed), len(free), b_n,
+                     "OVER-SUBSCRIBED by %d" % (b_n - len(free))
+                     if b_n > len(free) else ""))
+
+    if verbose:
+        print("\n%d/%d passed" % (ok, ok + fail))
+    return ok, fail
+
+
 def hull_fit(schema, profile, verbose=True, legacy=False):
     """Is every located place INSIDE the pressure hull along its whole length?
 
@@ -3198,6 +3373,29 @@ def _selftest():
 
 if __name__ == "__main__":
     import sys
+    if "--ladder" in sys.argv:
+        # ONE COPY OF THIS MODULE, OR THE CONTROL IS VACUOUS. Run as a script
+        # this file is `__main__`, so `shell_b`'s `import interior` would load a
+        # SECOND copy whose LEGACY_* flags are still False -- and `--legacy`
+        # would then report the new ladder for half the station while claiming
+        # to be the old one. That is the "diff of two runs that were not the
+        # runs you think" defect in CLAUDE.md, at import scope.
+        sys.modules.setdefault("interior", sys.modules["__main__"])
+        _s, _p = load()
+        # THE CONTROL, AND IT IS TWO FLAGS BECAUSE THE DEFECT WAS TWO THINGS.
+        # `LEGACY_DECK_LADDER` re-anchors every stack at the hull's own
+        # `r_outer` at that z, which is what put the two shells 1.250 m out of
+        # phase; `LEGACY_DECK_CLAMP` restores `min(deck_index, len - 1)` in
+        # `ring_cells`, which collapsed thirteen Grey decks and three Yellow
+        # ones onto one radius each. Both must come back RED.
+        if "--legacy" in sys.argv:
+            LEGACY_DECK_LADDER = True
+            LEGACY_DECK_CLAMP = True
+            print("CONTROL: the pre-4v ladder (anchored at the hull's own "
+                  "r_outer per z) and the pre-4v ring_cells deck clamp. Both "
+                  "must fail.\n")
+        _ok, _fail = deck_ladder_gate(_s, _p)
+        sys.exit(1 if _fail else 0)
     if "--hull-fit" in sys.argv:
         _s, _p = load()
         # THE CONTROL. `--legacy` resolves every place against the sector's
