@@ -135,6 +135,26 @@ jobs:
       # Verification that can destroy a working binary is verification aimed at
       # the wrong target. The gates still run, below, after the .exe is built
       # and uploaded, where their failure costs a red tick and not the build.
+      # PRE-FLIGHT: THE QUESTIONS THAT NEED NO WORLD, ASKED BEFORE 51 MINUTES
+      # OF BUILDING ONE. This is blocking, deliberately, and it is the only
+      # blocking gate in the file.
+      #
+      # Build 16 rebuilt the entire station -- 126 decks, 51 minutes -- and was
+      # then refused because two Yellow decks sat at the same radius. The check
+      # that found it, `interior.py --ladder`, takes SECONDS and reads nothing
+      # the build produces: it asks whether the register's own addresses can be
+      # laid on the hull's own ladder. It could have failed at 00:30 instead of
+      # 51:00, and the world it would have built was unusable either way.
+      #
+      # The rule for what belongs here: a gate that can fail on the SOURCE, and
+      # whose failure makes the build pointless. Everything that needs a built
+      # world stays in the post-export gates, where a red tick costs a report
+      # rather than the delivery.
+      - name: pre-flight (blocking) -- can this world be addressed at all
+        run: |
+          python station/geography.py --gate
+          python station/interior.py --ladder
+
       # --keep-going, AND continue-on-error, AND the real gate is the NEXT step.
       #
       # Run 5 built the decks, the drum and all 901 streaming cells correctly and
