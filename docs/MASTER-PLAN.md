@@ -299,6 +299,35 @@ two of them mine, and each would have cost a phase of work.*
   warns about exactly that: *"re-score before reworking, or the rework is aimed at a stale
   number."*
 
+**0.0a — CLOSE THE CAP LOOPHOLE IN `aaa_gate.py`. It runs first, and it is the single most
+load-bearing change in this plan.** Stated above under exit condition 1, and promoted here because
+an item that lives only inside a quote block is an item a future session will not pick up. Today
+`aaa_gate.py:503` accepts `capped` on the sole condition that `cap_reason` is a non-empty string
+(`:170`) — so **all 94 dimension-points below the bar are cappable by 22 JSON edits**, and
+`--strict` exits 0 with Phases 1, 4 and 5 unexecuted.
+**Done when:** a cap is accepted only if `cap_reason` names one of R-1's five categories **and**
+`rounds_used == max_rounds`; **craft and fidelity below 4 are never cappable**, because the rubric
+judges both from stills and citations, which this container can do.
+**Control:** a scorecard with 22 free-text cap strings must make `--strict` exit non-zero.
+
+**0.0b — BUILD `CAPPED` IN `spec_check.py`. It does not exist.** `grep -n capped
+station/spec_check.py` returns three lines — the docstring, `:216` `green = red = capped = 0`, and
+`:283` which prints it. **It is never assigned**, and `completion.yaml` has no `capped` field and
+is generated rather than hand-edited. So exit condition 2 silently reduces to **300 GREEN of 300**
+until this lands.
+**Done when:** the registry carries a cap field, `spec_check` has a branch that sets it, and an
+empty or non-category reason is refused under 0.0a's rules.
+**Control:** a row capped with a blank reason must not count toward the 300.
+
+**0.0c — PUT THE GAME ON THE SCORECARD. Eleven subsystems, added before Phase 1 starts.** All 22
+currently scored subsystems are meshes: there is no `dialogue`, `economy`, `enforcement`,
+`arrival`, `progression`, `incident`, `save_load`, `audio`, `hud`, `transit` or `starfury`. **So
+exit conditions 1, 3 and 4 can all be met with Phases 2, 2A and 3 entirely unbuilt** — the release
+gate would be a geometry gate wearing a game's name.
+**Done when:** those eleven carry honest round-1 scores with evidence, and `aaa_gate.py` reports
+33 subsystems.
+**Control:** the gate must go red the moment one of the eleven is added without evidence.
+
 **0.1 — Make the spec ledger able to report progress. This is the biggest unknown in the plan and
 it is named as one.**
 
@@ -489,18 +518,36 @@ triangles, **95.6% over**. Beside it, `baked cells match the generator` fails wi
 nothing."* **The cell grid is degenerate along the axis**, so residency cannot shed cells, so six
 are held where three were budgeted.
 
-**Phase 1, in dependency order:**
-1. **Re-bake the cell grid with a real axial band** (INV-610). This is the one that matters: it is
-   upstream of the residency failure, the *"stream.gd still says what this file measures"*
-   failure, and PLAY.md's *"242 of 907 cells over the triangle budget, worst by 5.3×"*.
-2. Re-measure residency. **If it does not fall inside 180,000, spatial submission is Phase 1b** —
-   per-cell instances were measured at 39% before any occluder, and the corridor occluder is worth
-   7.8% because Godot culls per instance AABB while the corridor's groups span the whole 345° ring.
-3. The corridor rate (+4.5%) and the bent section's end caps (+9%) — these set `structure share of
-   frame` at 5.6% against 5.0%, so closing them closes two gates.
-4. The plant cell, *"priced with the corridor kit as a placeholder"* — check whether it is a
-   pricing artefact before building anything.
-5. Re-label the draw-call inventory line.
+**Phase 1, in dependency order. Numbered, because a bare list is not something a later session can
+tick off or fail:**
+
+**1.1 — Re-bake the cell grid with a real axial band** (INV-610). The one that matters: it is
+upstream of the residency failure, the *"stream.gd still says what this file measures"* failure,
+and PLAY.md's *"242 of 907 cells over the triangle budget, worst by 5.3×"*.
+**Done when:** `budget.py`'s `baked cells match the generator` stops printing `907 × 0.0 deg`, and
+`boot.py` stops printing ONE-DIMENSIONAL GRID on launch.
+
+**1.2 — Re-measure residency.** **If it does not fall inside 180,000, spatial submission is Phase
+1b** — per-cell instances were measured at 39% before any occluder, and the corridor occluder is
+worth 7.8% because Godot culls per instance AABB while the corridor's groups span the whole 345°
+ring.
+**Done when:** `resident triangles` reads under 180,000 at the worst standing position, or 1b is
+opened with the measured figure written down.
+
+**1.3 — The corridor rate (+4.5%) and the bent section's end caps (+9%).** These set `structure
+share of frame` at 5.6% against 5.0%, so closing them closes two gates.
+**Done when:** `corridor rate`, `bent corridor rate`, `frustum structure` and `structure share of
+frame` all read PASS.
+
+**1.4 — The plant cell**, *"priced with the corridor kit as a placeholder"*.
+**Done when:** it is established whether 122.6% is a pricing artefact or real geometry — and the
+answer is written down **before** anything is rebuilt.
+
+**1.5 — Re-label the draw-call inventory line.** The `279.7%` printed on every export run compares
+a library inventory to `exterior_draw_calls`, which `budget.py` says *"gates a manifest, not a
+frame"*.
+**Done when:** the line names the manifest it actually gates and no longer reads as a frame
+overage.
 
 *The lesson is recorded rather than hidden: I ran the command, read the part that suited the plan
 I wanted to write, and had to be corrected by the same command run properly. The tool did not
@@ -617,6 +664,11 @@ rather than invented:
 | 2A.5 | **a purchasable licence** | needs 2.4's economy |
 | 2A.6 | **flight hours logged** | needs 2.6's Starfury |
 | 2A.7 | **an authority who signs** | an NPC with the power to promote |
+
+**Each of 2A.1–2A.7 is an item, not a row, and each carries the same done-condition shape:** the
+mechanism advances in a headless run, the advance is visible to the player, and it **persists
+across a save**. A mechanism that only moves a counter in Python is 2A's own version of the
+defect this project keeps producing.
 
 **2A.8 — the surface.** A player must see what tier they hold, what it permits, and what would
 raise it, **without a wiki**. `hud.gd` draws the tier name today and nothing else.
@@ -809,12 +861,32 @@ by entry rather than by counting the word (which gives 27 and is wrong):
 | **C-009** out-of-era exposure | `plant` and `corridor_service` only |
 | **C-010** the bay is 140 m, the hull holds 77 m | the bay's interior geometry only |
 
-C-003 and C-004 decide **labels, not shapes**. The work is to isolate both behind one register
-field so a future answer re-stamps them in one place — not to resolve them.
+**5.1 — Isolate C-003 and C-004 behind one register field.** Both decide **labels, not shapes**, so
+the work is to make a future answer re-stampable in one place — **not** to resolve them.
+**Done when:** no generator, no interaction and no gate reads a sector name or a level number
+except through that field.
+**Control:** re-stamping the field with the opposite reading must change every affected label and
+no geometry at all.
 
-Robustness 4 requires **every assertion deliberately broken and observed to fail**, with the
-report saying what the failure looked like. Mechanical, not creative, and it is most of the
-robustness gap.
+**5.2 — C-009 and C-010, scoped.** C-009 blocks `plant` and `corridor_service` only; C-010 blocks
+the bay's interior geometry only.
+**Done when:** each is either resolved from canon or recorded as blocking exactly those subsystems
+and nothing wider — a blocking conflict whose blast radius is unstated blocks everything by
+default.
+
+**5.3 — Break every assertion.** Robustness 4 requires **every assertion deliberately broken and
+observed to fail**, with the report saying what the failure looked like. Mechanical, not creative,
+and it is most of the robustness gap.
+**Done when:** every subsystem below robustness 4 has a recorded negative control that fired, with
+the observed failure quoted.
+**Control:** an assertion that cannot be made to fail is the finding, and it is logged as one
+rather than counted as passing.
+
+**5.4 — Fidelity, 18 of 22 below the bar.** Fidelity 4 requires a citation per claim — a canon
+reference or a logged `INV-` extrapolation — not a resemblance.
+**Done when:** each of the 18 either reaches 4 with its citations, or carries a cap under 0.0a's
+rules. **Fidelity is not cappable for effort**, only for a missing instrument, and no instrument
+is missing here: the references are on disk.
 
 ---
 
