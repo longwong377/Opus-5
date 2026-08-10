@@ -49,9 +49,9 @@ first:
 
 | # | read | it decides | status |
 |---|---|---|---|
-| 1 | **`docs/THE-STATION.md`** + its annexes `docs/spec/{PLACES,PEOPLE,SYSTEMS}.md` | **WHAT gets built** — 291 enumerated, checkable items with acceptance checks that name content | **CURRENT — the content authority** |
-| 2 | **`docs/MASTER-PLAN.md`** § "SESSION 4i — FINAL" | **WHAT ORDER** it gets built in — phases, gates, the enforcement rules | **CURRENT — the ordering authority** |
-| 2b | **`docs/MASTER-PLAN.md`** § "SESSION 4r — THE OPEN DEFECT LIST" (**R1–R6**, immediately above the 4i section) | **WHAT IS BROKEN RIGHT NOW** — five defects, each with an owner, a gate that can fail, and an acceptance test that names content | **CURRENT — read before choosing a session's work** |
+| 1 | **`docs/THE-STATION.md`** + its annexes `docs/spec/{PLACES,PEOPLE,SYSTEMS}.md` | **WHAT gets built** — **300** enumerated, checkable items with acceptance checks that name content | **CURRENT — the content authority** |
+| 2 | **`docs/MASTER-PLAN.md`** § "SESSION 4v — THE FINAL PLAN" — **the first section in the file** | **WHAT ORDER** it gets built in — six exit conditions, phases 0–6, the capping limits | **CURRENT — the ordering authority. LOGGED, NOT STARTED** |
+| 2b | **`docs/MASTER-PLAN.md`** § "SESSION 4r — THE OPEN DEFECT LIST" | seven entries R1–R7, **two closed, R4 already met and never marked**. **Folded into §4v** — read for the diagnoses, not for the work list | superseded by §4v |
 | 3 | `docs/AAA-STANDARD.md` | the quality bar and **the hard stop** (3 rounds, then CAPPED in writing) | **CURRENT — the quality authority** |
 | 4 | `STATE.md` | where the last session stopped and what is half-finished | **CURRENT — the handoff** |
 | 5 | `canon/00-MASTER.md`, `INVENTIONS.md`, `CONFLICTS.md` | what is true, what is extrapolated, what is blocked | **CURRENT — the fact authority** |
@@ -133,6 +133,7 @@ tells you the caller runs.** Launch the scene and grep for the line the loader p
 | `docs/SHIP-PLAN.md` | superseded, work finished | the record of *why* four contradictory plans had to be collapsed; its connectivity work is done |
 | `docs/PLAN-3u-populated.md` | superseded | **"the build is always walkable"** — still a hard rule |
 | `docs/MASTER-PLAN-DRAFT-4i.md` | **REJECTED, kept deliberately** | nothing binds. It exists only so `docs/reviews/bible-panel-4j.md`'s critique is legible against its target. **Do not build from it.** |
+| `docs/MASTER-PLAN.md` (§4i FINAL, below §4v) | superseded as ordering | its **§T scope traceability matrix** — carried forward in full by §4v — the four anti-failure mechanisms, and *"a rung passes with a denominator, never an existence proof"* |
 | the eight-layer table (in this file, below) | superseded as ordering | the **lessons**: layer 2's "a cube passes every word of a topological test", layer 4's "a median cannot express mood" |
 | the W-track (in this file, below) | superseded as ordering | collision ≠ render geometry; a walk gate reports **distance covered** |
 | the 4d ruling (in this file, below) | superseded by 4i | "the project optimises what can be counted, because counts go green and a game cannot be expressed as a count" |

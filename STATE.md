@@ -9079,3 +9079,137 @@ critic**, not as reported by the builder.
    exactly when a stale figure survives longest, because nobody re-checks a number that will improve.
 4. R1's remaining spec failures, each needing the same decision: *is the spec wrong, or the station?*
    Neither may be edited to make the other pass.
+
+---
+
+# Session 4u–4v — the night the game became playable, and the last plan was written
+
+**STATE.md was 66 commits stale when this session started.** Two entire sessions had landed with
+no handoff entry, and every lesson from them existed only in commit messages. That is the defect
+this file exists to prevent, and §4v's enforcement rule now closes it: *no session ends without
+STATE.md updated.*
+
+## 1. There is a playable Windows build, and it is the whole station
+
+`https://github.com/longwong377/Opus-5/actions/runs/31336081621` → Artifacts →
+`Babylon5-windows`, **1.55 GB**, commit `d9bd3a7`. Unzip, run `game/Babylon5.exe`.
+
+Seventeen prior attempts failed for seventeen different reasons. What closed it:
+
+| | before | after |
+|---|---|---|
+| decks that can hold people | **1 of 76** | **73** |
+| residents the clock knows | 363 | **3,904** |
+| crowd placements | 444 | **2,058** |
+| usable objects | 65 | **418** |
+| `coldstart.py --g1` | 8 of 10, FAIL | **10 of 10, PASS** |
+
+## 2. The four defects in the first five seconds of the game
+
+None of them could have been caught by any gate here, because every gate scores a PART and all
+four parts met their standard.
+
+* **W/A/S/D did nothing.** `project.godot` had no `[input]` section at all, so the build used
+  Godot's arrow-key defaults and never said so. Measured: `W 3 s -> 0.00 m`, `ARROW-UP 3 s ->
+  12.46 m`.
+* **ESC was a one-way door.** One `MOUSE_MODE_CAPTURED` in the whole repository, in `_ready`.
+  Press ESC looking for a pause menu and the camera never turns again.
+* **The spawn was 144.4 m from anything to do.** `spawn_from_shell` targeted the circular mean of
+  the floor triangles — right for "the middle of this corridor", wrong for "where should a person
+  wake up". `boot.py::content_target` now derives it from the interact sidecar: **1.2 m, 16 of 65
+  things within 10 m**, with `--legacy-spawn` as the control.
+* **The crowd library never loaded — instance FOURTEEN of the signature defect, and the first
+  found in a LIST rather than a call.** `main.gd::_read_boot` rebased manifest paths using a
+  hand-kept list of eight key names; `crowd_glbs` was added afterwards and not to the list. Fixed
+  at the RULE — rebase by the SHAPE OF THE VALUE, anything containing `station/generated/`.
+
+## 3. 75 of 76 decks were empty by construction, and every part was correct
+
+`boot.py` named three sidecars, `main.gd` passed them, `walk.gd` read them, and `_cell_is_ours`
+then correctly refused to put blue_0_0's cast into another deck's cell. **Four right decisions
+covering one seventy-sixth of the station.** `walk.gd` now loads every deck's sidecars and scopes
+per ROW rather than per cell. A/B on one cell, one flag apart: `--one-deck-sidecars` **0 walkers**,
+default **2**. Checked on three decks in three sectors, all previously zero.
+
+**And the layer above it had the same shape:** `main.gd` did its own second read of the cast, so
+`life.gd` bound 363 residents while the level wired 3,904. Two readers of one list. `walk.gd`
+exposes `cast_rows()`; the second reader is deleted.
+
+## 4. Two gates I wrote could only ever FAIL, and I shipped both
+
+* The CI roll-up added to stop a green tick hiding a red gate was written in **bash on a
+  PowerShell runner** — `Missing '(' after 'if'`, every run, before reading anything. Run 17
+  built a working 1.53 GB game and reported FAILURE because of a shell dialect.
+* `materials.py --check-textures` wrote its comparison to `<name>.png.check` and PIL raised
+  `unknown file extension: .check` on the first of forty-nine.
+
+**Both were pushed without being watched fail AND pass once.** That is the rule now: a new gate is
+not a gate until it has been seen doing both. The texture gate is shown both ways — live 49
+checked / 0 stale exit 0; control with two bytes flipped / 2 stale exit 1, naming exactly those
+two files.
+
+## 5. Tracked artefacts that nothing in the build regenerates
+
+Two found in one session, and it is `CLAUDE.md`'s own rule — *a gate that reads a committed
+artefact must be able to rebuild it* — arriving twice in different directories.
+
+* **`cell_manifest.json`**: 164 of 252 deck rows wrong, **15 decks missing entirely**. `red 2/18`
+  was one of the fifteen, which is why the previous build printed `no deck_table row for red
+  ring_index=2 deck_index=18` and lost eleven decks. `interior.py --cell-manifest` is now step 1
+  of `build_world.py`.
+* **49 texture PNGs**: the `.tres` drift check cannot see a generator change, because a .tres only
+  names `wall_plate_orm.png` and the filename does not change when the contents should. The first
+  full export in an unknown number of sessions found `habitat_windows.tres` drifted and **six
+  signage materials that had NEVER been exported** — the engine has never had them, on a station
+  where a blind critic called the one dot-matrix sign *"the only object in eight frames that tells
+  you where you are"*.
+
+**And `godot/materials/**` was not on the Windows build's trigger path** — packed into the .exe
+exactly like `godot/scripts/**`, which the same file already records as having cost a shipped
+defect once.
+
+## 6. Ten audits, and the craft score
+
+Seven earlier, three during planning, all briefed to assume the work was lazy or faked. The
+claims auditor re-derived twelve headline numbers and **eleven came back exact**. The craft
+auditor scored the station **CRAFT 1** and was right: a 12-triangle bed stamped 360 times, no
+vegetation within 24.6 m of a person standing in the Garden, walls with 8× less detail than the
+floor, faceted mannequins with wedge hands.
+
+**Partly closed:** the corridor wall's "plastic" turned out to be measurable — roughness varied by
+**11.6%** of its mean against the floor's **76.7%**. Now **36.8%**, with the reference-measured
+mean unchanged at 0.564. Two attempts failed first and are recorded as negative results: bolt
+fixings moved the statistic **1.6%**, and nine-fold fine grain moved the flat fraction **not at
+all**, because smooth noise cannot produce steep slopes.
+
+## 7. THE FINAL PLAN IS LOGGED AND NOT STARTED
+
+`docs/MASTER-PLAN.md` **§4v**, the first section in the file, and `CLAUDE.md`'s read-order now
+points at it. The owner's instruction: *"dont start anything just log the plan and we'll start it
+later"*.
+
+It was rejected twice by a blind adversarial panel — **nine blocking findings, seven major** —
+before it was adopted. Three of those findings were the plan making itself easier:
+
+* I read the passing half of `budget.py` and wrote that a performance phase had evaporated. The
+  full run is **16 PASS, 8 FAIL**, worst = resident triangles **352,084 / 180,000**.
+* I "corrected" a draw-call figure to ~14% **using the denominator I had just condemned**. The
+  honest number against the real 1,041-draw frame budget is **0.9%**.
+* I listed a stale-figure *warning* in `CLAUDE.md` as an *error* in `CLAUDE.md` — a manufactured
+  finding, in the section arguing the instruments lie.
+
+**And one panel finding was wrong and is refuted with the command**: it quoted `bake_station.py
+--shell-audit` at 82 of 119 from a code comment; re-run, it is **5 of 119, worst 291.56 m**.
+
+**The starting line, so the first execution session can diff against it — all four fail today:**
+
+```
+spec_check --smoke   0 GREEN / 300 RED   (121 pass-but-insufficient, 177 ran and FAILED, 2 crashed)
+aaa_gate             MALFORMED -- 59 problems; 0 of 22 subsystems at the bar
+wiring --selftest    exit 1 -- scene/transit/lift.json, starfury/{launch,starfury.glb,vectors}
+budget               16 PASS / 8 FAIL
+```
+
+**The two structural facts §4v exists to fix:** `aaa_gate --strict` could be satisfied by editing
+one JSON file (all 94 dimension-points were cappable), and the scorecard scores **22 meshes and
+zero gameplay systems** — so the plan could have reported DONE with the entire game unbuilt.
