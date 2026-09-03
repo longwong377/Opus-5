@@ -8,7 +8,7 @@
    "triangles": 1300,
    "meshes": 10,
    "materials": 0,
-   "size_bytes": 115324,
+   "size_bytes": 115320,
    "loads_in_three_js": true,
    "bbox_m": [
     10.1,
@@ -24,7 +24,7 @@
    "triangles": 69360,
    "meshes": 9,
    "materials": 0,
-   "size_bytes": 5831852,
+   "size_bytes": 5831848,
    "loads_in_three_js": true,
    "bbox_m": [
     103.5,
@@ -40,7 +40,7 @@
    "triangles": 44452,
    "meshes": 28,
    "materials": 0,
-   "size_bytes": 3750780,
+   "size_bytes": 3750776,
    "loads_in_three_js": true,
    "bbox_m": [
     14.1,
@@ -56,7 +56,7 @@
    "triangles": 52416,
    "meshes": 12,
    "materials": 0,
-   "size_bytes": 4410296,
+   "size_bytes": 4410292,
    "loads_in_three_js": true,
    "bbox_m": [
     100.8,
@@ -72,7 +72,7 @@
    "triangles": 33740,
    "meshes": 37,
    "materials": 0,
-   "size_bytes": 2856364,
+   "size_bytes": 2856360,
    "loads_in_three_js": true,
    "bbox_m": [
     20.9,
@@ -88,7 +88,7 @@
    "triangles": 6524,
    "meshes": 30,
    "materials": 0,
-   "size_bytes": 565828,
+   "size_bytes": 565824,
    "loads_in_three_js": true,
    "bbox_m": [
     11.9,
@@ -104,7 +104,7 @@
    "triangles": 44404,
    "meshes": 37,
    "materials": 0,
-   "size_bytes": 3752268,
+   "size_bytes": 3752264,
    "loads_in_three_js": true,
    "bbox_m": [
     9.4,
@@ -120,7 +120,7 @@
    "triangles": 18510,
    "meshes": 32,
    "materials": 0,
-   "size_bytes": 1573952,
+   "size_bytes": 1573948,
    "loads_in_three_js": true,
    "bbox_m": [
     14.3,
@@ -136,7 +136,7 @@
    "triangles": 26776,
    "meshes": 34,
    "materials": 0,
-   "size_bytes": 2269632,
+   "size_bytes": 2269628,
    "loads_in_three_js": true,
    "bbox_m": [
     9.6,
@@ -146,13 +146,13 @@
   },
   {
    "key": "council_chamber",
-   "name": "Babylon 5 Advisory Council chamber",
+   "name": "Advisory Council chamber",
    "module": "council_chamber",
    "file": "council_chamber.glb",
    "triangles": 29674,
    "meshes": 21,
    "materials": 0,
-   "size_bytes": 2505504,
+   "size_bytes": 2505500,
    "loads_in_three_js": true,
    "bbox_m": [
     22.7,
@@ -168,7 +168,7 @@
    "triangles": 41706,
    "meshes": 60,
    "materials": 0,
-   "size_bytes": 3539532,
+   "size_bytes": 3539528,
    "loads_in_three_js": true,
    "bbox_m": [
     17.5,
@@ -184,7 +184,7 @@
    "triangles": 38414,
    "meshes": 48,
    "materials": 0,
-   "size_bytes": 3255700,
+   "size_bytes": 3255696,
    "loads_in_three_js": true,
    "bbox_m": [
     17.5,
@@ -200,7 +200,7 @@
    "triangles": 32811,
    "meshes": 38,
    "materials": 0,
-   "size_bytes": 2779040,
+   "size_bytes": 2779036,
    "loads_in_three_js": true,
    "bbox_m": [
     42.5,
@@ -216,7 +216,7 @@
    "triangles": 10052,
    "meshes": 11,
    "materials": 0,
-   "size_bytes": 851116,
+   "size_bytes": 851112,
    "loads_in_three_js": true,
    "bbox_m": [
     13.2,
@@ -232,7 +232,7 @@
    "triangles": 4640,
    "meshes": 11,
    "materials": 0,
-   "size_bytes": 396528,
+   "size_bytes": 396524,
    "loads_in_three_js": true,
    "bbox_m": [
     10.9,
@@ -248,7 +248,7 @@
    "triangles": 6716,
    "meshes": 27,
    "materials": 0,
-   "size_bytes": 580164,
+   "size_bytes": 580160,
    "loads_in_three_js": true,
    "bbox_m": [
     12.6,
@@ -264,7 +264,7 @@
    "triangles": 6288,
    "meshes": 25,
    "materials": 0,
-   "size_bytes": 543060,
+   "size_bytes": 543056,
    "loads_in_three_js": true,
    "bbox_m": [
     11.9,
@@ -280,7 +280,7 @@
    "triangles": 6624,
    "meshes": 25,
    "materials": 0,
-   "size_bytes": 571268,
+   "size_bytes": 571264,
    "loads_in_three_js": true,
    "bbox_m": [
     12.6,
@@ -296,7 +296,7 @@
    "triangles": 6776,
    "meshes": 29,
    "materials": 0,
-   "size_bytes": 586392,
+   "size_bytes": 586388,
    "loads_in_three_js": true,
    "bbox_m": [
     15.4,
@@ -312,7 +312,7 @@
    "triangles": 387630,
    "meshes": 41,
    "materials": 0,
-   "size_bytes": 32586772,
+   "size_bytes": 32586768,
    "loads_in_three_js": true,
    "bbox_m": [
     2421.7,
@@ -328,7 +328,7 @@
    "triangles": 173932,
    "meshes": 35,
    "materials": 0,
-   "size_bytes": 14631888,
+   "size_bytes": 14631884,
    "loads_in_three_js": true,
    "bbox_m": [
     10.2,
@@ -344,7 +344,7 @@
    "triangles": 7596,
    "meshes": 23,
    "materials": 0,
-   "size_bytes": 651760,
+   "size_bytes": 651756,
    "loads_in_three_js": true,
    "bbox_m": [
     10.7,
@@ -360,7 +360,7 @@
    "triangles": 8640,
    "meshes": 12,
    "materials": 0,
-   "size_bytes": 733024,
+   "size_bytes": 733020,
    "loads_in_three_js": true,
    "bbox_m": [
     50.1,
@@ -376,7 +376,7 @@
    "triangles": 32568,
    "meshes": 37,
    "materials": 0,
-   "size_bytes": 2758244,
+   "size_bytes": 2758240,
    "loads_in_three_js": true,
    "bbox_m": [
     13.0,
@@ -392,7 +392,7 @@
    "triangles": 26020,
    "meshes": 40,
    "materials": 0,
-   "size_bytes": 2209908,
+   "size_bytes": 2209904,
    "loads_in_three_js": true,
    "bbox_m": [
     8.8,
@@ -408,7 +408,7 @@
    "triangles": 42156,
    "meshes": 35,
    "materials": 0,
-   "size_bytes": 3562508,
+   "size_bytes": 3562504,
    "loads_in_three_js": true,
    "bbox_m": [
     14.4,
@@ -424,7 +424,7 @@
    "triangles": 10052,
    "meshes": 11,
    "materials": 0,
-   "size_bytes": 851120,
+   "size_bytes": 851116,
    "loads_in_three_js": true,
    "bbox_m": [
     13.8,
@@ -440,7 +440,7 @@
    "triangles": 95400,
    "meshes": 10,
    "materials": 0,
-   "size_bytes": 8019840,
+   "size_bytes": 8019836,
    "loads_in_three_js": true,
    "bbox_m": [
     90.1,
@@ -456,7 +456,7 @@
    "triangles": 28224,
    "meshes": 12,
    "materials": 0,
-   "size_bytes": 2378172,
+   "size_bytes": 2378168,
    "loads_in_three_js": true,
    "bbox_m": [
     72.8,
@@ -472,7 +472,7 @@
    "triangles": 69960,
    "meshes": 10,
    "materials": 0,
-   "size_bytes": 5882844,
+   "size_bytes": 5882840,
    "loads_in_three_js": true,
    "bbox_m": [
     95.2,
@@ -488,7 +488,7 @@
    "triangles": 55584,
    "meshes": 8,
    "materials": 0,
-   "size_bytes": 4674072,
+   "size_bytes": 4674068,
    "loads_in_three_js": true,
    "bbox_m": [
     69.7,
@@ -504,7 +504,7 @@
    "triangles": 100900,
    "meshes": 44,
    "materials": 0,
-   "size_bytes": 8502040,
+   "size_bytes": 8502036,
    "loads_in_three_js": true,
    "bbox_m": [
     22.0,
@@ -520,7 +520,7 @@
    "triangles": 29036,
    "meshes": 30,
    "materials": 0,
-   "size_bytes": 2457048,
+   "size_bytes": 2457044,
    "loads_in_three_js": true,
    "bbox_m": [
     4.8,
@@ -536,7 +536,7 @@
    "triangles": 2800,
    "meshes": 11,
    "materials": 0,
-   "size_bytes": 241952,
+   "size_bytes": 241948,
    "loads_in_three_js": true,
    "bbox_m": [
     13.8,
@@ -552,7 +552,7 @@
    "triangles": 98380,
    "meshes": 44,
    "materials": 0,
-   "size_bytes": 8290360,
+   "size_bytes": 8290356,
    "loads_in_three_js": true,
    "bbox_m": [
     22.0,
@@ -564,7 +564,7 @@
  "failed": [],
  "materials": 245,
  "textures": 49,
- "total_bytes": 139166152,
+ "total_bytes": 139166012,
  "total_triangles": 1650061,
  "all_files_valid_gltf2": true
 }

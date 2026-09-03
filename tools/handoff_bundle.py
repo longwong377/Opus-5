@@ -106,6 +106,49 @@ def glb_stats(path):
     }
 
 
+# Strings the exporter stamps into every file that name the source property
+# rather than describing the geometry. The MESH names are untouched and must
+# be: they are what `materials.json`'s `binds` match against, so renaming one
+# would silently unbind a material.
+SCRUB = {"BabylonStation": "Station", "babylon5-station": "station-generator"}
+
+
+def scrub_glb(path, subs=SCRUB):
+    """Rewrite a .glb's JSON chunk with `subs` applied. Returns how many hit.
+
+    A GLB is a 12-byte header then length-prefixed chunks, so a substitution
+    that changes the JSON's length invalidates both the chunk length and the
+    file total. Rebuild both, and re-pad the JSON chunk to a 4-byte boundary
+    with SPACES (0x20) as the spec requires -- padding with NULs produces a
+    file some loaders reject and others accept, which is the worst outcome.
+    """
+    with open(path, "rb") as f:
+        blob = f.read()
+    magic, ver, _total = struct.unpack("<4sII", blob[:12])
+    if magic != b"glTF":
+        raise ValueError(f"{path}: not a glb")
+    jlen, jtype = struct.unpack("<II", blob[12:20])
+    js = blob[20:20 + jlen].decode("utf-8")
+    rest = blob[20 + jlen:]
+
+    n = sum(js.count(k) for k in subs)
+    if n == 0:
+        return 0
+    for k, v in subs.items():
+        js = js.replace(k, v)
+    raw = js.encode("utf-8")
+    pad = (-len(raw)) % 4
+    raw += b" " * pad
+    out = (struct.pack("<4sII", magic, ver, 12 + 8 + len(raw) + len(rest))
+           + struct.pack("<II", len(raw), jtype) + raw + rest)
+    with open(path, "wb") as f:
+        f.write(out)
+    # Re-parse what was written. A patcher that corrupts the file it "fixed"
+    # is worse than the string it removed.
+    glb_stats(path)
+    return n
+
+
 def build_one(key, timeout=900):
     """`export_scene.py --shot interior --room key` -> scene/interior/key.glb."""
     t0 = time.time()
@@ -127,10 +170,14 @@ def materials_table():
     `.tscn`. This is the join, dumped as data a non-Godot consumer can read.
     """
     import materials as M                                       # noqa: PLC0415
+    # NO `source`, `note` OR `extrapolated`. Those carry this project's own
+    # provenance -- which reference frame a colour was measured off, by name --
+    # and they are both useless to a consumer and the whole reason the file
+    # was 20x bigger than the data in it. A bundle states what a material IS,
+    # not how it came to be believed.
     FIELDS = ("title", "albedo", "roughness", "metallic", "specular",
               "transmittance", "emission", "emission_energy", "texture",
-              "uv_scale", "triplanar", "normal_scale", "binds", "scenes",
-              "source")
+              "uv_scale", "triplanar", "normal_scale", "binds", "scenes")
     out = {}
     for m in M.MATERIALS:
         out[m.name] = {f: getattr(m, f) for f in FIELDS
@@ -225,7 +272,20 @@ def _finish(out, manifest):
     Split out so `--restage` and a full build produce the SAME metadata; two
     code paths writing one manifest is how the two would drift.
     """
+    hits = 0
+    for f_ in sorted(os.listdir(out)):
+        if f_.endswith(".glb"):
+            hits += scrub_glb(os.path.join(out, f_))
+    if hits:
+        print(f"scrubbed {hits} source-naming string(s) from the glb headers")
+
     mats = materials_table()
+    for m in mats.values():
+        for k, v in list(m.items()):
+            if isinstance(v, str):
+                for a, b in SCRUB.items():
+                    m[k] = m[k].replace(a, b)
+                m[k] = re.sub(r"\s*\bBabylon 5\b", "", m[k]).strip()
     with open(os.path.join(out, "materials.json"), "w", encoding="utf-8") as f:
         json.dump(mats, f, indent=1, sort_keys=True, default=str)
 
@@ -243,6 +303,13 @@ def _finish(out, manifest):
                 shutil.copy2(os.path.join(tex_src, f),
                              os.path.join(tex_dst, f))
                 n_tex += 1
+
+    # AND THE MANIFEST'S OWN NAME COLUMN. It is re-derived from the register on
+    # every restage, so scrubbing the file once does not hold -- the name comes
+    # back. Scrub at the point the row is written, not the file.
+    for p in manifest["places"]:
+        if isinstance(p.get("name"), str):
+            p["name"] = re.sub(r"\s*\bBabylon 5\b", "", p["name"]).strip()
 
     manifest["materials"] = len(mats)
     manifest["textures"] = n_tex
