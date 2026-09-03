@@ -15,7 +15,6 @@
     18.1,
     120.0
    ],
-   "draco_bytes": 3740,
    "placement": {
     "sector": "grey",
     "ring": 0,
@@ -63,7 +62,6 @@
     3.0,
     90.0
    ],
-   "draco_bytes": 125044,
    "placement": {
     "sector": "green",
     "ring": 0,
@@ -111,7 +109,6 @@
     3.8,
     120.3
    ],
-   "draco_bytes": 78020,
    "placement": {
     "sector": "green",
     "ring": 0,
@@ -159,7 +156,6 @@
     3.0,
     90.0
    ],
-   "draco_bytes": 95880,
    "placement": {
     "sector": "green",
     "ring": 0,
@@ -207,7 +203,6 @@
     7.7,
     34.2
    ],
-   "draco_bytes": 107992,
    "placement": {
     "sector": "blue",
     "ring": 0,
@@ -255,7 +250,6 @@
     3.2,
     14.6
    ],
-   "draco_bytes": 16076,
    "placement": {
     "sector": "red",
     "ring": 0,
@@ -303,7 +297,6 @@
     7.6,
     120.5
    ],
-   "draco_bytes": 92396,
    "placement": {
     "sector": "red",
     "ring": 0,
@@ -351,7 +344,6 @@
     9.9,
     13.0
    ],
-   "draco_bytes": 61896,
    "placement": {
     "sector": "blue",
     "ring": 0,
@@ -399,7 +391,6 @@
     8.7,
     48.0
    ],
-   "draco_bytes": 57580,
    "placement": {
     "sector": "yellow",
     "ring": 0,
@@ -447,7 +438,6 @@
     7.4,
     22.8
    ],
-   "draco_bytes": 92924,
    "placement": {
     "sector": "green",
     "ring": 0,
@@ -495,7 +485,6 @@
     7.7,
     34.2
    ],
-   "draco_bytes": 134304,
    "placement": {
     "sector": "blue",
     "ring": 0,
@@ -543,7 +532,6 @@
     7.7,
     34.2
    ],
-   "draco_bytes": 123652,
    "placement": {
     "sector": "blue",
     "ring": 0,
@@ -591,7 +579,6 @@
     22.2,
     141.6
    ],
-   "draco_bytes": 79204,
    "placement": {
     "sector": "blue",
     "ring": 0,
@@ -639,7 +626,6 @@
     21.0,
     442.0
    ],
-   "draco_bytes": 30588,
    "placement": {
     "sector": "grey",
     "ring": 0,
@@ -687,7 +673,6 @@
     23.2,
     300.0
    ],
-   "draco_bytes": 14108,
    "placement": {
     "sector": "grey",
     "ring": 0,
@@ -735,7 +720,6 @@
     3.2,
     16.3
    ],
-   "draco_bytes": 16228,
    "placement": {
     "error": "green ring 1 carries no deck stack"
    }
@@ -755,7 +739,6 @@
     3.2,
     14.6
    ],
-   "draco_bytes": 15464,
    "placement": {
     "sector": "red",
     "ring": 0,
@@ -803,7 +786,6 @@
     3.2,
     16.3
    ],
-   "draco_bytes": 15984,
    "placement": {
     "error": "green ring 1 carries no deck stack"
    }
@@ -823,7 +805,6 @@
     3.2,
     14.3
    ],
-   "draco_bytes": 16496,
    "placement": {
     "sector": "grey",
     "ring": 1,
@@ -871,8 +852,9 @@
     1253.1,
     8046.9
    ],
-   "draco_bytes": 844152,
-   "placement": null
+   "placement": {
+    "note": "not a place -- hull is already in station coordinates; the Starfury is a vehicle"
+   }
   },
   {
    "key": "hydroponics",
@@ -889,7 +871,6 @@
     3.9,
     120.4
    ],
-   "draco_bytes": 375568,
    "placement": {
     "sector": "green",
     "ring": 0,
@@ -937,7 +918,6 @@
     3.8,
     12.2
    ],
-   "draco_bytes": 14416,
    "placement": {
     "sector": "green",
     "ring": 0,
@@ -985,7 +965,6 @@
     3.0,
     40.0
    ],
-   "draco_bytes": 16888,
    "placement": {
     "sector": "green",
     "ring": 0,
@@ -1033,7 +1012,6 @@
     8.8,
     16.5
    ],
-   "draco_bytes": 116004,
    "placement": {
     "sector": "blue",
     "ring": 0,
@@ -1081,7 +1059,6 @@
     7.1,
     12.3
    ],
-   "draco_bytes": 92888,
    "placement": {
     "sector": "blue",
     "ring": 0,
@@ -1129,7 +1106,6 @@
     7.5,
     17.9
    ],
-   "draco_bytes": 148648,
    "placement": {
     "sector": "red",
     "ring": 0,
@@ -1177,7 +1153,6 @@
     21.3,
     442.0
    ],
-   "draco_bytes": 30396,
    "placement": {
     "sector": "grey",
     "ring": 0,
@@ -1225,7 +1200,6 @@
     3.0,
     120.0
    ],
-   "draco_bytes": 175372,
    "placement": {
     "sector": "red",
     "ring": 1,
@@ -1273,7 +1247,6 @@
     3.0,
     60.0
    ],
-   "draco_bytes": 51848,
    "placement": {
     "sector": "blue",
     "ring": 0,
@@ -1321,7 +1294,6 @@
     3.0,
     90.0
    ],
-   "draco_bytes": 128892,
    "placement": {
     "sector": "blue",
     "ring": 0,
@@ -1369,7 +1341,6 @@
     3.0,
     80.0
    ],
-   "draco_bytes": 100596,
    "placement": {
     "sector": "red",
     "ring": 1,
@@ -1417,7 +1388,6 @@
     7.5,
     67.4
    ],
-   "draco_bytes": 222580,
    "placement": {
     "sector": "red",
     "ring": 0,
@@ -1465,7 +1435,6 @@
     4.2,
     62.0
    ],
-   "draco_bytes": 62848,
    "placement": {
     "sector": "yellow",
     "ring": 0,
@@ -1499,6 +1468,25 @@
    }
   },
   {
+   "key": "starfury",
+   "name": "",
+   "module": "-",
+   "file": "starfury.glb",
+   "triangles": 3968,
+   "meshes": 16,
+   "materials": 0,
+   "size_bytes": 342844,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    9.3,
+    9.3,
+    6.0
+   ],
+   "placement": {
+    "note": "not a place -- hull is already in station coordinates; the Starfury is a vehicle"
+   }
+  },
+  {
    "key": "water_reclamation",
    "name": "Water reclamation",
    "module": "plant",
@@ -1513,7 +1501,6 @@
     20.7,
     200.0
    ],
-   "draco_bytes": 8616,
    "placement": {
     "sector": "grey",
     "ring": 0,
@@ -1561,7 +1548,6 @@
     7.5,
     67.4
    ],
-   "draco_bytes": 215548,
    "placement": {
     "sector": "red",
     "ring": 0,
@@ -1598,9 +1584,7 @@
  "failed": [],
  "materials": 245,
  "textures": 49,
- "total_bytes": 139166012,
- "total_triangles": 1650061,
- "all_files_valid_gltf2": true,
- "draco_total_bytes": 3782836,
- "placement_frame": "Station axis is +Z. A room's own +x runs along the ring arc, +y points INWARD toward the axis (that is 'up' inside it -- the station spins and the floor is the outer wall), +z runs along the axis. matrix is column-major, ready for THREE.Matrix4.fromArray(), and puts the room in the same coordinates as hull.glb."
+ "total_bytes": 139508856,
+ "total_triangles": 1654029,
+ "all_files_valid_gltf2": true
 }

@@ -29,6 +29,7 @@ rebuilt rather than guessed.
 """
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -63,6 +64,28 @@ def bespoke_modules():
     if not m:
         raise SystemExit("handoff: cannot find BESPOKE_GEOMETRY in bespoke.py")
     return set(re.findall(r'^\s*"([a-z_0-9]+)"\s*:', m.group(1), re.M))
+
+
+def build_starfury(out):
+    """The fighter, which is NOT a place and so no rule above selects it.
+
+    `station/starfury_geometry.py` has always built it -- 16 named sections,
+    3,968 triangles, 6.0 m long on a 9.262 m span, thruster mounts and all --
+    and the only thing on disk was its manifest. `tools/wiring.py --selftest`
+    has been failing on the missing `starfury/starfury.glb` for sessions. It
+    takes seconds to build and nothing was building it.
+    """
+    obj = os.path.join(out, "_starfury.obj")
+    glb = os.path.join(out, "starfury.glb")
+    r = subprocess.run([sys.executable, "station/starfury_geometry.py",
+                        "--out", obj], cwd=ROOT, capture_output=True, text=True)
+    if r.returncode != 0 or not os.path.exists(obj):
+        return None
+    r = subprocess.run([sys.executable, "station/export_gltf.py",
+                        "--obj", obj, "--out", glb],
+                       cwd=ROOT, capture_output=True, text=True)
+    os.remove(obj)
+    return glb if os.path.exists(glb) else None
 
 
 def places():
@@ -266,6 +289,42 @@ def main():
     return 0
 
 
+def _placement(key):
+    """Where this model sits inside the hull, in hull.glb's own coordinates.
+
+    THE FRAME IS READ, NOT INVENTED. `station/vista.py` already had to solve
+    this to know which way a window faces: r_hat = (cos a, sin a, 0), and a
+    room's basis on the ring is +x along the arc, +y INWARD toward the axis
+    (that is "up" inside it -- the station spins, so the floor is the outer
+    wall), +z axial. Anything that is not a register place -- the hull, which
+    is already in station coordinates, and the Starfury, which is a vehicle --
+    correctly gets None.
+    """
+    import directory as dr                                    # noqa: PLC0415
+    import interior as it                                     # noqa: PLC0415
+    import deck as D                                          # noqa: PLC0415
+    if key in ("hull", "starfury"):
+        return {"note": "not a place -- hull is already in station "
+                        "coordinates; the Starfury is a vehicle"}
+    try:
+        q = dr.by_key(key)
+        s, prof = it.load()
+        di = D.deck_index(s, prof, q["sector"], q["ring"], q["deck"])
+        r = it.ring_cells(s, prof, q["sector"], q["ring"], di)["radius_m"]
+    except Exception as e:
+        return {"error": str(e)[:100]}
+    a = math.radians(q["angle_deg"])
+    ca, sa = math.cos(a), math.sin(a)
+    xh, yh, zh = (-sa, ca, 0.0), (-ca, -sa, 0.0), (0.0, 0.0, 1.0)
+    o = (r * ca, r * sa, q["z_m"])
+    return {"sector": q["sector"], "ring": q["ring"], "deck": q["deck"],
+            "angle_deg": q["angle_deg"], "z_m": q["z_m"],
+            "ring_radius_m": round(r, 3),
+            "origin": [round(v, 3) for v in o],
+            "matrix": [round(v, 6) for v in
+                       (*xh, 0.0, *yh, 0.0, *zh, 0.0, *o, 1.0)]}
+
+
 def _finish(out, manifest):
     """Materials, textures and the manifest -- the metadata half of a bundle.
 
@@ -303,6 +362,14 @@ def _finish(out, manifest):
                 shutil.copy2(os.path.join(tex_src, f),
                              os.path.join(tex_dst, f))
                 n_tex += 1
+
+    # PLACEMENT, COMPUTED HERE FOR THE SAME REASON THE SCRUB IS. It was first
+    # written by a one-off script straight into manifest.json and the next
+    # `--restage` silently deleted all 32 rows, which is exactly the defect
+    # this file already records one paragraph down. Anything derived belongs in
+    # the code that writes the manifest, never patched into the file after.
+    for p in manifest["places"]:
+        p["placement"] = _placement(p["key"])
 
     # AND THE MANIFEST'S OWN NAME COLUMN. It is re-derived from the register on
     # every restage, so scrubbing the file once does not hold -- the name comes
