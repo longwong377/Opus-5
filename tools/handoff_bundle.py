@@ -51,6 +51,29 @@ PREBUILT = {
              "the complete exterior of the station, 8,047 m"),
     "hydroponics": ("station/generated/scene/interior/hydroponics.glb",
                     "the Garden -- hydroponics section interior"),
+    # THE THINGS NO RULE ABOVE SELECTS, and the owner had to ask before any of
+    # them shipped. `places()` picks rooms, so an outdoor habitat, a vehicle
+    # and a crowd of people are all invisible to it -- not missing from the
+    # project, missing from the QUESTION the selection rule asks. All four
+    # drum files and both crowd libraries were already built and sitting on
+    # disk the whole time.
+    "drum_ground": ("station/generated/scene/drum/ground.glb",
+                    "the habitat drum's terrain -- 559 x 559 x 1830 m of "
+                    "arable fields, avenues and lake bed"),
+    "drum_townscape": ("station/generated/scene/drum/townscape.glb",
+                       "the settlement in the drum -- balconies, banks, "
+                       "banners, planting beds"),
+    "drum_dressing": ("station/generated/scene/drum/dressing.glb",
+                      "the drum's built fabric -- colonnades, blocks, "
+                      "cornices"),
+    "drum_trams": ("station/generated/scene/drum/trams.glb",
+                   "tram cars running the drum's length"),
+    "crowd_library": ("station/generated/scene/deck/crowd_lod2.glb",
+                      "CHARACTER LIBRARY, not placed people -- the bounding "
+                      "box is one body. 2,604 meshes split species x costume "
+                      "x part (skin, hair, cloth, leather), highest LOD"),
+    "crowd_library_low": ("station/generated/scene/deck/crowd_lod8.glb",
+                          "the same library at the cheapest LOD"),
 }
 
 

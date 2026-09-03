@@ -471,6 +471,44 @@
    }
   },
   {
+   "key": "crowd_library",
+   "name": "CHARACTER LIBRARY, not placed people -- the bounding box is one body. 2,604 meshes split species x costume x part (skin, hair, cloth, leather), highest LOD",
+   "module": "-",
+   "file": "crowd_library.glb",
+   "triangles": 1357920,
+   "meshes": 2604,
+   "materials": 0,
+   "size_bytes": 48865096,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    2.0,
+    2.1,
+    2.1
+   ],
+   "placement": {
+    "error": "\"no place 'crowd_library'\""
+   }
+  },
+  {
+   "key": "crowd_library_low",
+   "name": "the same library at the cheapest LOD",
+   "module": "-",
+   "file": "crowd_library_low.glb",
+   "triangles": 123120,
+   "meshes": 1512,
+   "materials": 0,
+   "size_bytes": 6922068,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    2.0,
+    2.1,
+    2.1
+   ],
+   "placement": {
+    "error": "\"no place 'crowd_library_low'\""
+   }
+  },
+  {
    "key": "customs_north",
    "name": "Customs hall, north",
    "module": "customs",
@@ -703,6 +741,82 @@
      3657.0,
      1.0
     ]
+   }
+  },
+  {
+   "key": "drum_dressing",
+   "name": "the drum's built fabric -- colonnades, blocks, cornices",
+   "module": "-",
+   "file": "drum_dressing.glb",
+   "triangles": 104032,
+   "meshes": 27,
+   "materials": 0,
+   "size_bytes": 8755696,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    561.5,
+    552.4,
+    1779.5
+   ],
+   "placement": {
+    "error": "\"no place 'drum_dressing'\""
+   }
+  },
+  {
+   "key": "drum_ground",
+   "name": "the habitat drum's terrain -- 559 x 559 x 1830 m of arable fields, avenues and lake bed",
+   "module": "-",
+   "file": "drum_ground.glb",
+   "triangles": 57074,
+   "meshes": 13,
+   "materials": 0,
+   "size_bytes": 4802432,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    559.4,
+    559.1,
+    1830.4
+   ],
+   "placement": {
+    "error": "\"no place 'drum_ground'\""
+   }
+  },
+  {
+   "key": "drum_townscape",
+   "name": "the settlement in the drum -- balconies, banks, banners, planting beds",
+   "module": "-",
+   "file": "drum_townscape.glb",
+   "triangles": 65608,
+   "meshes": 51,
+   "materials": 0,
+   "size_bytes": 5542796,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    191.1,
+    96.2,
+    251.8
+   ],
+   "placement": {
+    "error": "\"no place 'drum_townscape'\""
+   }
+  },
+  {
+   "key": "drum_trams",
+   "name": "tram cars running the drum's length",
+   "module": "-",
+   "file": "drum_trams.glb",
+   "triangles": 12624,
+   "meshes": 16,
+   "materials": 0,
+   "size_bytes": 1070380,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    375.5,
+    432.3,
+    1619.3
+   ],
+   "placement": {
+    "error": "\"no place 'drum_trams'\""
    }
   },
   {
@@ -1584,7 +1698,7 @@
  "failed": [],
  "materials": 245,
  "textures": 49,
- "total_bytes": 139508856,
- "total_triangles": 1654029,
+ "total_bytes": 215467324,
+ "total_triangles": 3374407,
  "all_files_valid_gltf2": true
 }
