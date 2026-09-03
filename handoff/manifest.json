@@ -1,0 +1,570 @@
+{
+ "places": [
+  {
+   "key": "air_compressors",
+   "name": "Air compressors",
+   "module": "plant",
+   "file": "air_compressors.glb",
+   "triangles": 1300,
+   "meshes": 10,
+   "materials": 0,
+   "size_bytes": 115324,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    10.1,
+    18.1,
+    120.0
+   ]
+  },
+  {
+   "key": "alien_resident_qtr",
+   "name": "Alien residential quarters",
+   "module": "quarters",
+   "file": "alien_resident_qtr.glb",
+   "triangles": 69360,
+   "meshes": 9,
+   "materials": 0,
+   "size_bytes": 5831852,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    103.5,
+    3.0,
+    90.0
+   ]
+  },
+  {
+   "key": "alien_sector",
+   "name": "The Alien Sector",
+   "module": "alien_sector",
+   "file": "alien_sector.glb",
+   "triangles": 44452,
+   "meshes": 28,
+   "materials": 0,
+   "size_bytes": 3750780,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    14.1,
+    3.8,
+    120.3
+   ]
+  },
+  {
+   "key": "ambassadorial_suites",
+   "name": "Ambassadorial suites",
+   "module": "quarters",
+   "file": "ambassadorial_suites.glb",
+   "triangles": 52416,
+   "meshes": 12,
+   "materials": 0,
+   "size_bytes": 4410296,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    100.8,
+    3.0,
+    90.0
+   ]
+  },
+  {
+   "key": "arrival_concourse",
+   "name": "Arrival concourse",
+   "module": "customs",
+   "file": "arrival_concourse.glb",
+   "triangles": 33740,
+   "meshes": 37,
+   "materials": 0,
+   "size_bytes": 2856364,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    20.9,
+    7.7,
+    34.2
+   ]
+  },
+  {
+   "key": "bar_unnamed",
+   "name": "An unnamed bar / diner",
+   "module": "hospitality",
+   "file": "bar_unnamed.glb",
+   "triangles": 6524,
+   "meshes": 30,
+   "materials": 0,
+   "size_bytes": 565828,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    11.9,
+    3.2,
+    14.6
+   ]
+  },
+  {
+   "key": "central_corridor",
+   "name": "The Central Corridor",
+   "module": "interior_kit",
+   "file": "central_corridor.glb",
+   "triangles": 44404,
+   "meshes": 37,
+   "materials": 0,
+   "size_bytes": 3752268,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    9.4,
+    7.6,
+    120.5
+   ]
+  },
+  {
+   "key": "cnc",
+   "name": "Command & Control",
+   "module": "command_control",
+   "file": "cnc.glb",
+   "triangles": 18510,
+   "meshes": 32,
+   "materials": 0,
+   "size_bytes": 1573952,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    14.3,
+    9.9,
+    13.0
+   ]
+  },
+  {
+   "key": "core_shuttle",
+   "name": "The core shuttle",
+   "module": "core_tube",
+   "file": "core_shuttle.glb",
+   "triangles": 26776,
+   "meshes": 34,
+   "materials": 0,
+   "size_bytes": 2269632,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    9.6,
+    8.7,
+    48.0
+   ]
+  },
+  {
+   "key": "council_chamber",
+   "name": "Babylon 5 Advisory Council chamber",
+   "module": "council_chamber",
+   "file": "council_chamber.glb",
+   "triangles": 29674,
+   "meshes": 21,
+   "materials": 0,
+   "size_bytes": 2505504,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    22.7,
+    7.4,
+    22.8
+   ]
+  },
+  {
+   "key": "customs_north",
+   "name": "Customs hall, north",
+   "module": "customs",
+   "file": "customs_north.glb",
+   "triangles": 41706,
+   "meshes": 60,
+   "materials": 0,
+   "size_bytes": 3539532,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    17.5,
+    7.7,
+    34.2
+   ]
+  },
+  {
+   "key": "customs_south",
+   "name": "Customs hall, south",
+   "module": "customs",
+   "file": "customs_south.glb",
+   "triangles": 38414,
+   "meshes": 48,
+   "materials": 0,
+   "size_bytes": 3255700,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    17.5,
+    7.7,
+    34.2
+   ]
+  },
+  {
+   "key": "docking_bays",
+   "name": "Docking bays (24)",
+   "module": "docking_bay",
+   "file": "docking_bays.glb",
+   "triangles": 32811,
+   "meshes": 38,
+   "materials": 0,
+   "size_bytes": 2779040,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    42.5,
+    22.2,
+    141.6
+   ]
+  },
+  {
+   "key": "downbelow",
+   "name": "Downbelow",
+   "module": "plant",
+   "file": "downbelow.glb",
+   "triangles": 10052,
+   "meshes": 11,
+   "materials": 0,
+   "size_bytes": 851116,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    13.2,
+    21.0,
+    442.0
+   ]
+  },
+  {
+   "key": "downbelow_arch",
+   "name": "Downbelow's architecture",
+   "module": "plant",
+   "file": "downbelow_arch.glb",
+   "triangles": 4640,
+   "meshes": 11,
+   "materials": 0,
+   "size_bytes": 396528,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    10.9,
+    23.2,
+    300.0
+   ]
+  },
+  {
+   "key": "earharts",
+   "name": "Earhart's",
+   "module": "hospitality",
+   "file": "earharts.glb",
+   "triangles": 6716,
+   "meshes": 27,
+   "materials": 0,
+   "size_bytes": 580164,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    12.6,
+    3.2,
+    16.3
+   ]
+  },
+  {
+   "key": "eclipse_cafe",
+   "name": "Eclipse Cafe",
+   "module": "hospitality",
+   "file": "eclipse_cafe.glb",
+   "triangles": 6288,
+   "meshes": 25,
+   "materials": 0,
+   "size_bytes": 543060,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    11.9,
+    3.2,
+    14.6
+   ]
+  },
+  {
+   "key": "fresh_air",
+   "name": "The Fresh Air Restaurant",
+   "module": "hospitality",
+   "file": "fresh_air.glb",
+   "triangles": 6624,
+   "meshes": 25,
+   "materials": 0,
+   "size_bytes": 571268,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    12.6,
+    3.2,
+    16.3
+   ]
+  },
+  {
+   "key": "happy_daze",
+   "name": "Happy Daze Bar",
+   "module": "hospitality",
+   "file": "happy_daze.glb",
+   "triangles": 6776,
+   "meshes": 29,
+   "materials": 0,
+   "size_bytes": 586392,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    15.4,
+    3.2,
+    14.3
+   ]
+  },
+  {
+   "key": "hull",
+   "name": "the complete exterior of the station, 8,047 m",
+   "module": "-",
+   "file": "hull.glb",
+   "triangles": 387630,
+   "meshes": 41,
+   "materials": 0,
+   "size_bytes": 32586772,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    2421.7,
+    1253.1,
+    8046.9
+   ]
+  },
+  {
+   "key": "hydroponics",
+   "name": "the Garden -- hydroponics section interior",
+   "module": "-",
+   "file": "hydroponics.glb",
+   "triangles": 173932,
+   "meshes": 35,
+   "materials": 0,
+   "size_bytes": 14631888,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    10.2,
+    3.9,
+    120.4
+   ]
+  },
+  {
+   "key": "kosh_quarters",
+   "name": "Kosh's quarters",
+   "module": "alien_sector",
+   "file": "kosh_quarters.glb",
+   "triangles": 7596,
+   "meshes": 23,
+   "materials": 0,
+   "size_bytes": 651760,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    10.7,
+    3.8,
+    12.2
+   ]
+  },
+  {
+   "key": "league_delegations",
+   "name": "League of Non-Aligned Worlds delegations",
+   "module": "quarters",
+   "file": "league_delegations.glb",
+   "triangles": 8640,
+   "meshes": 12,
+   "materials": 0,
+   "size_bytes": 733024,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    50.1,
+    3.0,
+    40.0
+   ]
+  },
+  {
+   "key": "obs_dome_1",
+   "name": "Observation Dome 1",
+   "module": "components",
+   "file": "obs_dome_1.glb",
+   "triangles": 32568,
+   "meshes": 37,
+   "materials": 0,
+   "size_bytes": 2758244,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    13.0,
+    8.8,
+    16.5
+   ]
+  },
+  {
+   "key": "obs_dome_2",
+   "name": "Observation Dome 2",
+   "module": "components",
+   "file": "obs_dome_2.glb",
+   "triangles": 26020,
+   "meshes": 40,
+   "materials": 0,
+   "size_bytes": 2209908,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    8.8,
+    7.1,
+    12.3
+   ]
+  },
+  {
+   "key": "obs_rotundas",
+   "name": "Observation rotundas (4)",
+   "module": "components",
+   "file": "obs_rotundas.glb",
+   "triangles": 42156,
+   "meshes": 35,
+   "materials": 0,
+   "size_bytes": 3562508,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    14.4,
+    7.5,
+    17.9
+   ]
+  },
+  {
+   "key": "plant_zone",
+   "name": "The plant zone",
+   "module": "plant",
+   "file": "plant_zone.glb",
+   "triangles": 10052,
+   "meshes": 11,
+   "materials": 0,
+   "size_bytes": 851120,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    13.8,
+    21.3,
+    442.0
+   ]
+  },
+  {
+   "key": "qtr_civilian",
+   "name": "Civilian residential",
+   "module": "quarters",
+   "file": "qtr_civilian.glb",
+   "triangles": 95400,
+   "meshes": 10,
+   "materials": 0,
+   "size_bytes": 8019840,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    90.1,
+    3.0,
+    120.0
+   ]
+  },
+  {
+   "key": "qtr_command",
+   "name": "Command staff quarters",
+   "module": "quarters",
+   "file": "qtr_command.glb",
+   "triangles": 28224,
+   "meshes": 12,
+   "materials": 0,
+   "size_bytes": 2378172,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    72.8,
+    3.0,
+    60.0
+   ]
+  },
+  {
+   "key": "qtr_personnel",
+   "name": "Station personnel quarters",
+   "module": "quarters",
+   "file": "qtr_personnel.glb",
+   "triangles": 69960,
+   "meshes": 10,
+   "materials": 0,
+   "size_bytes": 5882844,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    95.2,
+    3.0,
+    90.0
+   ]
+  },
+  {
+   "key": "qtr_transient",
+   "name": "Transient habitation",
+   "module": "quarters",
+   "file": "qtr_transient.glb",
+   "triangles": 55584,
+   "meshes": 8,
+   "materials": 0,
+   "size_bytes": 4674072,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    69.7,
+    3.0,
+    80.0
+   ]
+  },
+  {
+   "key": "shops_kiosks",
+   "name": "Shops, kiosks and cart vendors",
+   "module": "zocalo",
+   "file": "shops_kiosks.glb",
+   "triangles": 100900,
+   "meshes": 44,
+   "materials": 0,
+   "size_bytes": 8502040,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    22.0,
+    7.5,
+    67.4
+   ]
+  },
+  {
+   "key": "shuttle_car",
+   "name": "Core shuttle car interior",
+   "module": "core_tube",
+   "file": "shuttle_car.glb",
+   "triangles": 29036,
+   "meshes": 30,
+   "materials": 0,
+   "size_bytes": 2457048,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    4.8,
+    4.2,
+    62.0
+   ]
+  },
+  {
+   "key": "water_reclamation",
+   "name": "Water reclamation",
+   "module": "plant",
+   "file": "water_reclamation.glb",
+   "triangles": 2800,
+   "meshes": 11,
+   "materials": 0,
+   "size_bytes": 241952,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    13.8,
+    20.7,
+    200.0
+   ]
+  },
+  {
+   "key": "zocalo",
+   "name": "The Zocalo",
+   "module": "zocalo",
+   "file": "zocalo.glb",
+   "triangles": 98380,
+   "meshes": 44,
+   "materials": 0,
+   "size_bytes": 8290360,
+   "loads_in_three_js": true,
+   "bbox_m": [
+    22.0,
+    7.5,
+    67.4
+   ]
+  }
+ ],
+ "failed": [],
+ "materials": 245,
+ "textures": 49,
+ "total_bytes": 139166152,
+ "total_triangles": 1650061,
+ "all_files_valid_gltf2": true
+}

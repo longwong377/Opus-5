@@ -4689,6 +4689,18 @@ def _standpoint_at(a, tri, y, clear_m, floor_y=None):
     # shot is from the end of the volume rather than from its middle.
     good = ahead >= max(1, int(best * 0.85))
     js = np.where(good.any(axis=0))[0]
+    # NO CELL AT THIS HEIGHT SEES ANYWHERE, WHICH IS AN ANSWER AND NOT AN
+    # ERROR. `best` comes back 0 when every free cell is blocked one cell
+    # ahead, so `good` is all-False and `js` is empty -- and this raised
+    # `IndexError: index 0 is out of bounds` rather than saying so. It fires on
+    # `central_corridor`, whose geometry builds fine and then dies HERE, three
+    # lines before the write, so the corridor could not be exported at all.
+    # The caller already scores every level and picks the best, so a level with
+    # nowhere to stand only has to lose: return the volume's own diagonal at a
+    # score that cannot win against a real standpoint.
+    if js.size == 0:
+        return ((float(lo[0]), y, float(lo[2])),
+                (float(hi[0]), y, float(hi[2])), -1.0)
     j = int(js[0])
     col = good[:, j]
     runs, start = [], None
